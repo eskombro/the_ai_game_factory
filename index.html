@@ -56,6 +56,14 @@
     margin: 0;
     font-size: 0.95rem;
   }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+  .logo {
+    flex-shrink: 0;
+  }
   #langPicker {
     display: flex;
     align-items: center;
@@ -165,13 +173,80 @@
       aspect-ratio: 16 / 9;
     }
   }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+  }
+  footer p {
+    margin: 0;
+    color: var(--muted-dim);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    max-width: 46ch;
+  }
+  footer a.repo-link {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.82rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  footer a.repo-link:hover {
+    color: var(--text);
+    border-color: var(--border-hover);
+    background: var(--panel-hover);
+  }
+  footer a.repo-link svg {
+    flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
   <header>
-    <div>
-      <h1>The AI Game Factory</h1>
-      <p class="subtitle" data-i18n="subtitle">A collection of original browser game prototypes.</p>
+    <div class="brand">
+      <svg class="logo" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+        <defs>
+          <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="var(--accent)"/>
+            <stop offset="100%" stop-color="var(--accent-2)"/>
+          </linearGradient>
+          <mask id="logoHole">
+            <rect width="40" height="40" fill="#fff"/>
+            <circle cx="20" cy="20" r="8" fill="#000"/>
+          </mask>
+        </defs>
+        <g fill="url(#logoGrad)" mask="url(#logoHole)">
+          <circle cx="20" cy="20" r="13"/>
+          <rect x="18" y="2" width="4" height="6"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(45 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(90 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(135 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(180 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(225 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(270 20 20)"/>
+          <rect x="18" y="2" width="4" height="6" transform="rotate(315 20 20)"/>
+        </g>
+        <g fill="var(--accent-2)">
+          <rect x="18.5" y="15.5" width="3" height="9" rx="0.6"/>
+          <rect x="15.5" y="18.5" width="9" height="3" rx="0.6"/>
+        </g>
+      </svg>
+      <div>
+        <h1>The AI Game Factory</h1>
+        <p class="subtitle" data-i18n="subtitle">A collection of original browser game prototypes.</p>
+      </div>
     </div>
     <div id="langPicker">
       <select id="langSelect" aria-label="Language">
@@ -221,6 +296,16 @@
     </li>
   </ul>
 
+  <footer>
+    <p data-i18n="footer_note">Every game on this site is AI-generated — designed, coded, and polished end-to-end by a pipeline of specialized coding agents, with no hand-written game code.</p>
+    <a class="repo-link" href="https://github.com/eskombro/the_ai_game_factory" target="_blank" rel="noopener noreferrer">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      <span data-i18n="footer_repo_link">Source on GitHub</span>
+    </a>
+  </footer>
+
 <script>
 (function () {
   "use strict";
@@ -231,21 +316,27 @@
       desc_doppeldodge: "Doppeldodge splits the screen into two mirrored lanes. You steer a red dot on the left, while a blue echo mirrors your position on the right, like glass. Each lane drops different falling gates, so clearing a gap on your side can send the echo into a wall. Hold the dot to move; release to pause. One hit on either dot ends the run, and things speed up over time.",
       desc_vault_echo: "Vault Echo is a memory-heist game: watch four brass tumbler pads flash a growing combination, then tap them back in order before time runs out. Crack a round and choose — bank your loot for a safe score, or push deeper into a longer, faster sequence for a bigger prize. One wrong tap, or running out of time, wipes your unbanked total. Clearing all ten rounds doubles your final haul.",
       desc_valve_panic: "Steam valves overheat across a control panel, and only your fingers can vent them. Hold a lit valve to cool it down — let go and pressure climbs again. As more valves come online over a 75-second shift, you'll need real multi-touch triage across both hands. Releasing a vent scores points in three tiers: routine, warning, and clutch last-second saves earn progressively more. Survive with 3 lives.",
-      desc_cheek_ascent: "Swipe a squirrel up an endless, swaying tree, leaping branch to branch. Every acorn you stuff in your cheeks weakens your next jump, so hoarding gets risky. Land on a rare hollow branch to bank your acorns safely before gravity catches up. Simple one-finger swipes, an addictive risk-reward climb, and a persistent high score."
+      desc_cheek_ascent: "Swipe a squirrel up an endless, swaying tree, leaping branch to branch. Every acorn you stuff in your cheeks weakens your next jump, so hoarding gets risky. Land on a rare hollow branch to bank your acorns safely before gravity catches up. Simple one-finger swipes, an addictive risk-reward climb, and a persistent high score.",
+      footer_note: "Every game on this site is AI-generated — designed, coded, and polished end-to-end by a pipeline of specialized coding agents, with no hand-written game code.",
+      footer_repo_link: "Source on GitHub"
     },
     fr: {
       subtitle: "Une collection de prototypes de jeux de navigateur originaux.",
       desc_doppeldodge: "Doppeldodge partage l'écran en deux voies en miroir. Vous dirigez un point rouge à gauche ; un écho bleu copie votre position à droite, comme un reflet. Chaque voie fait tomber des barrières à trou différent ; bien passer à gauche peut envoyer l'écho dans un mur. Gardez le doigt sur le point pour le déplacer ; relâchez pour suspendre. Un choc termine la partie, tout s'accélère avec le temps.",
       desc_vault_echo: "Vault Echo est un jeu de casse basé sur la mémoire : quatre plots dorés affichent une combinaison de plus en plus longue, à reproduire dans l'ordre avant la fin du temps. Réussir une manche impose un choix : sécuriser le butin, ou tenter une manche plus longue pour un gain supérieur. Une erreur ou un timeout efface le butin non sécurisé. Réussir les dix manches double le gain final.",
       desc_valve_panic: "Des vannes à vapeur surchauffent sur un panneau de contrôle ; seuls vos doigts peuvent les soulager. Posez un doigt sur une vanne allumée pour faire baisser sa pression ; relâchez et elle remonte aussitôt. En 75 secondes, de nouvelles vannes s'activent, obligeant à jongler avec plusieurs doigts. Chaque évacuation rapporte des points sur trois niveaux, les sauvetages les plus risqués valant le plus. Tenez avec 3 vies.",
-      desc_cheek_ascent: "Faites grimper un écureuil de branche en branche sur un arbre infini qui oscille sans cesse, d'un simple glissement du doigt. Chaque gland stocké dans ses joues affaiblit son prochain saut, rendre trop gourmand devient risqué. Atterrissez sur une rare branche creuse pour mettre vos glands en sécurité avant de tomber. Votre meilleur score reste enregistré."
+      desc_cheek_ascent: "Faites grimper un écureuil de branche en branche sur un arbre infini qui oscille sans cesse, d'un simple glissement du doigt. Chaque gland stocké dans ses joues affaiblit son prochain saut, rendre trop gourmand devient risqué. Atterrissez sur une rare branche creuse pour mettre vos glands en sécurité avant de tomber. Votre meilleur score reste enregistré.",
+      footer_note: "Chaque jeu de ce site est généré par IA — conçu, codé et peaufiné de bout en bout par une chaîne d'agents de codage spécialisés, sans code de jeu écrit à la main.",
+      footer_repo_link: "Code source sur GitHub"
     },
     es: {
       subtitle: "Una colección de prototipos originales de juegos de navegador.",
       desc_doppeldodge: "Doppeldodge divide la pantalla en dos carriles espejados. Controlas un punto rojo a la izquierda; un eco azul copia tu posición a la derecha, como un reflejo. Cada carril lanza barreras con huecos distintos; cruzar el hueco izquierdo puede llevar al eco contra un muro. Mantén el dedo en el punto para moverlo; suelta para pausar. Un choque termina la partida, y todo se acelera con el tiempo.",
       desc_vault_echo: "Vault Echo es un juego de atraco basado en la memoria: cuatro discos de bronce muestran una combinación creciente que debes repetir tocándolos en orden antes de que acabe el tiempo. Al lograrlo, eliges: guardar el botín con puntuación segura, o arriesgar una ronda más larga y rápida por más premio. Un fallo o quedarte sin tiempo borra lo no guardado. Completar las diez rondas duplica tu botín final.",
       desc_valve_panic: "Las válvulas de vapor se recalientan en un panel de control; solo tus dedos pueden aliviarlas. Mantén el dedo sobre una válvula encendida para bajar la presión; suéltala y vuelve a subir. En un turno de 75 segundos se activan más válvulas y debes repartir dedos entre ambas manos. Cada alivio puntúa en tres niveles: cuanto más arriesgada estuvo la válvula, más puntos. Sobrevive con 3 vidas.",
-      desc_cheek_ascent: "Lanza a una ardilla de rama en rama por un árbol infinito que se mece sin parar. Cada bellota que guarda en sus mejillas reduce la fuerza de su próximo salto, así que acumular de más es arriesgado. Aterriza en una rara rama hueca para guardar tus bellotas a salvo antes de caer. Se juega con un simple deslizar del dedo, y guarda tu mejor puntuación."
+      desc_cheek_ascent: "Lanza a una ardilla de rama en rama por un árbol infinito que se mece sin parar. Cada bellota que guarda en sus mejillas reduce la fuerza de su próximo salto, así que acumular de más es arriesgado. Aterriza en una rara rama hueca para guardar tus bellotas a salvo antes de caer. Se juega con un simple deslizar del dedo, y guarda tu mejor puntuación.",
+      footer_note: "Todos los juegos de este sitio están generados por IA — diseñados, programados y pulidos de principio a fin por una cadena de agentes de código especializados, sin código de juego escrito a mano.",
+      footer_repo_link: "Código fuente en GitHub"
     }
   };
 

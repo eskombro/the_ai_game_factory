@@ -1,4 +1,4 @@
-# Game Spring
+# The AI Game Factory
 
 A collection of original browser games, prototyped as self-contained HTML files and organized by creation date.
 

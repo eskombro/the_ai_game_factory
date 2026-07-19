@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Spring</title>
+<style>
+  :root {
+    --bg: #0a0a0d;
+    --bg-alt: #101014;
+    --panel: #17171d;
+    --panel-hover: #1d1d24;
+    --border: #2a2a33;
+    --border-hover: #3d3d4a;
+    --text: #eaeaef;
+    --muted: #93939f;
+    --muted-dim: #6c6c78;
+    --accent: #8b7cff;
+    --accent-2: #5ee6d8;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 4rem;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(139, 124, 255, 0.10), transparent 45%),
+      radial-gradient(circle at 85% 10%, rgba(94, 230, 216, 0.07), transparent 40%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+  h1 {
+    margin: 0 0 0.35rem;
+    font-size: 1.9rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff, var(--accent) 140%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  p.subtitle {
+    color: var(--muted);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+  #langPicker {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-top: 0.3rem;
+  }
+  #langSelect {
+    font: inherit;
+    font-size: 0.82rem;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #langSelect:hover {
+    border-color: var(--border-hover);
+    background: var(--panel-hover);
+  }
+  #langSelect:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 1.1rem;
+  }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--panel), var(--bg-alt));
+    transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  li:hover {
+    border-color: var(--border-hover);
+    background: linear-gradient(180deg, var(--panel-hover), var(--bg-alt));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 124, 255, 0.08);
+  }
+  li .thumb-link {
+    display: block;
+    flex-shrink: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    line-height: 0;
+    outline-offset: 3px;
+  }
+  li img {
+    display: block;
+    width: 180px;
+    height: 101px;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+  }
+  li:hover img {
+    transform: scale(1.05);
+  }
+  li .info {
+    min-width: 0;
+  }
+  li a.title {
+    font-size: 1.08rem;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    background-size: 0% 2px;
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    padding-bottom: 2px;
+    transition: background-size 0.25s ease, color 0.15s ease;
+  }
+  li a.title:hover {
+    color: var(--accent-2);
+    background-size: 100% 2px;
+  }
+  li .date {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--muted-dim);
+    margin-left: 0.55rem;
+  }
+  li p {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  @media (max-width: 520px) {
+    li {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    li .thumb-link,
+    li img {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+    }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Game Spring</h1>
+      <p class="subtitle" data-i18n="subtitle">A collection of original browser game prototypes.</p>
+    </div>
+    <div id="langPicker">
+      <select id="langSelect" aria-label="Language">
+        <option value="en">🇬🇧 English</option>
+        <option value="fr">🇫🇷 Français</option>
+        <option value="es">🇪🇸 Español</option>
+      </select>
+    </div>
+  </header>
+
+  <ul>
+    <li>
+      <a class="thumb-link" href="games/2026_07_19_doppeldodge/index.html" tabindex="-1">
+        <img src="games/2026_07_19_doppeldodge/thumbnails/thumb-small.png" alt="Doppeldodge thumbnail">
+      </a>
+      <div class="info">
+        <a class="title" href="games/2026_07_19_doppeldodge/index.html">Doppeldodge</a><span class="date">July 19, 2026</span>
+        <p data-i18n="desc_doppeldodge">Doppeldodge splits the screen into two mirrored lanes. You steer a red dot on the left, while a blue echo mirrors your position on the right, like glass. Each lane drops different falling gates, so clearing a gap on your side can send the echo into a wall. Hold the dot to move; release to pause. One hit on either dot ends the run, and things speed up over time.</p>
+      </div>
+    </li>
+    <li>
+      <a class="thumb-link" href="games/2026_07_19_vault_echo/index.html" tabindex="-1">
+        <img src="games/2026_07_19_vault_echo/thumbnails/thumb-small.png" alt="Vault Echo thumbnail">
+      </a>
+      <div class="info">
+        <a class="title" href="games/2026_07_19_vault_echo/index.html">Vault Echo</a><span class="date">July 19, 2026</span>
+        <p data-i18n="desc_vault_echo">Vault Echo is a memory-heist game: watch four brass tumbler pads flash a growing combination, then tap them back in order before time runs out. Crack a round and choose — bank your loot for a safe score, or push deeper into a longer, faster sequence for a bigger prize. One wrong tap, or running out of time, wipes your unbanked total. Clearing all ten rounds doubles your final haul.</p>
+      </div>
+    </li>
+    <li>
+      <a class="thumb-link" href="games/2026_07_19_valve_panic/index.html" tabindex="-1">
+        <img src="games/2026_07_19_valve_panic/thumbnails/thumb-small.png" alt="Valve Panic thumbnail">
+      </a>
+      <div class="info">
+        <a class="title" href="games/2026_07_19_valve_panic/index.html">Valve Panic</a><span class="date">July 19, 2026</span>
+        <p data-i18n="desc_valve_panic">Steam valves overheat across a control panel, and only your fingers can vent them. Hold a lit valve to cool it down — let go and pressure climbs again. As more valves come online over a 75-second shift, you'll need real multi-touch triage across both hands. Releasing a vent scores points in three tiers: routine, warning, and clutch last-second saves earn progressively more. Survive with 3 lives.</p>
+      </div>
+    </li>
+    <li>
+      <a class="thumb-link" href="games/2026_07_19_cheek_ascent/index.html" tabindex="-1">
+        <img src="games/2026_07_19_cheek_ascent/thumbnails/thumb-small.png" alt="Cheek Ascent thumbnail">
+      </a>
+      <div class="info">
+        <a class="title" href="games/2026_07_19_cheek_ascent/index.html">Cheek Ascent</a><span class="date">July 19, 2026</span>
+        <p data-i18n="desc_cheek_ascent">Swipe a squirrel up an endless, swaying tree, leaping branch to branch. Every acorn you stuff in your cheeks weakens your next jump, so hoarding gets risky. Land on a rare hollow branch to bank your acorns safely before gravity catches up. Simple one-finger swipes, an addictive risk-reward climb, and a persistent high score.</p>
+      </div>
+    </li>
+  </ul>
+
+<script>
+(function () {
+  "use strict";
+
+  var translations = {
+    en: {
+      subtitle: "A collection of original browser game prototypes.",
+      desc_doppeldodge: "Doppeldodge splits the screen into two mirrored lanes. You steer a red dot on the left, while a blue echo mirrors your position on the right, like glass. Each lane drops different falling gates, so clearing a gap on your side can send the echo into a wall. Hold the dot to move; release to pause. One hit on either dot ends the run, and things speed up over time.",
+      desc_vault_echo: "Vault Echo is a memory-heist game: watch four brass tumbler pads flash a growing combination, then tap them back in order before time runs out. Crack a round and choose — bank your loot for a safe score, or push deeper into a longer, faster sequence for a bigger prize. One wrong tap, or running out of time, wipes your unbanked total. Clearing all ten rounds doubles your final haul.",
+      desc_valve_panic: "Steam valves overheat across a control panel, and only your fingers can vent them. Hold a lit valve to cool it down — let go and pressure climbs again. As more valves come online over a 75-second shift, you'll need real multi-touch triage across both hands. Releasing a vent scores points in three tiers: routine, warning, and clutch last-second saves earn progressively more. Survive with 3 lives.",
+      desc_cheek_ascent: "Swipe a squirrel up an endless, swaying tree, leaping branch to branch. Every acorn you stuff in your cheeks weakens your next jump, so hoarding gets risky. Land on a rare hollow branch to bank your acorns safely before gravity catches up. Simple one-finger swipes, an addictive risk-reward climb, and a persistent high score."
+    },
+    fr: {
+      subtitle: "Une collection de prototypes de jeux de navigateur originaux.",
+      desc_doppeldodge: "Doppeldodge partage l'écran en deux voies en miroir. Vous dirigez un point rouge à gauche ; un écho bleu copie votre position à droite, comme un reflet. Chaque voie fait tomber des barrières à trou différent ; bien passer à gauche peut envoyer l'écho dans un mur. Gardez le doigt sur le point pour le déplacer ; relâchez pour suspendre. Un choc termine la partie, tout s'accélère avec le temps.",
+      desc_vault_echo: "Vault Echo est un jeu de casse basé sur la mémoire : quatre plots dorés affichent une combinaison de plus en plus longue, à reproduire dans l'ordre avant la fin du temps. Réussir une manche impose un choix : sécuriser le butin, ou tenter une manche plus longue pour un gain supérieur. Une erreur ou un timeout efface le butin non sécurisé. Réussir les dix manches double le gain final.",
+      desc_valve_panic: "Des vannes à vapeur surchauffent sur un panneau de contrôle ; seuls vos doigts peuvent les soulager. Posez un doigt sur une vanne allumée pour faire baisser sa pression ; relâchez et elle remonte aussitôt. En 75 secondes, de nouvelles vannes s'activent, obligeant à jongler avec plusieurs doigts. Chaque évacuation rapporte des points sur trois niveaux, les sauvetages les plus risqués valant le plus. Tenez avec 3 vies.",
+      desc_cheek_ascent: "Faites grimper un écureuil de branche en branche sur un arbre infini qui oscille sans cesse, d'un simple glissement du doigt. Chaque gland stocké dans ses joues affaiblit son prochain saut, rendre trop gourmand devient risqué. Atterrissez sur une rare branche creuse pour mettre vos glands en sécurité avant de tomber. Votre meilleur score reste enregistré."
+    },
+    es: {
+      subtitle: "Una colección de prototipos originales de juegos de navegador.",
+      desc_doppeldodge: "Doppeldodge divide la pantalla en dos carriles espejados. Controlas un punto rojo a la izquierda; un eco azul copia tu posición a la derecha, como un reflejo. Cada carril lanza barreras con huecos distintos; cruzar el hueco izquierdo puede llevar al eco contra un muro. Mantén el dedo en el punto para moverlo; suelta para pausar. Un choque termina la partida, y todo se acelera con el tiempo.",
+      desc_vault_echo: "Vault Echo es un juego de atraco basado en la memoria: cuatro discos de bronce muestran una combinación creciente que debes repetir tocándolos en orden antes de que acabe el tiempo. Al lograrlo, eliges: guardar el botín con puntuación segura, o arriesgar una ronda más larga y rápida por más premio. Un fallo o quedarte sin tiempo borra lo no guardado. Completar las diez rondas duplica tu botín final.",
+      desc_valve_panic: "Las válvulas de vapor se recalientan en un panel de control; solo tus dedos pueden aliviarlas. Mantén el dedo sobre una válvula encendida para bajar la presión; suéltala y vuelve a subir. En un turno de 75 segundos se activan más válvulas y debes repartir dedos entre ambas manos. Cada alivio puntúa en tres niveles: cuanto más arriesgada estuvo la válvula, más puntos. Sobrevive con 3 vidas.",
+      desc_cheek_ascent: "Lanza a una ardilla de rama en rama por un árbol infinito que se mece sin parar. Cada bellota que guarda en sus mejillas reduce la fuerza de su próximo salto, así que acumular de más es arriesgado. Aterriza en una rara rama hueca para guardar tus bellotas a salvo antes de caer. Se juega con un simple deslizar del dedo, y guarda tu mejor puntuación."
+    }
+  };
+
+  var STORAGE_KEY = "gameSpringLang";
+  var SUPPORTED = ["en", "fr", "es"];
+  var langSelect = document.getElementById("langSelect");
+
+  function detectDefaultLang() {
+    var stored = null;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    if (stored && SUPPORTED.indexOf(stored) !== -1) return stored;
+    var nav = (navigator.language || "en").slice(0, 2).toLowerCase();
+    return SUPPORTED.indexOf(nav) !== -1 ? nav : "en";
+  }
+
+  function applyLang(lang) {
+    var dict = translations[lang] || translations.en;
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      var key = el.getAttribute("data-i18n");
+      if (dict[key]) el.textContent = dict[key];
+    });
+    document.documentElement.setAttribute("lang", lang);
+    langSelect.value = lang;
+    try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
+  }
+
+  langSelect.addEventListener("change", function () {
+    applyLang(langSelect.value);
+  });
+
+  applyLang(detectDefaultLang());
+})();
+</script>
+</body>
+</html>

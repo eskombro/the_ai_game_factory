@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vault Echo</title>
+<style>
+  :root {
+    --bg-deep: #0a0906;
+    --bg-panel: #14110c;
+    --bg-panel-2: #1c170f;
+    --brass: #c9a227;
+    --brass-bright: #f0d379;
+    --brass-dim: #6b5a26;
+    --ink: #ece3c8;
+    --muted: #9a9078;
+    --safe: #7dbf6e;
+    --safe-bright: #c9ecb8;
+    --danger: #c0402c;
+    --danger-bright: #ff7a54;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    background:
+      radial-gradient(ellipse 900px 600px at 50% -10%, #241d10 0%, transparent 60%),
+      radial-gradient(ellipse 1000px 800px at 50% 110%, #1a140a 0%, transparent 55%),
+      var(--bg-deep);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 14px 48px;
+  }
+
+  .frame {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    background: linear-gradient(180deg, var(--bg-panel-2), var(--bg-panel));
+    border: 1px solid var(--brass-dim);
+    border-radius: 16px;
+    padding: 26px 24px 30px;
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,.5),
+      0 24px 60px -24px rgba(0,0,0,.85),
+      inset 0 0 46px rgba(0,0,0,.45);
+  }
+
+  .frame.shake { animation: shake .38s ease; }
+
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-5px); }
+    40%, 60% { transform: translateX(5px); }
+  }
+
+  #muteBtn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--brass-dim);
+    background: rgba(0,0,0,.3);
+    color: var(--brass);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+  }
+  #muteBtn:hover { border-color: var(--brass); color: var(--brass-bright); }
+
+  .eyebrow {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: .28em;
+    color: var(--brass-dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-size: 27px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    background: linear-gradient(180deg, var(--brass-bright), var(--brass) 70%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,.7));
+  }
+
+  #subtitle {
+    color: var(--muted);
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.55;
+    max-width: 360px;
+    margin: 0 auto 20px;
+  }
+
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    background: rgba(0,0,0,.28);
+    border: 1px solid var(--brass-dim);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+  }
+  #hud > div { text-align: center; flex: 1; }
+  #hud span {
+    display: block;
+    font-size: 15px;
+    letter-spacing: 0;
+    color: var(--brass-bright);
+    margin-top: 3px;
+    text-transform: none;
+    font-weight: 600;
+  }
+  #bestScore span { color: var(--brass); }
+
+  #status {
+    min-height: 20px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    text-align: center;
+    letter-spacing: .02em;
+    max-width: 420px;
+  }
+
+  #timerBarOuter {
+    width: 100%;
+    height: 9px;
+    border-radius: 5px;
+    border: 1px solid var(--brass-dim);
+    margin-bottom: 20px;
+    background: #000;
+    overflow: hidden;
+  }
+  #timerBarInner {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #e6c15a, #a9821f);
+    transition: width .1s linear, background .25s ease;
+  }
+  #timerBarInner.warn {
+    background: linear-gradient(90deg, #e0a23a, #b5541f);
+  }
+  #timerBarInner.danger {
+    background: linear-gradient(90deg, var(--danger-bright), var(--danger));
+    animation: pulseDanger .45s ease-in-out infinite alternate;
+  }
+  @keyframes pulseDanger { from { opacity: 1; } to { opacity: .55; } }
+
+  #progressDots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 18px;
+    min-height: 12px;
+  }
+  #progressDots .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1px solid var(--brass-dim);
+    background: transparent;
+    transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  #progressDots .dot.filled {
+    background: var(--brass-bright);
+    border-color: var(--brass-bright);
+    box-shadow: 0 0 8px 2px rgba(240, 211, 121, .7);
+  }
+
+  #pads {
+    display: grid;
+    grid-template-columns: repeat(2, 108px);
+    grid-template-rows: repeat(2, 108px);
+    gap: 16px;
+    justify-content: center;
+    margin: 2px auto 22px;
+  }
+
+  .pad {
+    border-radius: 50%;
+    border: 3px solid var(--brass-dim);
+    background: radial-gradient(circle at 35% 30%, #2c2618, #14100a 72%);
+    color: var(--muted);
+    font-size: 32px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 14px rgba(0,0,0,.65), 0 2px 5px rgba(0,0,0,.5);
+    transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .12s ease, color .16s ease;
+  }
+
+  .pad.active {
+    background: radial-gradient(circle at 35% 30%, #ffe9a8, #d9a83e 72%);
+    color: #241a06;
+    border-color: var(--brass-bright);
+    box-shadow: 0 0 26px 5px rgba(240, 195, 90, .85), inset 0 0 10px rgba(255,255,255,.4);
+    transform: scale(1.06);
+  }
+
+  .pad.correct {
+    background: radial-gradient(circle at 35% 30%, #d3f0bd, var(--safe) 72%);
+    color: #16240f;
+    border-color: var(--safe-bright);
+    box-shadow: 0 0 22px 4px rgba(125, 191, 110, .75);
+    transform: scale(1.04);
+  }
+
+  .pad.wrong {
+    background: radial-gradient(circle at 35% 30%, #ffb39b, var(--danger) 72%);
+    color: #2a0d06;
+    border-color: var(--danger-bright);
+    box-shadow: 0 0 22px 4px rgba(192, 64, 44, .75);
+  }
+
+  #progressDots, #pads { }
+
+  #decisionPanel, #startPanel, #endPanel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    animation: fadeUp .32s ease;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  #decisionText, #endText {
+    text-align: center;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    max-width: 380px;
+  }
+
+  #endPanel.won #endText { color: var(--brass-bright); }
+  #endPanel.banked #endText { color: var(--safe-bright); }
+  #endPanel.busted #endText { color: var(--danger-bright); }
+
+  button.bigbtn {
+    font-family: inherit;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: 11px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    background: linear-gradient(180deg, #241f16, #171310);
+    color: var(--brass-bright);
+    border: 1px solid var(--brass-dim);
+    transition: box-shadow .15s ease, transform .1s ease, background .15s ease;
+  }
+  button.bigbtn:hover {
+    background: linear-gradient(180deg, #2c261a, #1c170f);
+    box-shadow: 0 0 14px rgba(201, 162, 39, .35);
+    transform: translateY(-1px);
+  }
+  button.bigbtn:active { transform: translateY(0); }
+
+  #bankBtn { border-color: var(--safe); color: var(--safe-bright); }
+  #bankBtn:hover { box-shadow: 0 0 14px rgba(125, 191, 110, .4); }
+  #continueBtn { border-color: var(--danger); color: var(--danger-bright); }
+  #continueBtn:hover { box-shadow: 0 0 14px rgba(192, 64, 44, .4); }
+
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+
+<div class="frame" id="frame">
+  <button id="muteBtn" title="Toggle sound">&#128266;</button>
+  <div class="eyebrow">Secure Facility &mdash; Combination Lock</div>
+  <h1>Vault Echo</h1>
+  <p id="subtitle">Repeat the growing combination. Bank your loot, or push deeper and risk it all.</p>
+
+  <div id="hud">
+    <div>Round <span id="roundDisplay">-</span></div>
+    <div>Run Total <span id="scoreDisplay">0</span></div>
+    <div id="bestScore">Best Bank <span id="bestDisplay">0</span></div>
+  </div>
+
+  <div id="status">Press "Start Run" to begin.</div>
+
+  <div id="timerBarOuter"><div id="timerBarInner"></div></div>
+
+  <div id="progressDots"></div>
+
+  <div id="pads">
+    <div class="pad" data-index="0">&#9679;</div>
+    <div class="pad" data-index="1">&#9650;</div>
+    <div class="pad" data-index="2">&#9632;</div>
+    <div class="pad" data-index="3">&#9670;</div>
+  </div>
+
+  <div id="startPanel" style="display:flex;">
+    <button class="bigbtn" id="startBtn">Start Run</button>
+  </div>
+
+  <div id="decisionPanel">
+    <div id="decisionText"></div>
+    <div class="btn-row">
+      <button class="bigbtn" id="bankBtn">Bank Loot &amp; End Run</button>
+      <button class="bigbtn" id="continueBtn">Push Deeper (Risk It)</button>
+    </div>
+  </div>
+
+  <div id="endPanel">
+    <div id="endText"></div>
+    <button class="bigbtn" id="restartBtn">Start New Run</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MAX_ROUND = 10;
+  var NUM_PADS = 4;
+
+  var state = "idle"; // idle | showing | input | decision | ended | won
+  var round = 0;
+  var sequence = [];
+  var playerIndex = 0;
+  var totalScore = 0;
+  var bestBank = 0;
+  var token = 0; // invalidates stale timeouts/intervals after restart
+  var timerInterval = null;
+  var timerRemaining = 0;
+  var timerBudget = 0;
+
+  var roundDisplay = document.getElementById("roundDisplay");
+  var scoreDisplay = document.getElementById("scoreDisplay");
+  var bestDisplay = document.getElementById("bestDisplay");
+  var statusEl = document.getElementById("status");
+  var timerBarInner = document.getElementById("timerBarInner");
+  var progressDots = document.getElementById("progressDots");
+  var pads = Array.prototype.slice.call(document.querySelectorAll(".pad"));
+  var startPanel = document.getElementById("startPanel");
+  var decisionPanel = document.getElementById("decisionPanel");
+  var endPanel = document.getElementById("endPanel");
+  var decisionText = document.getElementById("decisionText");
+  var endText = document.getElementById("endText");
+  var frameEl = document.getElementById("frame");
+  var muteBtn = document.getElementById("muteBtn");
+
+  var startBtn = document.getElementById("startBtn");
+  var bankBtn = document.getElementById("bankBtn");
+  var continueBtn = document.getElementById("continueBtn");
+  var restartBtn = document.getElementById("restartBtn");
+
+  try {
+    var stored = localStorage.getItem("vaultEchoBestBank");
+    if (stored !== null && !isNaN(parseInt(stored, 10))) {
+      bestBank = parseInt(stored, 10);
+    }
+  } catch (e) {
+    bestBank = 0;
+  }
+
+  function saveBest() {
+    try {
+      localStorage.setItem("vaultEchoBestBank", String(bestBank));
+    } catch (e) {
+      // ignore storage errors (e.g. disabled storage)
+    }
+  }
+
+  // ---- Cosmetic-only audio (WebAudio beeps). Never affects timing/logic. ----
+  var muted = false;
+  try {
+    muted = localStorage.getItem("vaultEchoMuted") === "1";
+  } catch (e) { muted = false; }
+
+  function updateMuteBtn() {
+    muteBtn.innerHTML = muted ? "&#128263;" : "&#128266;";
+  }
+  updateMuteBtn();
+
+  muteBtn.addEventListener("click", function () {
+    muted = !muted;
+    updateMuteBtn();
+    try { localStorage.setItem("vaultEchoMuted", muted ? "1" : "0"); } catch (e) {}
+  });
+
+  var audioCtx = null;
+  function getAudioCtx() {
+    if (audioCtx) return audioCtx;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      audioCtx = null;
+    }
+    return audioCtx;
+  }
+
+  function beep(freq, duration, type, gain) {
+    if (muted) return;
+    var ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+      if (ctx.state === "suspended") ctx.resume();
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.type = type || "sine";
+      osc.frequency.value = freq;
+      var now = ctx.currentTime;
+      var vol = gain || 0.05;
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    } catch (e) {
+      // ignore audio errors silently
+    }
+  }
+
+  function shakeFrame() {
+    frameEl.classList.remove("shake");
+    // force reflow so animation can restart
+    void frameEl.offsetWidth;
+    frameEl.classList.add("shake");
+  }
+
+  function render() {
+    roundDisplay.textContent = round > 0 ? round + " / " + MAX_ROUND : "-";
+    scoreDisplay.textContent = String(totalScore);
+    bestDisplay.textContent = String(bestBank);
+
+    startPanel.style.display = (state === "idle") ? "flex" : "none";
+    decisionPanel.style.display = (state === "decision") ? "flex" : "none";
+    endPanel.style.display = (state === "ended" || state === "won") ? "flex" : "none";
+
+    endPanel.classList.remove("won", "banked", "busted");
+    if (state === "won") {
+      endPanel.classList.add("won");
+    } else if (state === "ended") {
+      endPanel.classList.add(totalScore > 0 ? "banked" : "busted");
+    }
+
+    pads.forEach(function (p) {
+      p.style.pointerEvents = (state === "input") ? "auto" : "none";
+    });
+  }
+
+  function setStatus(msg) {
+    statusEl.textContent = msg;
+  }
+
+  function renderDots() {
+    progressDots.innerHTML = "";
+    if (state !== "input" && state !== "showing") {
+      return;
+    }
+    for (var i = 0; i < sequence.length; i++) {
+      var dot = document.createElement("span");
+      dot.className = "dot" + (i < playerIndex ? " filled" : "");
+      progressDots.appendChild(dot);
+    }
+  }
+
+  function computeLoot(r) {
+    return r * 25;
+  }
+
+  function clearTimerBar() {
+    if (timerInterval !== null) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    timerBarInner.style.width = "100%";
+    timerBarInner.classList.remove("warn", "danger");
+  }
+
+  function startInputTimer(localToken) {
+    timerBudget = 2500 + sequence.length * 750;
+    timerRemaining = timerBudget;
+    timerBarInner.style.width = "100%";
+    timerBarInner.classList.remove("warn", "danger");
+    timerInterval = setInterval(function () {
+      if (localToken !== token) {
+        clearInterval(timerInterval);
+        return;
+      }
+      timerRemaining -= 100;
+      var pct = Math.max(0, (timerRemaining / timerBudget) * 100);
+      timerBarInner.style.width = pct + "%";
+      // cosmetic-only color escalation as time runs low
+      if (pct <= 20) {
+        timerBarInner.classList.add("danger");
+        timerBarInner.classList.remove("warn");
+      } else if (pct <= 45) {
+        timerBarInner.classList.add("warn");
+        timerBarInner.classList.remove("danger");
+      } else {
+        timerBarInner.classList.remove("warn", "danger");
+      }
+      if (timerRemaining <= 0) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        failRound("You ran out of time. The alarm triggers!");
+      }
+    }, 100);
+  }
+
+  function newGame() {
+    token++;
+    var localToken = token;
+    clearTimerBar();
+    round = 0;
+    totalScore = 0;
+    sequence = [];
+    playerIndex = 0;
+    state = "idle";
+    setStatus('Press "Start Run" to begin.');
+    progressDots.innerHTML = "";
+    render();
+  }
+
+  function startRound() {
+    token++;
+    var localToken = token;
+    clearTimerBar();
+    round++;
+    var length = round + 2;
+    sequence = [];
+    for (var i = 0; i < length; i++) {
+      sequence.push(Math.floor(Math.random() * NUM_PADS));
+    }
+    playerIndex = 0;
+    state = "showing";
+    setStatus("Watch the combination carefully...");
+    render();
+    renderDots();
+    playSequence(localToken, 0);
+  }
+
+  function playSequence(localToken, idx) {
+    if (localToken !== token) return;
+    if (idx >= sequence.length) {
+      if (localToken !== token) return;
+      state = "input";
+      playerIndex = 0;
+      setStatus("Your turn: repeat the combination.");
+      render();
+      renderDots();
+      startInputTimer(localToken);
+      return;
+    }
+    var padIndex = sequence[idx];
+    var showDuration = Math.max(220, 700 - round * 44);
+    var gapDuration = Math.max(110, 320 - round * 19);
+    pads[padIndex].classList.add("active");
+    beep(300 + padIndex * 65, Math.min(0.22, showDuration / 1000), "sine", 0.045);
+    setTimeout(function () {
+      if (localToken !== token) return;
+      pads[padIndex].classList.remove("active");
+      setTimeout(function () {
+        playSequence(localToken, idx + 1);
+      }, gapDuration);
+    }, showDuration);
+  }
+
+  function handlePadInput(padIndex) {
+    if (state !== "input") return;
+    var localToken = token;
+    var expected = sequence[playerIndex];
+    if (padIndex === expected) {
+      pads[padIndex].classList.add("correct");
+      beep(520, 0.1, "triangle", 0.05);
+      setTimeout(function () {
+        pads[padIndex].classList.remove("correct");
+      }, 150);
+      playerIndex++;
+      renderDots();
+      if (playerIndex >= sequence.length) {
+        clearTimerBar();
+        succeedRound(localToken);
+      }
+    } else {
+      pads[padIndex].classList.add("wrong");
+      beep(140, 0.35, "sawtooth", 0.06);
+      setTimeout(function () {
+        pads[padIndex].classList.remove("wrong");
+      }, 300);
+      failRound("Wrong tumbler! The alarm triggers!");
+    }
+  }
+
+  function succeedRound(localToken) {
+    if (localToken !== token) return;
+    var loot = computeLoot(round);
+    totalScore += loot;
+    render();
+    if (round >= MAX_ROUND) {
+      state = "won";
+      var bonus = totalScore;
+      totalScore *= 2;
+      if (totalScore > bestBank) {
+        bestBank = totalScore;
+        saveBest();
+      }
+      endText.textContent = "VAULT FULLY CRACKED! Final round loot: +" + loot +
+        ". Master thief bonus doubles your haul (+" + bonus + ") for a final score of " + totalScore + "!";
+      render();
+      setStatus("You cracked the entire vault. Legendary.");
+      beep(660, 0.16, "triangle", 0.05);
+      setTimeout(function () { beep(880, 0.16, "triangle", 0.05); }, 140);
+      setTimeout(function () { beep(1100, 0.24, "triangle", 0.05); }, 280);
+      return;
+    }
+    state = "decision";
+    decisionText.textContent = "Round " + round + " cracked! +" + loot + " loot (total: " + totalScore +
+      "). Bank it now, or push to round " + (round + 1) + " for more (bigger risk of losing everything)?";
+    setStatus("Decision time.");
+    render();
+    beep(700, 0.14, "triangle", 0.045);
+  }
+
+  function failRound(reason) {
+    clearTimerBar();
+    token++; // invalidate any pending sequence/timer callbacks
+    totalScore = 0;
+    state = "ended";
+    endText.textContent = reason + " You lose all unbanked loot this run.";
+    setStatus("Busted.");
+    render();
+    shakeFrame();
+    beep(180, 0.4, "sawtooth", 0.07);
+    setTimeout(function () { beep(110, 0.5, "sawtooth", 0.06); }, 160);
+  }
+
+  function bankLoot() {
+    if (state !== "decision") return;
+    if (totalScore > bestBank) {
+      bestBank = totalScore;
+      saveBest();
+    }
+    state = "ended";
+    endText.textContent = "You banked " + totalScore + " loot and walked away safely.";
+    setStatus("Loot secured.");
+    render();
+    beep(520, 0.14, "triangle", 0.05);
+    setTimeout(function () { beep(780, 0.2, "triangle", 0.05); }, 130);
+  }
+
+  function continueRun() {
+    if (state !== "decision") return;
+    startRound();
+  }
+
+  pads.forEach(function (p) {
+    p.addEventListener("click", function () {
+      handlePadInput(parseInt(p.getAttribute("data-index"), 10));
+    });
+  });
+
+  startBtn.addEventListener("click", startRound);
+  bankBtn.addEventListener("click", bankLoot);
+  continueBtn.addEventListener("click", continueRun);
+  restartBtn.addEventListener("click", function () {
+    newGame();
+    startRound();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

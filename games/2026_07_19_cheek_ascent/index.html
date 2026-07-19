@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cheek Ascent</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+  :root {
+    --sky-lo-top: #cdeee0;
+    --sky-lo-bottom: #ffe9c4;
+    --ink: #2c2418;
+    --cream: #fff7e8;
+    --amber: #e2a13a;
+    --amber-dark: #b97a1f;
+    --panel-bg: rgba(255, 247, 232, 0.72);
+    --panel-border: rgba(44, 36, 24, 0.12);
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(to bottom, var(--sky-lo-top), var(--sky-lo-bottom));
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", "Nunito", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    color: var(--ink);
+  }
+  #gameCanvas {
+    display: block;
+    touch-action: none;
+  }
+  .hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 12px 0 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  .hud-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 8px 14px;
+    box-shadow: 0 3px 10px rgba(44, 36, 24, 0.12);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    min-width: 84px;
+  }
+  .hud-panel.right { text-align: right; }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.05;
+  }
+  .stat.sub { margin-top: 4px; }
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    font-weight: 600;
+  }
+  .stat-value {
+    font-size: 20px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-value.small { font-size: 15px; font-weight: 700; }
+  @keyframes statPop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.24); color: var(--amber-dark); }
+    100% { transform: scale(1); }
+  }
+  .stat-value.pop { animation: statPop 0.32s cubic-bezier(0.3, 1.4, 0.5, 1); }
+  .cheek-meter {
+    margin-top: 6px;
+    display: flex;
+    gap: 3px;
+    justify-content: flex-end;
+  }
+  .cheek-dot {
+    width: 9px;
+    height: 10px;
+    border-radius: 50% 50% 40% 40%;
+    background: rgba(185, 122, 31, 0.18);
+    border: 1px solid rgba(185, 122, 31, 0.45);
+    box-sizing: border-box;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .cheek-dot.filled {
+    background: radial-gradient(circle at 30% 25%, #f4c877, var(--amber-dark));
+    border-color: var(--amber-dark);
+    box-shadow: 0 0 5px rgba(226, 161, 58, 0.75);
+    transform: scale(1.08);
+  }
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 16, 10, 0.45);
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .overlay-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 22px;
+    padding: 28px 26px 24px;
+    max-width: 340px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 34px rgba(20, 16, 10, 0.28);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    animation: popIn 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.85) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .overlay h1 {
+    font-size: 27px;
+    margin: 0 0 12px 0;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .overlay p {
+    font-size: 15px;
+    margin: 8px 0;
+    line-height: 1.5;
+    color: rgba(44, 36, 24, 0.82);
+  }
+  .overlay .score-line {
+    font-size: 19px;
+    margin: 6px 0;
+    font-weight: 700;
+  }
+  .bigButton {
+    margin-top: 18px;
+    padding: 15px 34px;
+    font-size: 18px;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(180deg, #f2b855, var(--amber-dark));
+    color: #fff7e8;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    touch-action: manipulation;
+    box-shadow: 0 6px 0 #8a5c17, 0 8px 16px rgba(185, 122, 31, 0.4);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  .bigButton:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 #8a5c17, 0 4px 10px rgba(185, 122, 31, 0.35);
+  }
+  .hidden { display: none !important; }
+  @media (prefers-reduced-motion: reduce) {
+    .overlay-card { animation: none; }
+    .stat-value.pop { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div class="hud">
+  <div class="hud-panel left">
+    <div class="stat">
+      <span class="stat-label">Score</span>
+      <span id="scoreText" class="stat-value">0</span>
+    </div>
+    <div class="stat sub">
+      <span class="stat-label">Height</span>
+      <span id="heightText" class="stat-value small">0m</span>
+    </div>
+  </div>
+  <div class="hud-panel right">
+    <div class="stat">
+      <span class="stat-label">Best</span>
+      <span id="bestText" class="stat-value">0</span>
+    </div>
+    <div id="cheeksText" class="cheek-meter"></div>
+  </div>
+</div>
+
+<div id="startOverlay" class="overlay">
+  <div class="overlay-card">
+    <h1>&#127795; Cheek Ascent</h1>
+    <p>Swipe on the screen to launch your squirrel from branch to branch, climbing higher and higher.</p>
+    <p>Collect acorns in your cheeks &mdash; but the fuller your cheeks, the shorter your leaps become.</p>
+    <p>Land on a hollow (ring-shaped) branch to bank all your acorns for permanent points before you fall!</p>
+    <button id="startButton" class="bigButton">Tap to Start</button>
+  </div>
+</div>
+
+<div id="gameOverOverlay" class="overlay hidden">
+  <div class="overlay-card">
+    <h1>You Fell!</h1>
+    <div class="score-line" id="finalScoreText">Score: 0</div>
+    <div class="score-line" id="finalBestText">Best: 0</div>
+    <button id="restartButton" class="bigButton">Tap to Restart</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------
+  // Config / tuning constants (placeholders for later balancing pass)
+  // ---------------------------------------------------------------
+  const CONFIG = {
+    GRAVITY: 1500,              // px/s^2
+    MIN_DRAG: 18,                // px, below this a swipe is ignored
+    MAX_DRAG: 220,                // px, drag distance for max power
+    MIN_LAUNCH_SPEED: 340,        // px/s
+    MAX_LAUNCH_SPEED: 780,        // px/s
+    WEIGHT_PENALTY_PER_ACORN: 0.09,
+    MAX_WEIGHT_PENALTY: 0.55,
+    MAX_CHEEKS: 6,
+    ACORN_VALUE: 10,
+    BRANCH_MIN_WIDTH: 46,
+    BRANCH_MAX_WIDTH: 100,
+    GAP_MIN: 55,
+    GAP_MAX: 175,
+    OFFSET_MIN: 40,
+    OFFSET_MAX: 155,
+    SWAY_MAX_AMP: 24,
+    SWAY_MIN_FREQ: 1.0,
+    SWAY_MAX_FREQ: 2.3,
+    HOLLOW_GAP_MIN: 4,
+    HOLLOW_GAP_MAX: 7,
+    ACORN_CHANCE: 0.65,
+    DIFFICULTY_MAX_H: 9500,       // world-height at which difficulty maxes out
+    DEATH_MARGIN: 100,            // px below screen bottom before game over
+    UPPER_LIMIT_RATIO: 0.38,      // fraction of canvas height the camera keeps squirrel above
+    SQUIRREL_RADIUS: 15,
+    GROUND_OFFSET: 70,            // px above the true bottom the first branch sits
+    BRANCH_MARGIN: 34             // min px from canvas edge for a branch center
+  };
+
+  const HIGH_SCORE_KEY = "cheekAscent_highScore";
+
+  // ---------------------------------------------------------------
+  // Canvas / DOM setup
+  // ---------------------------------------------------------------
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const scoreText = document.getElementById("scoreText");
+  const heightText = document.getElementById("heightText");
+  const bestText = document.getElementById("bestText");
+  const cheeksText = document.getElementById("cheeksText");
+  const startOverlay = document.getElementById("startOverlay");
+  const gameOverOverlay = document.getElementById("gameOverOverlay");
+  const finalScoreText = document.getElementById("finalScoreText");
+  const finalBestText = document.getElementById("finalBestText");
+  const startButton = document.getElementById("startButton");
+  const restartButton = document.getElementById("restartButton");
+
+  let cssWidth = 0, cssHeight = 0, dpr = 1;
+  let aboveBaseLimit = 0; // recomputed on resize
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    cssWidth = window.innerWidth;
+    cssHeight = window.innerHeight;
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    canvas.style.width = cssWidth + "px";
+    canvas.style.height = cssHeight + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    aboveBaseLimit = (cssHeight - CONFIG.GROUND_OFFSET) - cssHeight * CONFIG.UPPER_LIMIT_RATIO;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---------------------------------------------------------------
+  // Game state
+  // ---------------------------------------------------------------
+  let state = "start"; // "start" | "playing" | "gameover"
+  let highScore = parseInt(localStorage.getItem(HIGH_SCORE_KEY) || "0", 10) || 0;
+
+  let branches = [];
+  let branchCount = 0;
+  let branchesSinceHollow = 0;
+  let nextHollowThreshold = randInt(CONFIG.HOLLOW_GAP_MIN, CONFIG.HOLLOW_GAP_MAX);
+  let cameraBaseH = 0;
+  let worldTime = 0;
+
+  let squirrel = {
+    x: 0,
+    h: 0,
+    vx: 0,
+    vh: 0,
+    landed: true,
+    currentBranch: null,
+    departBranch: null
+  };
+
+  let cheekCount = 0;
+  let stashScore = 0;
+  let maxHeight = 0;
+
+  // Drag tracking
+  let activePointerId = null;
+  let dragStartX = 0, dragStartY = 0;
+
+  // cosmetic-only: mirrors the live drag position so render() can show a
+  // dotted launch-trajectory preview. Read-only, never fed into physics.
+  let dragPreviewActive = false;
+  let dragCurrentX = 0, dragCurrentY = 0;
+
+  // ---------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function randInt(lo, hi) { return Math.floor(lo + Math.random() * (hi - lo + 1)); }
+  function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+
+  function difficultyT(h) {
+    // Smoothstep-eased 0..1 ramp: gentle at the very start (long easy
+    // opening), fastest through the middle, then eases into a plateau
+    // near the cap instead of snapping straight to max difficulty.
+    const raw = clamp(h / CONFIG.DIFFICULTY_MAX_H, 0, 1);
+    return raw * raw * (3 - 2 * raw);
+  }
+
+  // ---------------------------------------------------------------
+  // Branch generation
+  // ---------------------------------------------------------------
+  let lastSide = 1;
+
+  function spawnNextBranch() {
+    const last = branches[branches.length - 1];
+    const t = difficultyT(last.h);
+
+    const gap = lerp(CONFIG.GAP_MIN, CONFIG.GAP_MAX, t) + rand(-12, 12);
+    const newH = last.h + Math.max(55, gap);
+
+    // mostly alternate sides, occasionally repeat for variety
+    const side = Math.random() < 0.78 ? -lastSide : lastSide;
+    lastSide = side;
+
+    const offsetRange = lerp(CONFIG.OFFSET_MIN, CONFIG.OFFSET_MAX, t);
+    const offset = offsetRange * (0.55 + Math.random() * 0.45);
+    let x = cssWidth / 2 + side * offset;
+    x = clamp(x, CONFIG.BRANCH_MARGIN, cssWidth - CONFIG.BRANCH_MARGIN);
+
+    const width = clamp(lerp(CONFIG.BRANCH_MAX_WIDTH, CONFIG.BRANCH_MIN_WIDTH, t) + rand(-6, 6),
+      CONFIG.BRANCH_MIN_WIDTH, CONFIG.BRANCH_MAX_WIDTH);
+
+    const swayAmp = t > 0.12 ? lerp(0, CONFIG.SWAY_MAX_AMP, (t - 0.12) / 0.88) : 0;
+    const swayFreq = lerp(CONFIG.SWAY_MIN_FREQ, CONFIG.SWAY_MAX_FREQ, t);
+    const swayPhase = rand(0, Math.PI * 2);
+
+    branchCount++;
+    branchesSinceHollow++;
+
+    let isHollow = false;
+    if (branchCount > 3 && branchesSinceHollow >= nextHollowThreshold) {
+      isHollow = true;
+      branchesSinceHollow = 0;
+      nextHollowThreshold = randInt(CONFIG.HOLLOW_GAP_MIN, CONFIG.HOLLOW_GAP_MAX);
+    }
+
+    const hasAcorn = !isHollow && Math.random() < CONFIG.ACORN_CHANCE;
+
+    const branch = {
+      h: newH,
+      baseX: x,
+      width: width,
+      swayAmp: swayAmp,
+      swayFreq: swayFreq,
+      swayPhase: swayPhase,
+      isHollow: isHollow,
+      hasAcorn: hasAcorn
+    };
+    branches.push(branch);
+    return branch;
+  }
+
+  function branchCurrentX(branch) {
+    return branch.baseX + branch.swayAmp * Math.sin(worldTime * branch.swayFreq + branch.swayPhase);
+  }
+
+  function ensureBranchesAhead() {
+    while (branches.length === 0 || branches[branches.length - 1].h < cameraBaseH + cssHeight * 1.3) {
+      spawnNextBranch();
+    }
+  }
+
+  function pruneBranches() {
+    const cutoff = cameraBaseH - cssHeight * 1.5;
+    branches = branches.filter(function (b) {
+      return b.h > cutoff || b === squirrel.currentBranch || b === squirrel.departBranch;
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Game reset / start
+  // ---------------------------------------------------------------
+  function resetGame() {
+    branches = [];
+    branchCount = 0;
+    branchesSinceHollow = 0;
+    nextHollowThreshold = randInt(CONFIG.HOLLOW_GAP_MIN, CONFIG.HOLLOW_GAP_MAX);
+    lastSide = 1;
+    cameraBaseH = 0;
+    worldTime = 0;
+
+    const startBranch = {
+      h: 0,
+      baseX: cssWidth / 2,
+      width: CONFIG.BRANCH_MAX_WIDTH,
+      swayAmp: 0,
+      swayFreq: 0,
+      swayPhase: 0,
+      isHollow: false,
+      hasAcorn: false
+    };
+    branches = [startBranch];
+
+    squirrel.x = startBranch.baseX;
+    squirrel.h = 0;
+    squirrel.vx = 0;
+    squirrel.vh = 0;
+    squirrel.landed = true;
+    squirrel.currentBranch = startBranch;
+    squirrel.departBranch = null;
+
+    cheekCount = 0;
+    stashScore = 0;
+    maxHeight = 0;
+
+    ensureBranchesAhead();
+
+    // cosmetic-only state reset (does not affect gameplay)
+    particles.length = 0;
+    floatingTexts.length = 0;
+    squashElapsed = 999;
+    shakeTimer = 0;
+    facingDir = 1;
+    dragPreviewActive = false;
+    lastShownScore = -1;
+    lastShownHeight = -1;
+  }
+
+  function currentScore() {
+    return stashScore + Math.floor(maxHeight / 10);
+  }
+
+  function heightMeters() {
+    return Math.floor(maxHeight / 20);
+  }
+
+  // ---------------------------------------------------------------
+  // Physics / update
+  // ---------------------------------------------------------------
+  function screenYFromH(h) {
+    return (cssHeight - CONFIG.GROUND_OFFSET) - (h - cameraBaseH);
+  }
+
+  function launch(dx, dy) {
+    const dragDist = Math.hypot(dx, dy);
+    if (dragDist < CONFIG.MIN_DRAG) return; // too small, ignore
+
+    const dirX = dx / dragDist;
+    // screen dy positive = downward swipe; we want upward swipes (dy negative)
+    // to produce positive "vh" (upward height velocity), so flip sign.
+    const dirH = -dy / dragDist;
+
+    const t = clamp((dragDist - CONFIG.MIN_DRAG) / (CONFIG.MAX_DRAG - CONFIG.MIN_DRAG), 0, 1);
+    let speed = lerp(CONFIG.MIN_LAUNCH_SPEED, CONFIG.MAX_LAUNCH_SPEED, t);
+
+    const weightPenalty = Math.min(cheekCount * CONFIG.WEIGHT_PENALTY_PER_ACORN, CONFIG.MAX_WEIGHT_PENALTY);
+    speed *= (1 - weightPenalty);
+
+    squirrel.vx = dirX * speed;
+    squirrel.vh = dirH * speed;
+    squirrel.landed = false;
+    squirrel.departBranch = squirrel.currentBranch;
+    squirrel.currentBranch = null;
+  }
+
+  function checkLanding(prevH) {
+    if (squirrel.landed) return;
+    if (squirrel.vh >= 0) return; // only land while falling
+
+    for (let i = 0; i < branches.length; i++) {
+      const b = branches[i];
+      if (b === squirrel.departBranch && Math.abs(squirrel.h - b.h) < 6) continue; // grace period vs departure branch
+      if (b.h <= prevH + 0.001 && b.h >= squirrel.h - 0.001) {
+        const bx = branchCurrentX(b);
+        if (Math.abs(squirrel.x - bx) <= b.width / 2 + CONFIG.SQUIRREL_RADIUS) {
+          // land!
+          squirrel.h = b.h;
+          squirrel.x = clamp(squirrel.x, CONFIG.SQUIRREL_RADIUS, cssWidth - CONFIG.SQUIRREL_RADIUS);
+          squirrel.vx = 0;
+          squirrel.vh = 0;
+          squirrel.landed = true;
+          squirrel.currentBranch = b;
+          squirrel.departBranch = null;
+
+          if (b.isHollow) {
+            stashScore += cheekCount * CONFIG.ACORN_VALUE;
+            cheekCount = 0;
+          } else if (b.hasAcorn && cheekCount < CONFIG.MAX_CHEEKS) {
+            cheekCount++;
+            b.hasAcorn = false;
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  function update(dt) {
+    worldTime += dt;
+
+    if (!squirrel.landed) {
+      const prevH = squirrel.h;
+      squirrel.vh -= CONFIG.GRAVITY * dt;
+      squirrel.h += squirrel.vh * dt;
+      squirrel.x += squirrel.vx * dt;
+
+      // bounce off side walls so the squirrel never leaves the play field
+      if (squirrel.x < CONFIG.SQUIRREL_RADIUS) {
+        squirrel.x = CONFIG.SQUIRREL_RADIUS;
+        squirrel.vx = Math.abs(squirrel.vx);
+      } else if (squirrel.x > cssWidth - CONFIG.SQUIRREL_RADIUS) {
+        squirrel.x = cssWidth - CONFIG.SQUIRREL_RADIUS;
+        squirrel.vx = -Math.abs(squirrel.vx);
+      }
+
+      checkLanding(prevH);
+    }
+
+    if (squirrel.h > maxHeight) maxHeight = squirrel.h;
+
+    if (squirrel.h - cameraBaseH > aboveBaseLimit) {
+      cameraBaseH = squirrel.h - aboveBaseLimit;
+    }
+
+    ensureBranchesAhead();
+    pruneBranches();
+
+    if (!squirrel.landed) {
+      const screenY = screenYFromH(squirrel.h);
+      if (screenY > cssHeight + CONFIG.DEATH_MARGIN) {
+        triggerGameOver();
+      }
+    }
+  }
+
+  function triggerGameOver() {
+    if (state !== "playing") return;
+    state = "gameover";
+    const finalScore = currentScore();
+    if (finalScore > highScore) {
+      highScore = finalScore;
+      localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+    }
+    finalScoreText.textContent = "Score: " + finalScore;
+    finalBestText.textContent = "Best: " + highScore;
+    gameOverOverlay.classList.remove("hidden");
+    beep(140, 0.4, "sawtooth", 0.05);
+  }
+
+  // ---------------------------------------------------------------
+  // Cosmetic-only "juice" layer: particles, squash/stretch, screen
+  // shake and tiny WebAudio blips. Purely presentational — reads
+  // game state each frame but never feeds back into it.
+  // ---------------------------------------------------------------
+  let audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) audioCtx = new Ctx();
+    } catch (e) { /* audio unsupported, ignore */ }
+  }
+  function beep(freq, dur, type, gainVal) {
+    if (!audioCtx) return;
+    try {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type || "sine";
+      osc.frequency.value = freq;
+      const now = audioCtx.currentTime;
+      gain.gain.setValueAtTime(gainVal || 0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + dur);
+    } catch (e) { /* ignore */ }
+  }
+
+  let particles = [];
+  function spawnParticles(x, y, count, colorList, spread, life) {
+    for (let i = 0; i < count; i++) {
+      const ang = rand(0, Math.PI * 2);
+      const spd = rand(spread * 0.3, spread);
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 40,
+        life: life,
+        maxLife: life,
+        size: rand(2.5, 5),
+        color: colorList[Math.floor(Math.random() * colorList.length)]
+      });
+    }
+  }
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy += 260 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+  function drawParticles() {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const a = clamp(p.life / p.maxLife, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // floating "+N" score popups — spawned right where the points were
+  // earned (stash/bank moment) for instant, spatially-located feedback
+  let floatingTexts = [];
+  function spawnFloatingText(x, y, text, color) {
+    floatingTexts.push({ x: x, y: y, text: text, color: color || "#7a4e13", life: 0.9, maxLife: 0.9 });
+  }
+  function updateFloatingTexts(dt) {
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const f = floatingTexts[i];
+      f.y -= 34 * dt;
+      f.life -= dt;
+      if (f.life <= 0) floatingTexts.splice(i, 1);
+    }
+  }
+  function drawFloatingTexts() {
+    ctx.textAlign = "center";
+    ctx.font = "800 18px -apple-system, BlinkMacSystemFont, sans-serif";
+    for (let i = 0; i < floatingTexts.length; i++) {
+      const f = floatingTexts[i];
+      const t = 1 - f.life / f.maxLife;
+      ctx.globalAlpha = clamp(f.life / f.maxLife, 0, 1);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillText(f.text, f.x, f.y - t * 8);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y - t * 8 - 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "start";
+  }
+
+  let squashElapsed = 999;   // seconds since last landing impact; large = inactive
+  let squashImpact = 0;      // 0..1 strength of last landing impact
+  let shakeTimer = 0;
+  let shakeMag = 0;
+  let facingDir = 1;         // cosmetic-only: which way the squirrel sprite faces (+1 right, -1 left)
+
+  function triggerLandingJuice(impactSpeed, x, y) {
+    squashElapsed = 0;
+    squashImpact = clamp(impactSpeed / 900, 0.12, 1);
+    shakeTimer = 0.14 * squashImpact;
+    shakeMag = 5 * squashImpact;
+    spawnParticles(x, y + 6, Math.round(4 + squashImpact * 4), ["#8a6238", "#5c3f22", "#c9a878"], 60 + squashImpact * 40, 0.35);
+    beep(180 + squashImpact * 60, 0.07, "sine", 0.05);
+  }
+  function triggerAcornJuice(x, y) {
+    spawnParticles(x, y, 6, ["#f0b955", "#c97f2e"], 90, 0.5);
+    beep(720, 0.09, "triangle", 0.06);
+  }
+  function triggerStashJuice(x, y, gained) {
+    spawnParticles(x, y, 20, ["#f4c877", "#fff2cf", "#e2a13a"], 170, 0.7);
+    if (gained > 0) spawnFloatingText(x, y - 12, "+" + gained, "#b97a1f");
+    beep(520, 0.09, "sine", 0.07);
+    setTimeout(function () { beep(780, 0.12, "sine", 0.06); }, 80);
+    setTimeout(function () { beep(1040, 0.15, "sine", 0.05); }, 160);
+  }
+
+  function updateJuiceTimers(dt) {
+    squashElapsed += dt;
+    if (shakeTimer > 0) shakeTimer -= dt;
+    updateParticles(dt);
+    updateFloatingTexts(dt);
+  }
+
+  // deterministic pseudo-random hash for procedural canopy blobs
+  function hash(n, seed) {
+    const x = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  function lerpColor(c1, c2, t) {
+    const ar = parseInt(c1.slice(1, 3), 16), ag = parseInt(c1.slice(3, 5), 16), ab = parseInt(c1.slice(5, 7), 16);
+    const br = parseInt(c2.slice(1, 3), 16), bg = parseInt(c2.slice(3, 5), 16), bb = parseInt(c2.slice(5, 7), 16);
+    const r = Math.round(lerp(ar, br, t)), g = Math.round(lerp(ag, bg, t)), b = Math.round(lerp(ab, bb, t));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  const SKY_LOW = { top: "#cdeee0", bottom: "#ffe9c4" };
+  const SKY_HIGH = { top: "#22304c", bottom: "#7c6a8a" };
+  const CANOPY_LOW = "#7cb389";
+  const CANOPY_HIGH = "#414f70";
+  const HILL_LOW = "#a9d1ae";
+  const HILL_HIGH = "#37456a";
+
+  // Leafy canopy "clusters" (a few overlapping lobes per node) read as
+  // sharper foliage silhouettes than a single flat circle, while staying
+  // procedural/deterministic and cheap to draw.
+  function drawCanopyLayer(parallax, spacing, baseRadius, color, alpha, layerSeed) {
+    const effectiveCam = cameraBaseH * parallax;
+    const startRow = Math.floor((effectiveCam - cssHeight) / spacing);
+    const endRow = Math.ceil((effectiveCam + cssHeight) / spacing);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    for (let row = startRow; row <= endRow; row++) {
+      const seedA = hash(row, layerSeed);
+      const seedB = hash(row + 0.5, layerSeed);
+      const x = seedA * cssWidth;
+      const worldY = row * spacing + seedB * spacing * 0.5;
+      const screenY = cssHeight * 0.5 - (worldY - effectiveCam);
+      const radius = baseRadius + seedB * baseRadius * 0.6;
+      if (screenY < -radius * 2 || screenY > cssHeight + radius * 2) continue;
+      const lobes = 3;
+      for (let l = 0; l < lobes; l++) {
+        const ls = hash(row + l * 0.31, layerSeed + 7);
+        const la = ls * Math.PI * 2;
+        const ld = radius * (0.35 + ls * 0.3);
+        const lr = radius * (0.55 + hash(row + l * 0.62, layerSeed + 11) * 0.35);
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(la) * ld, screenY + Math.sin(la) * ld * 0.7, lr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Distant, near-static ridge silhouette (very slow parallax) drawn as a
+  // single wavy path — cheap, and adds an extra depth cue behind the canopy.
+  function drawHillLayer(parallax, amplitude, baseline, color, alpha, layerSeed) {
+    const effectiveCam = cameraBaseH * parallax;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, cssHeight);
+    const step = 40;
+    for (let x = 0; x <= cssWidth + step; x += step) {
+      const worldX = x + effectiveCam * 0.6;
+      const y = baseline * cssHeight
+        + Math.sin(worldX * 0.006 + layerSeed) * amplitude
+        + Math.sin(worldX * 0.017 + layerSeed * 2.3) * amplitude * 0.4
+        + effectiveCam * 0.08;
+      ctx.lineTo(x, clamp(y, 0, cssHeight));
+    }
+    ctx.lineTo(cssWidth, cssHeight);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Sun near the ground fading into a pale moon + twinkling stars at
+  // altitude — reinforces the "climbing into dusk" read.
+  function drawCelestial(heightT, cx) {
+    const sunT = clamp(1 - heightT * 1.6, 0, 1);
+    if (sunT > 0.01) {
+      const gx = cssWidth * 0.78, gy = cssHeight * 0.22;
+      const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 90);
+      glow.addColorStop(0, "rgba(255, 244, 214, " + (0.85 * sunT) + ")");
+      glow.addColorStop(0.5, "rgba(255, 233, 180, " + (0.35 * sunT) + ")");
+      glow.addColorStop(1, "rgba(255, 233, 180, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(gx, gy, 90, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const starT = clamp((heightT - 0.35) / 0.5, 0, 1);
+    if (starT > 0.01) {
+      ctx.fillStyle = "#fff";
+      for (let i = 0; i < 26; i++) {
+        const sx2 = hash(i, 21) * cssWidth;
+        const sy2 = hash(i, 22) * cssHeight * 0.7;
+        const twinkle = 0.4 + 0.6 * Math.max(0, Math.sin(worldTime * (1.2 + hash(i, 23)) + i * 4));
+        ctx.globalAlpha = starT * twinkle * 0.85;
+        ctx.beginPath();
+        ctx.arc(sx2, sy2, 1 + hash(i, 24), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Cosmetic-only launch preview: while the player is dragging on a landed
+  // squirrel, re-derives the same speed/direction math launch() will use
+  // (without calling it) and plots a dotted arc so the swipe's power/aim
+  // is visible before release. Purely a read of CONFIG/squirrel/cheekCount.
+  function drawTrajectoryPreview() {
+    if (!dragPreviewActive || state !== "playing" || !squirrel.landed) return;
+    const dx = dragCurrentX - dragStartX;
+    const dy = dragCurrentY - dragStartY;
+    const dragDist = Math.hypot(dx, dy);
+    if (dragDist < CONFIG.MIN_DRAG) return;
+
+    const dirX = dx / dragDist;
+    const dirH = -dy / dragDist;
+    const t = clamp((dragDist - CONFIG.MIN_DRAG) / (CONFIG.MAX_DRAG - CONFIG.MIN_DRAG), 0, 1);
+    let speed = lerp(CONFIG.MIN_LAUNCH_SPEED, CONFIG.MAX_LAUNCH_SPEED, t);
+    const weightPenalty = Math.min(cheekCount * CONFIG.WEIGHT_PENALTY_PER_ACORN, CONFIG.MAX_WEIGHT_PENALTY);
+    speed *= (1 - weightPenalty);
+
+    let px = squirrel.x, ph = squirrel.h;
+    let pvx = dirX * speed, pvh = dirH * speed;
+    const stepDt = 0.045;
+    const startSx = squirrel.x, startSy = screenYFromH(squirrel.h);
+
+    ctx.fillStyle = "rgba(255, 247, 232, 0.85)";
+    for (let step = 1; step <= 22; step++) {
+      pvh -= CONFIG.GRAVITY * stepDt;
+      ph += pvh * stepDt;
+      px += pvx * stepDt;
+      const screenY = screenYFromH(ph);
+      if (screenY > cssHeight + 40) break;
+      const a = clamp(1 - step / 22, 0.15, 1);
+      ctx.globalAlpha = a * 0.8;
+      ctx.beginPath();
+      ctx.arc(px, screenY, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // power indicator: a short arrow from the squirrel toward launch direction
+    ctx.strokeStyle = "rgba(226, 161, 58, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(startSx, startSy);
+    ctx.lineTo(startSx + dirX * 26, startSy - dirH * 26);
+    ctx.stroke();
+  }
+
+  // ---------------------------------------------------------------
+  // Rendering
+  // ---------------------------------------------------------------
+  function render() {
+    const heightT = clamp(cameraBaseH / 2600, 0, 1);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+    // sky gradient (shifts from warm dawn near the ground to a cool dusk higher up)
+    const skyTop = lerpColor(SKY_LOW.top, SKY_HIGH.top, heightT);
+    const skyBottom = lerpColor(SKY_LOW.bottom, SKY_HIGH.bottom, heightT);
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, cssHeight);
+    skyGrad.addColorStop(0, skyTop);
+    skyGrad.addColorStop(1, skyBottom);
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+    // sun fading into stars as the climb reaches dusk altitude
+    drawCelestial(heightT);
+
+    // distant ridge silhouette (furthest, near-static depth cue)
+    const hillColor = lerpColor(HILL_LOW, HILL_HIGH, heightT);
+    drawHillLayer(0.05, 26, 0.62, hillColor, 0.28, 5);
+
+    // parallax canopy silhouettes (three depths, slower than the foreground)
+    const canopyColor = lerpColor(CANOPY_LOW, CANOPY_HIGH, heightT);
+    drawCanopyLayer(0.12, 220, 70, canopyColor, 0.22, 1);
+    drawCanopyLayer(0.26, 260, 55, canopyColor, 0.3, 2);
+    drawCanopyLayer(0.45, 300, 42, canopyColor, 0.4, 3);
+
+    ctx.save();
+    if (shakeTimer > 0) {
+      ctx.translate((hash(worldTime * 40, 9) - 0.5) * shakeMag, (hash(worldTime * 40, 4) - 0.5) * shakeMag);
+    }
+
+    // trunk
+    const trunkGrad = ctx.createLinearGradient(cssWidth / 2 - 18, 0, cssWidth / 2 + 18, 0);
+    trunkGrad.addColorStop(0, "#3c2716");
+    trunkGrad.addColorStop(0.45, "#8a6238");
+    trunkGrad.addColorStop(0.55, "#95703f");
+    trunkGrad.addColorStop(1, "#3c2716");
+    ctx.fillStyle = trunkGrad;
+    ctx.fillRect(cssWidth / 2 - 18, 0, 36, cssHeight);
+    ctx.strokeStyle = "rgba(0,0,0,0.14)";
+    ctx.lineWidth = 2;
+    for (let ty = -((worldTime * 4) % 40); ty < cssHeight; ty += 40) {
+      ctx.beginPath();
+      ctx.moveTo(cssWidth / 2 - 16, ty);
+      ctx.lineTo(cssWidth / 2 + 14, ty + 18);
+      ctx.stroke();
+    }
+    // bark knots: sparse deterministic ellipses tied to world height so
+    // they scroll naturally with the trunk instead of the screen
+    const knotSpacing = 130;
+    const knotStart = Math.floor((cameraBaseH - cssHeight) / knotSpacing);
+    const knotEnd = Math.ceil((cameraBaseH + cssHeight) / knotSpacing);
+    for (let k = knotStart; k <= knotEnd; k++) {
+      if (hash(k, 41) > 0.55) continue; // sparse
+      const kWorldY = k * knotSpacing + hash(k, 42) * knotSpacing * 0.6;
+      const kScreenY = screenYFromH(kWorldY);
+      if (kScreenY < -20 || kScreenY > cssHeight + 20) continue;
+      const kx = cssWidth / 2 + (hash(k, 43) - 0.5) * 22;
+      ctx.fillStyle = "rgba(30, 18, 10, 0.35)";
+      ctx.beginPath();
+      ctx.ellipse(kx, kScreenY, 4.5, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(150, 110, 60, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(kx, kScreenY, 7, 9.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // branches
+    for (let i = 0; i < branches.length; i++) {
+      const b = branches[i];
+      const screenY = screenYFromH(b.h);
+      if (screenY < -40 || screenY > cssHeight + 40) continue;
+      const bx = branchCurrentX(b);
+      const tilt = b.swayAmp > 0 ? Math.sin(worldTime * b.swayFreq + b.swayPhase) * 0.12 : 0;
+
+      if (b.isHollow) {
+        const pulse = 0.5 + 0.5 * Math.sin(worldTime * 3 + b.swayPhase);
+        ctx.save();
+        ctx.shadowColor = "rgba(226,161,58,0.8)";
+        ctx.shadowBlur = 10 + pulse * 10;
+        ctx.strokeStyle = "#c9832f";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(bx, screenY, b.width / 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = "#241b12";
+        ctx.beginPath();
+        ctx.arc(bx, screenY, b.width / 2 - 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(244,200,119," + (0.35 + pulse * 0.4) + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bx, screenY, b.width / 2 - 4, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.save();
+        ctx.translate(bx, screenY);
+        ctx.rotate(tilt);
+        const bg = ctx.createLinearGradient(0, -8, 0, 8);
+        bg.addColorStop(0, "#95703f");
+        bg.addColorStop(0.5, "#5c3f22");
+        bg.addColorStop(1, "#3c2716");
+        ctx.fillStyle = bg;
+        const r = 7;
+        const w = b.width, h = 15;
+        ctx.beginPath();
+        ctx.moveTo(-w / 2 + r, -h / 2);
+        ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+        ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+        ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+        ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+        ctx.closePath();
+        ctx.fill();
+
+        // leaf sprigs near each tip — a couple of simple pointed lobes
+        // keyed off the branch's own seed so they stay put per-branch
+        const leafColor = "#5c8f5f";
+        const leafSide = b.baseX > cssWidth / 2 ? 1 : -1;
+        ctx.fillStyle = leafColor;
+        for (let lf = 0; lf < 2; lf++) {
+          const lsx = leafSide * (w / 2 - 6 + lf * 3);
+          const lsy = -6 - lf * 4 + (hash(i + lf, 51) - 0.5) * 3;
+          ctx.beginPath();
+          ctx.ellipse(lsx, lsy, 7, 4, leafSide * 0.5 + lf * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        if (b.hasAcorn) {
+          const ay = screenY - 17;
+          ctx.fillStyle = "#5b3c25";
+          ctx.beginPath();
+          ctx.ellipse(bx, ay - 4, 6, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(40, 26, 14, 0.5)";
+          ctx.lineWidth = 0.8;
+          for (let hatch = -3; hatch <= 3; hatch += 2) {
+            ctx.beginPath();
+            ctx.moveTo(bx + hatch, ay - 6.5);
+            ctx.lineTo(bx + hatch, ay - 1.5);
+            ctx.stroke();
+          }
+          const acGrad = ctx.createRadialGradient(bx - 2.5, ay - 1, 1, bx, ay, 8);
+          acGrad.addColorStop(0, "#fbe0a3");
+          acGrad.addColorStop(0.55, "#e39a3d");
+          acGrad.addColorStop(1, "#a8621f");
+          ctx.fillStyle = acGrad;
+          ctx.beginPath();
+          ctx.arc(bx, ay + 2, 7.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(255, 250, 230, 0.75)";
+          ctx.beginPath();
+          ctx.arc(bx - 2.5, ay - 0.5, 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    drawParticles();
+    drawFloatingTexts();
+    drawTrajectoryPreview();
+
+    // squirrel with velocity-based stretch, a landing squash/spring, a
+    // gentle idle breathing/tail-flick loop, and a facing flip toward
+    // its direction of travel — all cosmetic, read-only against
+    // squirrel.x/h/vx/vh and cheekCount.
+    const sx = squirrel.x;
+    const sy = screenYFromH(squirrel.h);
+    const baseRadius = CONFIG.SQUIRREL_RADIUS;
+    const cheekBulge = cheekCount * 1.8;
+
+    if (Math.abs(squirrel.vx) > 4) facingDir = squirrel.vx > 0 ? 1 : -1;
+
+    let scaleX = 1, scaleY = 1;
+    let idleBob = 0, tailFlick = 0;
+    if (!squirrel.landed) {
+      const vStretch = clamp(Math.abs(squirrel.vh) / 750, 0, 0.3);
+      scaleY = 1 + vStretch;
+      scaleX = 1 - vStretch * 0.6;
+    } else if (squashElapsed < 0.45) {
+      const t = squashElapsed;
+      const decay = Math.exp(-9 * t) * Math.cos(16 * t);
+      scaleY = 1 - 0.4 * squashImpact * decay;
+      scaleX = 1 + 0.28 * squashImpact * decay;
+    } else {
+      // idle: slow breathing squash + a small tail flick while perched
+      idleBob = Math.sin(worldTime * 2.1) * 0.02;
+      scaleY = 1 + idleBob;
+      scaleX = 1 - idleBob * 0.5;
+      tailFlick = Math.sin(worldTime * 1.6) * 0.12;
+    }
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(scaleX * facingDir, scaleY);
+
+    const radius = baseRadius;
+    const bodyGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 1, 0, 0, radius * 1.3);
+    bodyGrad.addColorStop(0, "#d68a52");
+    bodyGrad.addColorStop(1, "#a85a2c");
+
+    // tail (behind body) — curls up more when airborne, flicks gently when idle
+    const tailCurl = squirrel.landed ? Math.PI / 4 + tailFlick : Math.PI / 3.2;
+    ctx.fillStyle = "#b96a38";
+    ctx.beginPath();
+    ctx.ellipse(-radius * 0.95, -radius * 0.3, radius * 0.7, radius * 1.15, tailCurl, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f3e0c4";
+    ctx.beginPath();
+    ctx.ellipse(-radius * 1.15, -radius * 0.75, radius * 0.32, radius * 0.6, tailCurl, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ground-contact shadow when perched (subtle, reinforces "landed" read)
+    if (squirrel.landed) {
+      ctx.fillStyle = "rgba(30, 20, 10, 0.18)";
+      ctx.beginPath();
+      ctx.ellipse(radius * 0.05, radius * 0.95, radius * 0.75, radius * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // hind paw (peeks out behind the belly)
+    ctx.fillStyle = "#8a4c26";
+    ctx.beginPath();
+    ctx.ellipse(-radius * 0.3, radius * 0.78, radius * 0.22, radius * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // body
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ears (inner-ear detail for a sharper silhouette)
+    ctx.fillStyle = "#a85a2c";
+    ctx.beginPath();
+    ctx.arc(-radius * 0.5, -radius * 0.85, radius * 0.28, 0, Math.PI * 2);
+    ctx.arc(radius * 0.5, -radius * 0.85, radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e6a86e";
+    ctx.beginPath();
+    ctx.arc(radius * 0.48, -radius * 0.82, radius * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+
+    // cheeks (bulge scales with cheekCount — visual read of carrying capacity)
+    if (cheekBulge > 0) {
+      const cheekGrad = ctx.createRadialGradient(radius * 0.5, radius * 0.15, 1, radius * 0.55, radius * 0.25, radius * 0.5 + cheekBulge * 0.4);
+      cheekGrad.addColorStop(0, "#f7cf94");
+      cheekGrad.addColorStop(1, "#e89a4e");
+      ctx.fillStyle = cheekGrad;
+      ctx.beginPath();
+      ctx.arc(radius * 0.55, radius * 0.25, radius * 0.4 + cheekBulge * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-radius * 0.15, radius * 0.4, radius * 0.32 + cheekBulge * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // belly
+    ctx.fillStyle = "#f3e0c4";
+    ctx.beginPath();
+    ctx.ellipse(0, radius * 0.35, radius * 0.55, radius * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // front paw (small, on top of the belly, toward the facing side)
+    ctx.fillStyle = "#8a4c26";
+    ctx.beginPath();
+    ctx.ellipse(radius * 0.5, radius * 0.55, radius * 0.16, radius * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // whiskers
+    ctx.strokeStyle = "rgba(36, 27, 18, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(radius * 0.85, radius * 0.05); ctx.lineTo(radius * 1.35, -radius * 0.02);
+    ctx.moveTo(radius * 0.85, radius * 0.18); ctx.lineTo(radius * 1.32, radius * 0.22);
+    ctx.stroke();
+
+    // eyebrow (tiny alert flick, gives the face more character)
+    ctx.strokeStyle = "#241b12";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(radius * 0.42, -radius * 0.32, 4.2, Math.PI * 1.15, Math.PI * 1.75);
+    ctx.stroke();
+
+    // eye
+    ctx.fillStyle = "#241b12";
+    ctx.beginPath();
+    ctx.arc(radius * 0.4, -radius * 0.15, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(radius * 0.48, -radius * 0.25, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // nose
+    ctx.fillStyle = "#241b12";
+    ctx.beginPath();
+    ctx.arc(radius * 0.95, 0, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------
+  // HUD updates
+  // ---------------------------------------------------------------
+  // cosmetic-only: remembers last displayed values so the HUD can pop
+  // when a stat actually changes, purely a presentational trigger.
+  let lastShownScore = -1, lastShownHeight = -1, lastShownBest = -1;
+  function popStat(el) {
+    el.classList.remove("pop");
+    // force reflow so the animation can retrigger on repeated changes
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function updateHud() {
+    const score = currentScore();
+    const heightM = heightMeters();
+    scoreText.textContent = String(score);
+    heightText.textContent = heightM + "m";
+    bestText.textContent = String(highScore);
+
+    if (lastShownScore !== -1 && score > lastShownScore) popStat(scoreText);
+    if (lastShownHeight !== -1 && heightM > lastShownHeight) popStat(heightText);
+    if (lastShownBest !== -1 && highScore > lastShownBest) popStat(bestText);
+    lastShownScore = score;
+    lastShownHeight = heightM;
+    lastShownBest = highScore;
+
+    let dots = "";
+    for (let i = 0; i < CONFIG.MAX_CHEEKS; i++) {
+      dots += '<span class="cheek-dot' + (i < cheekCount ? " filled" : "") + '"></span>';
+    }
+    cheeksText.innerHTML = dots;
+  }
+
+  // ---------------------------------------------------------------
+  // Input (pointer events cover touch + mouse; touch is the required path)
+  // ---------------------------------------------------------------
+  function onPointerDown(e) {
+    if (state !== "playing") return;
+    if (!squirrel.landed) return;
+    if (activePointerId !== null) return; // only track one finger at a time
+    activePointerId = e.pointerId;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    // cosmetic-only: mirrors the drag so render() can draw a trajectory
+    // preview; never read by launch()/checkLanding()/update().
+    dragCurrentX = e.clientX;
+    dragCurrentY = e.clientY;
+    dragPreviewActive = true;
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (e.pointerId !== activePointerId) return;
+    dragCurrentX = e.clientX;
+    dragCurrentY = e.clientY;
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onPointerUp(e) {
+    if (e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    dragPreviewActive = false;
+    if (state !== "playing" || !squirrel.landed) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    launch(dx, dy);
+  }
+
+  function onPointerCancel(e) {
+    if (e.pointerId === activePointerId) activePointerId = null;
+    dragPreviewActive = false;
+  }
+
+  canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+  canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+  canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+  canvas.addEventListener("pointercancel", onPointerCancel, { passive: false });
+
+  startButton.addEventListener("click", function () {
+    ensureAudio();
+    startOverlay.classList.add("hidden");
+    resetGame();
+    state = "playing";
+  });
+
+  restartButton.addEventListener("click", function () {
+    ensureAudio();
+    gameOverOverlay.classList.add("hidden");
+    resetGame();
+    state = "playing";
+  });
+
+  // ---------------------------------------------------------------
+  // Main loop
+  // ---------------------------------------------------------------
+  let lastTime = null;
+
+  function loop(timestamp) {
+    if (lastTime === null) lastTime = timestamp;
+    let dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    dt = clamp(dt, 0, 0.05); // avoid huge steps when tab is backgrounded
+
+    if (state === "playing") {
+      // snapshot state that cosmetic juice reacts to, purely for
+      // detecting frame-to-frame transitions — never written back
+      // into gameplay state.
+      const wasLanded = squirrel.landed;
+      const impactRefVh = squirrel.vh;
+      const preCheekCount = cheekCount;
+      const preStashScore = stashScore;
+
+      update(dt);
+      updateHud();
+
+      if (!wasLanded && squirrel.landed) {
+        triggerLandingJuice(Math.abs(impactRefVh), squirrel.x, screenYFromH(squirrel.h));
+      }
+      if (stashScore > preStashScore) {
+        triggerStashJuice(squirrel.x, screenYFromH(squirrel.h), stashScore - preStashScore);
+      } else if (cheekCount > preCheekCount) {
+        triggerAcornJuice(squirrel.x, screenYFromH(squirrel.h) - 20);
+      }
+    }
+
+    updateJuiceTimers(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  bestText.textContent = String(highScore);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

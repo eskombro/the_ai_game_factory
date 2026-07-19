@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppeldodge</title>
+<style>
+  :root {
+    --red: #ff5d6c;
+    --red-dim: #d94a58;
+    --blue: #5ac8ff;
+    --blue-dim: #4aa3d9;
+    --amber: #ffd166;
+    --ink: #0b0b10;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: radial-gradient(ellipse at 50% -10%, #202030 0%, #101016 45%, #08080b 100%);
+    color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    margin: 18px 0 4px 0;
+    font-size: 26px;
+    letter-spacing: 6px;
+    font-weight: 700;
+  }
+  h1 .tRed { color: var(--red); text-shadow: 0 0 12px rgba(255, 93, 108, 0.55); }
+  h1 .tBlue { color: var(--blue); text-shadow: 0 0 12px rgba(90, 200, 255, 0.55); }
+  #subtitle {
+    margin: 0 0 14px 0;
+    font-size: 13px;
+    color: #91919c;
+    text-align: center;
+    max-width: 460px;
+    line-height: 1.5;
+  }
+  #hud {
+    width: 500px;
+    max-width: 96vw;
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 8px;
+    font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+  }
+  #hud .stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  #hud .stat.best { align-items: flex-end; }
+  #hud .label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #7a7a86;
+  }
+  #hud .value {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  #score { color: var(--red); text-shadow: 0 0 8px rgba(255, 93, 108, 0.4); }
+  #best { color: var(--blue); text-shadow: 0 0 8px rgba(90, 200, 255, 0.4); }
+
+  #gameArea {
+    position: relative;
+    width: 500px;
+    max-width: 96vw;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 18px 50px rgba(0,0,0,0.55);
+  }
+  #gameArea.shake { animation: shakeAnim 0.35s ease-in-out; }
+  @keyframes shakeAnim {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-6px, 3px); }
+    40% { transform: translate(5px, -4px); }
+    60% { transform: translate(-4px, 4px); }
+    80% { transform: translate(4px, -2px); }
+  }
+
+  canvas {
+    background: #1a1a22;
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    box-sizing: border-box;
+    touch-action: none;
+  }
+
+  /* purely decorative glass sheen overlay to reinforce the mirror/glass motif */
+  #glassSheen {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    pointer-events: none;
+    background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.05) 50%, transparent 58%);
+  }
+
+  #deathFlash {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: #ff3b3b;
+    opacity: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  #deathFlash.flash { animation: deathFlashAnim 0.4s ease-out; }
+  @keyframes deathFlashAnim {
+    0% { opacity: 0.55; }
+    100% { opacity: 0; }
+  }
+
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(8, 8, 12, 0.78);
+    backdrop-filter: blur(3px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .overlay.hidden {
+    opacity: 0;
+    transform: scale(0.97);
+    pointer-events: none;
+  }
+  .overlay h2 {
+    margin: 0 0 10px 0;
+    letter-spacing: 2px;
+    background: linear-gradient(90deg, var(--red), var(--blue));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .overlay p {
+    font-size: 13px;
+    color: #bdbdc6;
+    max-width: 380px;
+    line-height: 1.6;
+  }
+  .hidden { display: none; }
+  .overlay.hidden { display: flex; } /* override so the fade-out transition can play */
+
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    padding: 9px 22px;
+    margin-top: 12px;
+    background: linear-gradient(135deg, var(--red), var(--blue));
+    color: #0b0b10;
+    font-weight: 700;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+  button:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+
+  /* Pause overlay: shown only mid-run, while the controlled dot isn't being
+     held. Deliberately distinct from .overlay (readyOverlay/gameOverOverlay)
+     -- semi-transparent instead of a near-opaque box, so the frozen game
+     state stays dimly visible underneath, and it never intercepts pointer
+     events (the canvas below it is still the input target). */
+  #pauseOverlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  #pauseOverlay.hidden { display: none; }
+  #pauseOverlay p {
+    margin: 0;
+    font-size: 14px;
+    color: #f5f5f8;
+    max-width: 380px;
+    line-height: 1.6;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+  }
+
+</style>
+</head>
+<body>
+
+<h1><span class="tRed">DOPPEL</span><span class="tBlue">DODGE</span></h1>
+<p id="subtitle">Move your dot through the gaps in the left lane. Your echo on the right is a mirror reflection of you across the divider — but it faces its own, different obstacles. If either one gets hit, it's game over.</p>
+
+<div id="hud">
+  <div class="stat">
+    <span class="label">Score</span>
+    <span class="value" id="score">0</span>
+  </div>
+  <div class="stat best">
+    <span class="label">Best</span>
+    <span class="value" id="best">0</span>
+  </div>
+</div>
+
+<div id="gameArea">
+  <canvas id="game" width="500" height="600"></canvas>
+  <div id="glassSheen"></div>
+  <div id="deathFlash"></div>
+
+  <div id="readyOverlay" class="overlay">
+    <h2>Ready?</h2>
+    <p>
+      Touch or click-and-drag anywhere on the canvas to move your dot left-right.<br>
+      The echo dot mirrors you across the center line, like a reflection.<br>
+      Both dots must dodge falling gates forever. Press Space or Start to begin.
+    </p>
+    <button id="startBtn">Start</button>
+  </div>
+
+  <div id="gameOverOverlay" class="overlay hidden">
+    <h2>Game Over</h2>
+    <p id="gameOverText"></p>
+    <button id="restartBtn">Restart</button>
+  </div>
+
+  <div id="pauseOverlay" class="hidden">
+    <p>Press and hold the red dot to play. Release to pause.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var W = canvas.width;   // logical game width (500) -- all game math uses this
+  var H = canvas.height;  // logical game height (600)
+  var LANE_W = W / 2;
+  var DOT_R = 12;
+  var DOT_Y = H - 70;
+
+  // Crisp rendering on HiDPI screens: scale up the canvas backing store only.
+  // All game logic / drawing below still works in the original 500x600
+  // logical coordinate space via ctx.scale, so nothing about collisions,
+  // positions, or gameplay changes.
+  var DPR = Math.min(window.devicePixelRatio || 1, 3);
+  if (DPR > 1) {
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    ctx.scale(DPR, DPR);
+  }
+
+  var scoreEl = document.getElementById("score");
+  var bestEl = document.getElementById("best");
+  var gameArea = document.getElementById("gameArea");
+  var deathFlash = document.getElementById("deathFlash");
+  var readyOverlay = document.getElementById("readyOverlay");
+  var gameOverOverlay = document.getElementById("gameOverOverlay");
+  var gameOverText = document.getElementById("gameOverText");
+  var pauseOverlay = document.getElementById("pauseOverlay");
+  var startBtn = document.getElementById("startBtn");
+  var restartBtn = document.getElementById("restartBtn");
+
+  var HIGH_SCORE_KEY = "doppeldodge_high_score";
+  var bestScore = 0;
+  try {
+    bestScore = parseInt(localStorage.getItem(HIGH_SCORE_KEY), 10) || 0;
+  } catch (e) { bestScore = 0; }
+  bestEl.textContent = bestScore;
+
+  var STATE_READY = "ready";
+  var STATE_PLAYING = "playing";
+  var STATE_GAMEOVER = "gameover";
+  var state = STATE_READY;
+
+  var BASE_FALL_SPEED = 90; // px/sec -- eased down further from 100 for a gentler opening
+  var MAX_FALL_SPEED = 420; // ceiling unchanged; already a fair max
+  var BASE_SPAWN_INTERVAL = 2.1; // seconds -- eased up further from 1.9 for more breathing room at start
+  var MIN_SPAWN_INTERVAL = 0.62; // floor unchanged
+  var GATE_HEIGHT = 20;
+  var GAP_START_MIN = 92; // early-game gap width range -- widened from 85 so the opening is more forgiving
+  var GAP_START_MAX = 128; // widened from 120
+  var GAP_END_MIN = 54; // late-game gap width range: tighter, but still 30px (>DOT diameter) of slack
+  var GAP_END_MAX = 80;
+  var DIFFICULTY_RAMP_TIME = 90; // seconds to reach near-max difficulty (fall speed/spawn rate/gap width all converge here, then plateau)
+  var PULSE_DURATION = 0.25; // cosmetic gate-pass glow pulse, seconds
+
+  var dragActive = false; // true only while the ball has been validly pressed-and-held
+                           // (pointerdown landed on the dot) and the pointer hasn't been
+                           // released yet. Doubles as the run/pause flag: the game only
+                           // advances (see update()) while this is true.
+  var dragX = 0; // logical canvas x (0..W) of the current drag position, updated on pointermove
+  var BALL_HIT_PAD = 10; // extra px beyond DOT_R for a touch-friendly hit target on pointerdown
+
+  var uLeft; // controlled dot local x within its lane [DOT_R, LANE_W - DOT_R]
+  var leftGates, rightGates;
+  var leftSpawnTimer, rightSpawnTimer;
+  var elapsed;
+  var score;
+  var fallSpeed;
+  var spawnInterval;
+  var gapMin, gapMax; // current difficulty-scaled gate gap width range (see update())
+  var lastTime;
+  var rafId = null;
+  var pulseTimer = 0; // cosmetic only: drives a brief glow when a gate is passed
+  var echoTrail = []; // cosmetic only: recent echo-dot positions, drawn as a fading trail
+
+  function resetGame() {
+    uLeft = LANE_W / 2;
+    leftGates = [];
+    rightGates = [];
+    leftSpawnTimer = 0.6; // eased from 0.4 -- a slightly longer first breath before any gate appears
+    rightSpawnTimer = 1.15; // eased from 0.9, then from 1.1 -- offset so lanes don't spawn in lockstep (now a 0.55s gap, up from 0.5s)
+    elapsed = 0;
+    score = 0;
+    fallSpeed = BASE_FALL_SPEED;
+    spawnInterval = BASE_SPAWN_INTERVAL;
+    gapMin = GAP_START_MIN;
+    gapMax = GAP_START_MAX;
+    pulseTimer = 0;
+    echoTrail = [];
+    scoreEl.textContent = "0";
+  }
+
+  function randomGap() {
+    var gapWidth = gapMin + Math.random() * (gapMax - gapMin);
+    var gapStart = Math.random() * (LANE_W - gapWidth);
+    return { gapStart: gapStart, gapWidth: gapWidth };
+  }
+
+  function spawnGate(list) {
+    var g = randomGap();
+    list.push({
+      y: -GATE_HEIGHT,
+      gapStart: g.gapStart,
+      gapWidth: g.gapWidth,
+      passed: false
+    });
+  }
+
+  // Checks collision of a dot (localX within its lane, fixed DOT_Y) against a gate list.
+  // Returns true if the dot is hit.
+  function checkCollision(list, localX) {
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      var top = g.y;
+      var bottom = g.y + GATE_HEIGHT;
+      if (bottom >= DOT_Y - DOT_R && top <= DOT_Y + DOT_R) {
+        var inGap = (localX - DOT_R >= g.gapStart) && (localX + DOT_R <= g.gapStart + g.gapWidth);
+        if (!inGap) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function updateGates(list, dt, localX) {
+    var scored = 0;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var g = list[i];
+      g.y += fallSpeed * dt;
+      if (!g.passed && g.y > DOT_Y + DOT_R) {
+        g.passed = true;
+        scored++;
+      }
+      if (g.y > H + GATE_HEIGHT) {
+        list.splice(i, 1);
+      }
+    }
+    return scored;
+  }
+
+  function update(dt) {
+    // Paused: the ball isn't currently being held (or the run hasn't been
+    // (re)started with a valid press on it yet). Freeze everything -- no
+    // timers, spawning, falling, ramp, or collision checks -- until the
+    // player presses back down on the dot.
+    if (!dragActive) { return; }
+
+    elapsed += dt;
+
+    // difficulty ramp: a single normalized progress value (0 at start, 1 at
+    // DIFFICULTY_RAMP_TIME seconds and beyond) drives fall speed, spawn rate,
+    // and gap width together so all three tighten smoothly and in lockstep,
+    // reaching a "hard but fair" ceiling around 90s in, then plateauing.
+    var rampT = Math.min(1, elapsed / DIFFICULTY_RAMP_TIME);
+    fallSpeed = BASE_FALL_SPEED + (MAX_FALL_SPEED - BASE_FALL_SPEED) * rampT;
+    spawnInterval = BASE_SPAWN_INTERVAL - (BASE_SPAWN_INTERVAL - MIN_SPAWN_INTERVAL) * rampT;
+    gapMin = GAP_START_MIN - (GAP_START_MIN - GAP_END_MIN) * rampT;
+    gapMax = GAP_START_MAX - (GAP_START_MAX - GAP_END_MAX) * rampT;
+
+    // controlled dot movement: position always tracks the current drag point
+    // (1:1). We only reach this line while dragActive is true (see the guard
+    // above), i.e. the ball is currently being held.
+    uLeft = dragX;
+    uLeft = Math.max(DOT_R, Math.min(LANE_W - DOT_R, uLeft));
+
+    // mirrored echo position (true reflection across the shared divider)
+    var uRight = LANE_W - uLeft;
+
+    // cosmetic-only: remember recent echo positions to draw a fading "echo" trail
+    echoTrail.push(uRight);
+    if (echoTrail.length > 10) { echoTrail.shift(); }
+
+    // spawn gates
+    leftSpawnTimer -= dt;
+    if (leftSpawnTimer <= 0) {
+      spawnGate(leftGates);
+      leftSpawnTimer += spawnInterval;
+    }
+    rightSpawnTimer -= dt;
+    if (rightSpawnTimer <= 0) {
+      spawnGate(rightGates);
+      rightSpawnTimer += spawnInterval;
+    }
+
+    var gained = 0;
+    gained += updateGates(leftGates, dt, uLeft);
+    gained += updateGates(rightGates, dt, uRight);
+    if (gained > 0) {
+      score += gained;
+      scoreEl.textContent = score;
+      pulseTimer = PULSE_DURATION; // cosmetic: trigger a brief glow on both dots
+    }
+    if (pulseTimer > 0) {
+      pulseTimer = Math.max(0, pulseTimer - dt);
+    }
+
+    if (checkCollision(leftGates, uLeft) || checkCollision(rightGates, uRight)) {
+      endGame();
+      return;
+    }
+  }
+
+  function drawLane(offsetX, gates, localX, dotColor, laneGradStops, trail) {
+    ctx.save();
+    ctx.translate(offsetX, 0);
+
+    // lane background gradient: brighter near the mirror divider, darker at
+    // the outer edge, so the two lanes read as literal mirror images of light.
+    var grad = ctx.createLinearGradient(0, 0, LANE_W, 0);
+    grad.addColorStop(0, laneGradStops[0]);
+    grad.addColorStop(1, laneGradStops[1]);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, LANE_W, H);
+
+    // gates
+    var glow = 4 + (pulseTimer > 0 ? 4 * (pulseTimer / PULSE_DURATION) : 0);
+    ctx.shadowColor = "rgba(160,160,180,0.35)";
+    ctx.shadowBlur = glow;
+    ctx.fillStyle = "#7d7d90";
+    for (var i = 0; i < gates.length; i++) {
+      var g = gates[i];
+      // left solid piece
+      ctx.fillRect(0, g.y, g.gapStart, GATE_HEIGHT);
+      // right solid piece
+      ctx.fillRect(g.gapStart + g.gapWidth, g.y, LANE_W - (g.gapStart + g.gapWidth), GATE_HEIGHT);
+      // subtle top highlight for a bit of bevel/depth
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.fillRect(0, g.y, g.gapStart, 2);
+      ctx.fillRect(g.gapStart + g.gapWidth, g.y, LANE_W - (g.gapStart + g.gapWidth), 2);
+      ctx.fillStyle = "#7d7d90";
+    }
+    ctx.shadowBlur = 0;
+
+    // cosmetic-only "echo" trail: a handful of faint, shrinking ghost circles
+    // behind the echo dot, reinforcing the reflection/echo theme
+    if (trail && trail.length > 1) {
+      ctx.shadowBlur = 0;
+      for (var t = 0; t < trail.length - 1; t++) {
+        var frac = t / (trail.length - 1); // 0 = oldest/faintest, ~1 = newest
+        ctx.globalAlpha = 0.05 + frac * 0.15;
+        ctx.fillStyle = dotColor;
+        ctx.beginPath();
+        ctx.arc(trail[t], DOT_Y, DOT_R * (0.4 + frac * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // dot, with a soft glow that briefly intensifies when a gate is passed
+    var pulseBoost = pulseTimer > 0 ? (pulseTimer / PULSE_DURATION) : 0;
+    ctx.shadowColor = dotColor;
+    ctx.shadowBlur = 10 + pulseBoost * 16;
+    ctx.fillStyle = dotColor;
+    ctx.beginPath();
+    ctx.arc(localX, DOT_Y, DOT_R + pulseBoost * 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // subtle specular highlight for a bit of glassy depth
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(localX - DOT_R * 0.32, DOT_Y - DOT_R * 0.32, DOT_R * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    var uRight = LANE_W - uLeft;
+    // Left lane: warm tint, brightening toward the divider (right edge, local x=LANE_W).
+    drawLane(0, leftGates, uLeft, "#ff5d6c", ["#1c1c26", "#2a2230"]);
+    // Right lane: cool tint, brightening toward the divider (left edge, local x=0) --
+    // the mirror image of the left lane's lighting. Echo dot gets a fading trail.
+    drawLane(LANE_W, rightGates, uRight, "#5ac8ff", ["#232c3a", "#171720"], echoTrail);
+
+    // divider (the "mirror" line) -- a soft glowing, gently animated seam
+    ctx.save();
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = 2;
+    ctx.shadowColor = "rgba(255,209,102,0.6)";
+    ctx.shadowBlur = 8;
+    ctx.setLineDash([6, 6]);
+    ctx.lineDashOffset = -(elapsed * 16) % 12;
+    ctx.beginPath();
+    ctx.moveTo(LANE_W, 0);
+    ctx.lineTo(LANE_W, H);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function loop(now) {
+    if (state !== STATE_PLAYING) { return; }
+    if (!lastTime) { lastTime = now; }
+    var dt = Math.min(0.05, (now - lastTime) / 1000); // clamp dt to avoid big jumps on tab-switch
+    lastTime = now;
+
+    update(dt);
+    if (state !== STATE_PLAYING) {
+      render();
+      return;
+    }
+    render();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    resetGame();
+    state = STATE_PLAYING;
+    lastTime = null;
+    dragActive = false; // every run starts paused until the ball is pressed
+    readyOverlay.classList.add("hidden");
+    gameOverOverlay.classList.add("hidden");
+    syncPauseOverlay();
+    render();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function endGame() {
+    state = STATE_GAMEOVER;
+    dragActive = false;
+    syncPauseOverlay();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    var isNewBest = score > bestScore;
+    if (isNewBest) {
+      bestScore = score;
+      try { localStorage.setItem(HIGH_SCORE_KEY, String(bestScore)); } catch (e) {}
+    }
+    bestEl.textContent = bestScore;
+    gameOverText.textContent = "Score: " + score + (isNewBest ? "  (New Best!)" : "  Best: " + bestScore);
+
+    // cosmetic impact feedback: brief shake + red flash, then reveal the overlay
+    gameArea.classList.add("shake");
+    deathFlash.classList.add("flash");
+    setTimeout(function () {
+      gameArea.classList.remove("shake");
+      deathFlash.classList.remove("flash");
+    }, 400);
+    setTimeout(function () {
+      gameOverOverlay.classList.remove("hidden");
+    }, 240);
+  }
+
+  // --- input handling ---
+  function keyDown(e) {
+    if (e.code === "Space" || e.code === "Enter") {
+      e.preventDefault();
+      if (state === STATE_READY || state === STATE_GAMEOVER) {
+        startGame();
+      }
+    }
+  }
+  window.addEventListener("keydown", keyDown);
+
+  // Press-and-hold-on-the-ball control: a drag only starts if pointerdown
+  // lands on the controlled dot itself (hit-tested below); while held, drag
+  // left/right moves the dot 1:1 with the pointer exactly as before, and the
+  // game runs. Releasing (or never landing on the dot) pauses play -- see
+  // dragActive's use as the run/pause flag in update().
+  function canvasLogicalX(clientX) {
+    var rect = canvas.getBoundingClientRect();
+    // rect.width is the actual on-screen CSS width (post responsive scaling);
+    // W is the fixed logical/game-math width (500) -- convert screen px to
+    // logical px so the dot lines up with the finger regardless of viewport size.
+    return (clientX - rect.left) * (W / rect.width);
+  }
+  function canvasLogicalY(clientY) {
+    var rect = canvas.getBoundingClientRect();
+    return (clientY - rect.top) * (H / rect.height);
+  }
+  // Shows/hides the pause overlay to match current state: only relevant
+  // mid-run (STATE_PLAYING) and only while the ball isn't currently held.
+  function syncPauseOverlay() {
+    if (state === STATE_PLAYING && !dragActive) {
+      pauseOverlay.classList.remove("hidden");
+    } else {
+      pauseOverlay.classList.add("hidden");
+    }
+  }
+  function dragStart(e) {
+    e.preventDefault();
+    if (state === STATE_PLAYING) {
+      var lx = canvasLogicalX(e.clientX);
+      var ly = canvasLogicalY(e.clientY);
+      var dx = lx - uLeft;
+      var dy = ly - DOT_Y;
+      var hitR = DOT_R + BALL_HIT_PAD;
+      if (dx * dx + dy * dy <= hitR * hitR) {
+        dragActive = true;
+        dragX = lx;
+        if (canvas.setPointerCapture) {
+          try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+      }
+    }
+    syncPauseOverlay();
+  }
+  function dragMove(e) {
+    if (!dragActive) { return; }
+    dragX = canvasLogicalX(e.clientX);
+    e.preventDefault();
+  }
+  function dragEnd(e) {
+    dragActive = false;
+    e.preventDefault();
+    syncPauseOverlay();
+  }
+  canvas.addEventListener("pointerdown", dragStart);
+  canvas.addEventListener("pointermove", dragMove);
+  canvas.addEventListener("pointerup", dragEnd);
+  canvas.addEventListener("pointercancel", dragEnd);
+
+  startBtn.addEventListener("click", function () {
+    if (state === STATE_READY) { startGame(); }
+  });
+  restartBtn.addEventListener("click", function () {
+    if (state === STATE_GAMEOVER) { startGame(); }
+  });
+
+  // initial static render so the canvas isn't blank before first start
+  resetGame();
+  render();
+})();
+</script>
+</body>
+</html>

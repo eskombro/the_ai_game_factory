@@ -135,11 +135,11 @@
 <div id="overlay">
   <h1 id="overlayTitle">Pinch Point</h1>
   <p id="overlayText">
-    Drag with one finger to move up and down.<br>
-    Pinch with two fingers to shrink or grow.<br>
+    Press and drag up or down to move.<br>
+    Drag right to grow, left to shrink.<br>
     Squeeze through every gap without touching a wall.
   </p>
-  <p id="overlayText2">Touch anywhere to begin.</p>
+  <p id="overlayText2">Touch or click anywhere to begin.</p>
   <button id="restartBtn" class="hidden">Play Again</button>
 </div>
 
@@ -200,8 +200,6 @@
   var elapsed = 0;
   var spawnTimer = 1.5; // short delay before first gate
   var gameState = "start"; // "start" | "playing" | "over"
-
-  var touches = new Map(); // identifier -> {x, y}
 
   // ---- purely cosmetic state (visuals/juice only; never read by game logic) ----
   var bgGradient = null;
@@ -314,28 +312,38 @@
   }
 
   // ---- input handling ----
-  function updateBlobFromTouches() {
-    if (gameState !== "playing") return;
-    var pts = Array.from(touches.values());
-    if (pts.length === 0) {
-      // no finger down: hold position and size
-      return;
-    }
-    if (pts.length === 1) {
-      blob.y = clamp(pts[0].y, blob.r, height - blob.r);
-      return;
-    }
-    // two or more touches: first two drive movement + pinch size
-    var a = pts[0], b = pts[1];
-    var avgY = (a.y + b.y) / 2;
-    var dx = a.x - b.x, dy = a.y - b.y;
-    var dist = Math.sqrt(dx * dx + dy * dy);
+  // A single continuous pointer (one finger, or one held mouse button) drives
+  // both axes of control at once:
+  //   - blob.y always follows the pointer's current vertical position.
+  //   - blob.r follows the horizontal offset between the pointer's current X
+  //     and the X where the current press started: dragging right grows the
+  //     blob toward BLOB_MAX_R, dragging left shrinks it toward BLOB_MIN_R,
+  //     and zero horizontal offset leaves the blob at whatever size it was
+  //     when the press began (the neutral baseline resets on every new press).
+  // Touch and mouse both funnel through pointerDown/updatePointer/pointerUp
+  // so the two input paths can never diverge.
+  var pointerActive = false;
+  var pointerStartX = 0;
+  var pointerStartR = BLOB_START_R;
+  var SIZE_DRAG_RANGE = 0.35; // fraction of screen width for a full min<->max swing
 
-    var minPinch = width * 0.05;
-    var maxPinch = width * 0.55;
-    var t = clamp((dist - minPinch) / (maxPinch - minPinch), 0, 1);
-    blob.r = clamp(lerp(BLOB_MIN_R, BLOB_MAX_R, t), BLOB_MIN_R, BLOB_MAX_R);
-    blob.y = clamp(avgY, blob.r, height - blob.r);
+  function pointerDown(x, y) {
+    pointerActive = true;
+    pointerStartX = x;
+    pointerStartR = blob.r;
+    updatePointer(x, y);
+  }
+
+  function updatePointer(x, y) {
+    if (gameState !== "playing") return;
+    blob.y = clamp(y, blob.r, height - blob.r);
+    var range = Math.max(1, width * SIZE_DRAG_RANGE);
+    var t = clamp((x - pointerStartX) / range, -1, 1);
+    blob.r = (t >= 0) ? lerp(pointerStartR, BLOB_MAX_R, t) : lerp(pointerStartR, BLOB_MIN_R, -t);
+  }
+
+  function pointerUp() {
+    pointerActive = false;
   }
 
   function touchPoint(t) {
@@ -343,56 +351,85 @@
     return { x: t.clientX - rect.left, y: t.clientY - rect.top };
   }
 
-  function onTouchStart(e) {
+  var activeTouchId = null; // identifier of the single touch currently driving the blob
+
+  // The overlay sits on top of the canvas, so it must handle the very first
+  // tap itself (a canvas listener would never see it). Only reacts on the
+  // "start" state so it doesn't swallow taps on the "Play Again" button,
+  // which is handled by restartBtn's own click listener below.
+  function onOverlayTouchStart(e) {
+    if (gameState !== "start") return;
     e.preventDefault();
     ensureAudio(); // unlock WebAudio on first touch (cosmetic sound only)
-    if (gameState === "start") {
-      startGame();
-    }
-    for (var i = 0; i < e.changedTouches.length; i++) {
-      var t = e.changedTouches[i];
-      touches.set(t.identifier, touchPoint(t));
-    }
-    updateBlobFromTouches();
+    startGame();
+    var t = e.changedTouches[0];
+    activeTouchId = t.identifier;
+    var p = touchPoint(t);
+    pointerDown(p.x, p.y);
+  }
+
+  function onOverlayMouseDown(e) {
+    if (gameState !== "start") return;
+    ensureAudio();
+    startGame();
+    var rect = canvas.getBoundingClientRect();
+    pointerDown(e.clientX - rect.left, e.clientY - rect.top);
+  }
+
+  function onCanvasTouchStart(e) {
+    if (gameState !== "playing" || activeTouchId !== null) return; // ignore extra fingers
+    e.preventDefault();
+    var t = e.changedTouches[0];
+    activeTouchId = t.identifier;
+    var p = touchPoint(t);
+    pointerDown(p.x, p.y);
   }
 
   function onTouchMove(e) {
-    e.preventDefault();
+    if (activeTouchId === null) return;
     for (var i = 0; i < e.changedTouches.length; i++) {
       var t = e.changedTouches[i];
-      if (touches.has(t.identifier)) {
-        touches.set(t.identifier, touchPoint(t));
+      if (t.identifier === activeTouchId) {
+        e.preventDefault();
+        var p = touchPoint(t);
+        updatePointer(p.x, p.y);
+        break;
       }
     }
-    updateBlobFromTouches();
   }
 
   function onTouchEnd(e) {
-    e.preventDefault();
     for (var i = 0; i < e.changedTouches.length; i++) {
-      touches.delete(e.changedTouches[i].identifier);
+      if (e.changedTouches[i].identifier === activeTouchId) {
+        activeTouchId = null;
+        pointerUp();
+        break;
+      }
     }
-    updateBlobFromTouches();
   }
 
-  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
-  canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-  canvas.addEventListener("touchend", onTouchEnd, { passive: false });
-  canvas.addEventListener("touchcancel", onTouchEnd, { passive: false });
+  overlay.addEventListener("touchstart", onOverlayTouchStart, { passive: false });
+  overlay.addEventListener("mousedown", onOverlayMouseDown);
+  canvas.addEventListener("touchstart", onCanvasTouchStart, { passive: false });
+  // touchmove/touchend are tracked on window (like mousemove/mouseup below) so the
+  // drag keeps working even if the finger moves off whichever element it started on.
+  window.addEventListener("touchmove", onTouchMove, { passive: false });
+  window.addEventListener("touchend", onTouchEnd, { passive: false });
+  window.addEventListener("touchcancel", onTouchEnd, { passive: false });
 
-  // Desktop-testing convenience only (not required for play): mouse drag.
-  // Touch already covers every required action; this is purely a bonus.
-  var mouseDown = false;
+  // Mouse drag: a single held button, using the exact same pointerDown/updatePointer
+  // logic as a single finger above so both input paths behave identically.
   canvas.addEventListener("mousedown", function (e) {
-    if (gameState === "start") startGame();
-    mouseDown = true;
-    blob.y = clamp(e.clientY - canvas.getBoundingClientRect().top, blob.r, height - blob.r);
+    if (gameState !== "playing") return;
+    var rect = canvas.getBoundingClientRect();
+    pointerDown(e.clientX - rect.left, e.clientY - rect.top);
   });
   window.addEventListener("mousemove", function (e) {
-    if (!mouseDown || gameState !== "playing") return;
-    blob.y = clamp(e.clientY - canvas.getBoundingClientRect().top, blob.r, height - blob.r);
+    if (!pointerActive) return;
+    var rect = canvas.getBoundingClientRect();
+    updatePointer(e.clientX - rect.left, e.clientY - rect.top);
   });
-  window.addEventListener("mouseup", function () { mouseDown = false; });
+  window.addEventListener("mouseup", function () { pointerUp(); });
 
   restartBtn.addEventListener("click", function () {
     startGame();

@@ -1,27 +1,27 @@
 # Pinch Point
 
-**One-line pitch:** Drag to steer and pinch to resize your blob as you squeeze it through a stream of shrinking gaps — the bigger you dare to stay, the more each gap is worth.
+**One-line pitch:** Drag to steer and drag sideways to resize your blob as you squeeze it through a stream of shrinking gaps — the bigger you dare to stay, the more each gap is worth.
 
 ## The original twist
 
-Most "gap dodger" games (Flappy Bird and its many clones) only ever give you control over *position*. Pinch Point adds a second, equally important control axis: your own size. A two-finger pinch gesture — normally reserved for zooming photos or maps — becomes the core resizing mechanic. Score rewards staying large (bigger blob = bigger bonus per gap cleared), but a large blob is much harder to fit through a narrow gap, so the player is constantly trading risk for reward by actively pinching in and out as gaps approach, rather than just tapping to move.
+Most "gap dodger" games (Flappy Bird and its many clones) only ever give you control over *position*. Pinch Point adds a second, equally important control axis: your own size, driven by a single continuous drag — vertical motion steers, horizontal motion resizes — using just one finger or one held mouse button. Score rewards staying large (bigger blob = bigger bonus per gap cleared), but a large blob is much harder to fit through a narrow gap, so the player is constantly trading risk for reward by actively dragging in and out as gaps approach, rather than just tapping to move.
 
 ## How to play / controls
 
-Touch-only, no keyboard or mouse required:
+A single point of contact — one finger, or one held mouse button — controls everything:
 
-- **One-finger drag:** touch and drag anywhere on the screen to move the blob up and down, following your finger's vertical position.
-- **Two-finger pinch:** put two fingers on the screen and spread them apart to grow the blob, or bring them together to shrink it. While pinching, the blob also follows the average vertical position of your two fingers, so you can resize and reposition at the same time.
-- **Tap to start:** touch anywhere on the start screen to begin a run.
+- **Drag up/down:** press and drag anywhere on the screen to move the blob's vertical position, following your pointer.
+- **Drag left/right to resize:** the blob's size follows the horizontal offset between your pointer's current position and where the press started. Drag right of the start point to grow the blob toward its max size, drag left to shrink it toward its min size. No horizontal movement leaves the blob at whatever size it was when you pressed down; releasing and pressing again resets that neutral baseline to the blob's current size.
+- **Tap/click to start:** touch or click anywhere on the start screen to begin a run.
 - **Tap "Play Again":** after a collision, tap the on-screen button to restart immediately.
 
-(A mouse-drag fallback is wired up purely for desktop testing convenience — it is not required and does not support pinch-resizing. The game is fully playable with touch alone.)
+Mouse and touch drive the exact same underlying logic, so the game plays identically with a single held mouse button on desktop or a single finger on mobile — no multi-touch gesture is used or required.
 
 ## Core mechanics
 
 - The blob sits at a fixed horizontal position on the left third of the screen. Red wall segments ("gates"), each with one gap, scroll in from the right at a steadily increasing speed.
-- The blob's vertical position is fully player-controlled (via one-finger drag or two-finger pinch-and-move); if no finger is touching the screen, the blob holds its last position and size while gates keep advancing.
-- The blob's radius is controlled live by two-finger pinch distance, mapped between a minimum and maximum radius (relative to screen width, so it scales to any phone size).
+- The blob's vertical position follows the pointer's Y while a single finger or mouse button is held down; if no pointer is down, the blob holds its last position and size while gates keep advancing.
+- The blob's radius is controlled live by the horizontal offset from wherever the current press started, mapped toward a minimum or maximum radius (relative to screen width, so it scales to any phone size).
 - Passing a gate cleanly awards `10 + round(radius / 2)` points — staying bigger is worth more per gate, creating a constant push to grow versus the safety of shrinking for tight gaps.
 - Difficulty ramps smoothly over the first ~60 seconds of a run: gate speed increases, gates spawn more frequently, and the range of gap sizes shrinks (both the largest and smallest possible gap get tighter).
 - The current score and personal best (persisted in `localStorage`) are shown at the top of the screen throughout the run.
@@ -109,3 +109,7 @@ Original poster-style illustrations (not screenshots) inspired by the game's bio
 | `thumb-large.png`  | 1280 × 720 px| Hero banner on the game's own page; also works directly as an Open Graph / Twitter Card social-preview image |
 
 The artwork depicts the glowing mint blob mid-pinch (a dashed vertical guide with two ring handles evoking the two-finger gesture) facing a run of coral-pink gate walls whose gaps narrow from left to right, with the "PINCH POINT" title rendered in the same mint-to-coral gradient used on the game's own game-over screen.
+
+## Edit Log
+
+- **2026-07-20:** Fixed the start screen not responding to any tap/click on first load (the `#overlay` div was intercepting pointer events before they ever reached the canvas's own listeners, and the only working entry point, `restartBtn`, was hidden until after a game over). Also replaced the two-finger pinch-to-resize control scheme with a single-pointer drag: blob.y follows the pointer's Y, and blob.r follows the horizontal offset from where the current press started (right = grow, left = shrink), so the game is now fully playable with either one finger or a single held mouse button — no multi-touch required. Updated the on-screen start instructions and this doc's controls/mechanics sections to match.

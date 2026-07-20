@@ -172,7 +172,6 @@
     canvas.height = height;
     blob.x = width * 0.28;
     blob.y = clamp(blob.y, blob.r, height - blob.r);
-    updateBgGradients(); // cosmetic only
   }
 
   // ---- constants (mechanics-only baseline; balancing pass will tune) ----
@@ -208,52 +207,13 @@
   var gameState = "start"; // "start" | "playing" | "over"
 
   // ---- purely cosmetic state (visuals/juice only; never read by game logic) ----
-  var bgGradient = null;
-  var vignetteGradient = null;
+  // Flat, lightweight theme: dark background, light-gray gate walls, no
+  // gradients/shadowBlur anywhere in the per-frame render path (see render()).
+  var BG_COLOR = "#0a0a12";
+  var GATE_COLOR = "#c7ccd6"; // light gray, no per-gate gradient variety anymore
   var particles = [];
   var shakeTime = 0, shakeDur = 0, shakeMag = 0;
   var shakeOffX = 0, shakeOffY = 0;
-  var cosmeticTime = 0; // clock for slow drifting background motion only
-
-  // Distant drifting color orbs + twinkling dots for background depth/variety.
-  // Positions stored as fractions of width/height so they stay put across resizes.
-  // Purely decorative: drawn first, behind everything, never read by game logic.
-  // Cosmetic-only gate wall color variety: each gate is randomly assigned one of
-  // these gradient pairs at spawn time (in spawnGate, see `paletteIdx`), purely for
-  // visual variety — geometry, collision, and scoring never read this value.
-  var GATE_COLOR_PALETTES = [
-    ["#ff3d5e", "#ff8f6b", "rgba(255, 77, 109, 0.4)"],
-    ["#ff6b3d", "#ffcf6b", "rgba(255, 154, 61, 0.4)"],
-    ["#c73dff", "#ff6b95", "rgba(199, 61, 255, 0.35)"]
-  ];
-  var ORB_PALETTE = ["#7a4fe0", "#189a82", "#ff9a3d", "#c77dff"];
-  var orbs = [];
-  (function initOrbs() {
-    for (var i = 0; i < 4; i++) {
-      orbs.push({
-        fx: 0.15 + Math.random() * 0.7,
-        fy: 0.1 + Math.random() * 0.8,
-        r: 90 + Math.random() * 140,
-        color: ORB_PALETTE[i % ORB_PALETTE.length],
-        speed: 0.02 + Math.random() * 0.03,
-        phase: Math.random() * Math.PI * 2
-      });
-    }
-  })();
-  var STAR_COUNT = 46;
-  var stars = [];
-  (function initStars() {
-    for (var i = 0; i < STAR_COUNT; i++) {
-      stars.push({
-        fx: Math.random(),
-        fy: Math.random(),
-        r: 0.6 + Math.random() * 1.6,
-        phase: Math.random() * Math.PI * 2,
-        speed: 0.6 + Math.random() * 1.1,
-        warm: Math.random() < 0.35
-      });
-    }
-  })();
 
   var audioCtx = null;
   function ensureAudio() {
@@ -304,7 +264,6 @@
   }
 
   function updateCosmetics(dt) {
-    cosmeticTime += dt;
     if (shakeTime > 0) {
       shakeTime = Math.max(0, shakeTime - dt);
       var amt = shakeDur > 0 ? shakeMag * (shakeTime / shakeDur) : 0;
@@ -323,27 +282,6 @@
       p.vx *= 0.93;
       p.vy *= 0.93;
     }
-  }
-
-  function updateBgGradients() {
-    // Layered, multi-hue backdrop: a warm violet glow near the blob's home
-    // lane blending into a cooler teal midtone and a near-black indigo edge,
-    // rather than a single dark-teal wash — adds depth/variety at a glance.
-    bgGradient = ctx.createRadialGradient(
-      width * 0.28, height * 0.42, 20,
-      width * 0.28, height * 0.42, Math.max(width, height) * 0.95
-    );
-    bgGradient.addColorStop(0, "#2c1f52");
-    bgGradient.addColorStop(0.35, "#182050");
-    bgGradient.addColorStop(0.68, "#0e1a3a");
-    bgGradient.addColorStop(1, "#060314");
-
-    vignetteGradient = ctx.createRadialGradient(
-      width / 2, height / 2, height * 0.32,
-      width / 2, height / 2, height * 0.8
-    );
-    vignetteGradient.addColorStop(0, "rgba(0,0,0,0)");
-    vignetteGradient.addColorStop(1, "rgba(4,2,12,0.5)");
   }
 
   function clamp(v, lo, hi) {
@@ -556,8 +494,7 @@
       x: width + GATE_WIDTH,
       gapY: gapY,
       gapHalf: gapHalf,
-      passed: false,
-      paletteIdx: Math.floor(Math.random() * GATE_COLOR_PALETTES.length) // cosmetic only
+      passed: false
     });
   }
 
@@ -610,50 +547,19 @@
     ctx.save();
     ctx.translate(shakeOffX, shakeOffY);
 
-    // background
-    ctx.fillStyle = bgGradient || "#0e1a3a";
+    // background: flat dark fill, no gradient
+    ctx.fillStyle = BG_COLOR;
     ctx.fillRect(-30, -30, width + 60, height + 60);
 
-    // distant drifting color orbs (soft, blurred via gradient falloff, very slow motion)
-    for (var oI = 0; oI < orbs.length; oI++) {
-      var orb = orbs[oI];
-      var ox = orb.fx * width + Math.sin(cosmeticTime * orb.speed + orb.phase) * 26;
-      var oy = orb.fy * height + Math.cos(cosmeticTime * orb.speed * 0.8 + orb.phase) * 18;
-      var orbGrad = ctx.createRadialGradient(ox, oy, 0, ox, oy, orb.r);
-      orbGrad.addColorStop(0, orb.color + "33");
-      orbGrad.addColorStop(1, orb.color + "00");
-      ctx.fillStyle = orbGrad;
-      ctx.fillRect(ox - orb.r, oy - orb.r, orb.r * 2, orb.r * 2);
-    }
-
-    // twinkling background stars (mixed warm/cool dots for texture)
-    for (var sI = 0; sI < stars.length; sI++) {
-      var star = stars[sI];
-      var tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(cosmeticTime * star.speed + star.phase));
-      ctx.globalAlpha = tw * 0.7;
-      ctx.fillStyle = star.warm ? "#ffcf6b" : "#c9d8ff";
-      ctx.beginPath();
-      ctx.arc(star.fx * width, star.fy * height, star.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // gates: warm coral/gold gradient walls (per-gate hue variety) with a glowing
-    // edge along the gap ("pinch" sensor line)
+    // gates: flat light-gray walls with a thin bright edge along the gap
+    // ("pinch" sensor line) — no gradient, no shadowBlur
     for (var i = 0; i < gates.length; i++) {
       var g = gates[i];
       var topH = g.gapY - g.gapHalf;
       var botY = g.gapY + g.gapHalf;
-      var pal = GATE_COLOR_PALETTES[g.paletteIdx || 0];
-      var wallGrad = ctx.createLinearGradient(g.x, 0, g.x + GATE_WIDTH, 0);
-      wallGrad.addColorStop(0, pal[0]);
-      wallGrad.addColorStop(1, pal[1]);
-      ctx.shadowColor = pal[2];
-      ctx.shadowBlur = 16;
-      ctx.fillStyle = wallGrad;
+      ctx.fillStyle = GATE_COLOR;
       ctx.fillRect(g.x, 0, GATE_WIDTH, Math.max(0, topH));
       ctx.fillRect(g.x, botY, GATE_WIDTH, Math.max(0, height - botY));
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = "rgba(255,255,255,0.4)";
       ctx.lineWidth = 2;
       if (topH > 0) {
@@ -668,26 +574,14 @@
       ctx.stroke();
     }
 
-    // blob: gradient that shifts from cool mint (small/safe) toward warm gold
-    // (large/risky) as it grows, so its color itself reads as a size cue,
-    // plus a thin gauge ring showing pinch size precisely.
+    // blob: flat fill that shifts from cool mint (small/safe) toward warm gold
+    // (large/risky) as it grows, so its color itself still reads as a size
+    // cue — a cheap flat lerpColor(), no gradient/shadowBlur.
     var radiusT = clamp((blob.r - BLOB_MIN_R) / (BLOB_MAX_R - BLOB_MIN_R), 0, 1);
-    var blobMid = lerpColor("#6dfad0", "#ffcf6b", radiusT);
-    var blobDeep = lerpColor("#189a82", "#ff9a3d", radiusT);
-    var blobGrad = ctx.createRadialGradient(
-      blob.x - blob.r * 0.3, blob.y - blob.r * 0.3, Math.max(1, blob.r * 0.1),
-      blob.x, blob.y, blob.r
-    );
-    blobGrad.addColorStop(0, "#fbfff8");
-    blobGrad.addColorStop(0.55, blobMid);
-    blobGrad.addColorStop(1, blobDeep);
-    ctx.shadowColor = radiusT < 0.5 ? "rgba(109, 250, 208, 0.6)" : "rgba(255, 154, 61, 0.6)";
-    ctx.shadowBlur = 22;
-    ctx.fillStyle = blobGrad;
+    ctx.fillStyle = lerpColor("#6dfad0", "#ffcf6b", radiusT);
     ctx.beginPath();
     ctx.arc(blob.x, blob.y, blob.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
 
     ctx.beginPath();
     ctx.arc(blob.x, blob.y, blob.r + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * radiusT);
@@ -709,12 +603,6 @@
     ctx.globalAlpha = 1;
 
     ctx.restore();
-
-    // vignette (fixed, not affected by shake)
-    if (vignetteGradient) {
-      ctx.fillStyle = vignetteGradient;
-      ctx.fillRect(0, 0, width, height);
-    }
   }
 
   var lastTime = null;

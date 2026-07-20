@@ -86,6 +86,21 @@ Mouse and touch drive the exact same underlying logic, so the game plays identic
 - [Triadic Harmony — palette.site](https://palette.site/blog/2025-09-22-triadic-harmony/) — using 3 spaced hues over a dominant base color for a "vibrant but balanced" arcade look.
 - General search on synthwave/vaporwave CSS gradient backgrounds — confirmed layered multi-stop gradients plus small drifting/twinkling elements are a common lightweight (no-image) way to add background depth.
 
+### 2026-07-20 performance pass — flat dark/gray theme (fix reported lag)
+
+**Why:** after the "too monotone" refresh above, the player reported the game had become "very laggy." The likely cause: every frame was recreating several `ctx.createRadialGradient`/`createLinearGradient` objects (background, 4 drifting orbs, each gate wall, the blob) and applying `ctx.shadowBlur` (an expensive canvas op) to both the blob and every gate wall, on top of per-frame trig for 4 drifting orbs and alpha math for 46 twinkling stars. The user also explicitly asked for a specific new look: dark background, light-gray obstacles, no gradients, lighter rendering.
+
+**What changed (rendering only, zero gameplay/mechanics/balance changes):**
+- **Background:** replaced the multi-stop radial gradient with a flat solid dark fill (`BG_COLOR = "#0a0a12"`). Dropped the fixed vignette overlay too (it was itself a gradient, redrawn as a full-screen `fillRect` every frame) to honor the "avoid gradients" request outright.
+- **Removed entirely:** the 4 drifting color "orb" gradients and the 46 twinkling background stars (`orbs`, `ORB_PALETTE`, `stars`, `STAR_COUNT`, `initOrbs`/`initStars`, `cosmeticTime`) — these were the single biggest cost (gradient + trig math for dozens of objects every frame) and didn't fit the new flat/dark aesthetic anyway.
+- **Gate walls:** replaced the per-gate random 3-palette linear-gradient fill plus `shadowBlur` glow with a single flat light-gray fill (`GATE_COLOR = "#c7ccd6"`), removing `GATE_COLOR_PALETTES` and the gate's `paletteIdx` field entirely. Kept the thin white "sensor line" stroke along the gap edge (a cheap `stroke()`, not a gradient/shadow) for gap-edge legibility.
+- **Blob:** replaced the radial-gradient fill plus `shadowBlur` glow with a flat solid fill. Kept the existing mint→gold `lerpColor()` size cue (bigger = more gold = riskier) since it's a cheap flat-color computation with no gradient or shadow involved, and it's a meaningful gameplay-readability feature the game-creator originally asked for. Kept the thin white gauge-ring stroke around the blob (cheap, non-gradient).
+- Particle effects (collision/gate-pass bursts) were left untouched — small fixed counts, flat fills, no gradients, not a meaningful contributor to the reported lag.
+
+**Verified:** re-read `render()` top to bottom after the change — zero `createRadialGradient`, `createLinearGradient`, or `shadowBlur` calls remain anywhere in the per-frame render path. Confirmed via `node -e` syntax check and opened the file directly (`open index.html`) to sanity-check the game still loads and plays with the same controls/collision/scoring as before.
+
+**Note:** the `description.json` marketing copy previously called the blob "glowing" in all three languages, which was accurate under the old shadowBlur-glow theme but not this one — regenerated via `game-describer` to describe the flat dark-background/light-gray-gates look instead.
+
 ## Difficulty Tuning
 
 **Starting point:** the pre-balance version already had the right shape — a single `difficultyT()` progress value (0→1) driving gate speed, spawn interval, and gap-size range via `lerp()`, with a linear ramp that finished at a hard 60-second cutoff. The values themselves (140→380 px/s speed, 1.8s→1.0s spawn interval, gap half-width 120/75 down to 75/42) were already well-judged for an easy opening and a fair ceiling, so this pass focused on *how* progress accumulates over time rather than re-picking the endpoints.

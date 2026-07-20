@@ -11,7 +11,7 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: linear-gradient(#ffefd6, #1c6387 58%, #04202e);
+    background: linear-gradient(#fbe7c6, #ff9f6b 30%, #1c4f72 62%, #071726);
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
@@ -38,8 +38,22 @@
   function resize() {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
+    buildGrainPattern(); // cosmetic-only poster-grain texture, independent of gameplay
   }
   window.addEventListener('resize', resize);
+
+  // Precompute a tiny tiled dot pattern once per resize instead of drawing
+  // per-pixel noise every frame — cheap, purely decorative "poster grain".
+  function buildGrainPattern() {
+    var tile = document.createElement('canvas');
+    tile.width = tile.height = 5;
+    var tctx = tile.getContext('2d');
+    tctx.fillStyle = 'rgba(255,255,255,0.05)';
+    tctx.fillRect(0, 0, 1, 1);
+    tctx.fillRect(2, 3, 1, 1);
+    grainPattern = ctx.createPattern(tile, 'repeat');
+  }
+
   resize();
 
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -56,29 +70,44 @@
   }
 
   // ---------- visual theme (ocean / surf) ----------
+  // "Dusk Reef" direction: a warm sunset horizon behind cool, layered wave
+  // silhouettes — poster-style parallax bands instead of a flat gradient —
+  // paired with a serif display face for headings against a plain sans for
+  // HUD/body copy. See the "Visual Design" section of GAME.md for sourcing.
   var FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+  var FONT_DISPLAY = 'Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif';
   function fontStr(weight, size) { return weight + ' ' + size + 'px ' + FONT_STACK; }
+  function fontDisplayStr(weight, size) { return weight + ' ' + size + 'px ' + FONT_DISPLAY; }
 
   var COLORS = {
-    skyTop: '#FFEFD6',
-    skyHorizon: '#FFD9A0',
-    seaSurface: '#1C6387',
-    seaDeep: '#04202E',
-    trackLine: 'rgba(255, 246, 232, 0.28)',
-    breakLine: 'rgba(255, 246, 232, 0.55)',
-    waveBandHi: 'rgba(255, 255, 255, 0.30)',
-    waveBandLo: 'rgba(140, 210, 225, 0.16)',
-    zoneIdle: 'rgba(77, 217, 176, 0.55)',
-    zoneActive: 'rgba(92, 224, 184, 0.95)',
-    zoneGlow: 'rgba(92, 224, 184, 0.85)',
+    skyTop: '#FBE7C6',
+    skyHorizon: '#FF9F6B',
+    seaSurface: '#1C4F72',
+    seaDeep: '#071726',
+    sunGlow: 'rgba(255, 158, 122, 0.50)',
+    layerFar: 'rgba(255, 182, 145, 0.20)',
+    layerMid: 'rgba(64, 108, 150, 0.38)',
+    layerNear: 'rgba(24, 64, 96, 0.60)',
+    foamFleck: 'rgba(255, 246, 232, 0.5)',
+    trackLine: 'rgba(255, 224, 184, 0.22)',
+    breakLine: 'rgba(255, 246, 232, 0.5)',
+    waveBandHi: 'rgba(255, 255, 255, 0.32)',
+    waveBandLo: 'rgba(140, 210, 225, 0.14)',
+    zoneIdle: 'rgba(72, 214, 173, 0.55)',
+    zoneActive: 'rgba(99, 230, 192, 0.95)',
+    zoneGlow: 'rgba(99, 230, 192, 0.85)',
     closeoutIdle: 'rgba(255, 90, 70, 0.55)',
     closeoutActive: 'rgba(255, 74, 58, 0.88)',
     player: '#FF7A4D',
+    playerDeck: '#FFC9A6',
     playerRim: '#FFF6E8',
-    panelBorder: 'rgba(255, 214, 140, 0.55)',
+    panelFill: 'rgba(7, 23, 38, 0.42)',
+    panelBorder: 'rgba(255, 201, 140, 0.45)',
+    hudRule: 'rgba(255, 201, 140, 0.35)',
     textPrimary: '#FFF6E8',
+    textDim: 'rgba(255, 246, 232, 0.62)',
     textGold: '#FFD27C',
-    textSeafoam: '#5CE0B8',
+    textSeafoam: '#63E6C0',
     textCoral: '#FF6B5A',
     textSky: '#8FE1FF'
   };
@@ -89,6 +118,43 @@
   var START_LIVES = 3;
   var CATCH_WINDOW = 1.1; // seconds, always the tail end of the approach
   var SHAKE_DURATION = 0.28; // cosmetic screen-shake length on a wipeout
+  var FLASH_DURATION = 0.30; // cosmetic full-screen tint length on a wipeout
+
+  // Parallax wave-silhouette layers for the background (cosmetic only —
+  // purely decorative depth cue, never read by game logic).
+  var WAVE_LAYERS = [
+    { y: 0.46, amp: 12, freq: 1.05, speed: 0.10, phase: 0.4, color: '' }, // farthest
+    { y: 0.55, amp: 16, freq: 1.55, speed: 0.17, phase: 2.1, color: '' }, // mid
+    { y: 0.64, amp: 20, freq: 2.05, speed: 0.26, phase: 4.0, color: '' }  // nearest, closest to the lineup
+  ];
+
+  // Fixed field of gently pulsing foam flecks scattered over the sea —
+  // cosmetic only, generated once so they don't shift per resize.
+  var FOAM_FLECKS = (function () {
+    var flecks = [];
+    for (var i = 0; i < 26; i++) {
+      flecks.push({
+        xFrac: Math.random(),
+        yFrac: 0.5 + Math.random() * 0.46,
+        r: 0.6 + Math.random() * 1.6,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random() * 0.6
+      });
+    }
+    return flecks;
+  })();
+
+  // Double-up (fake-peak) waves: a second, decoy peak briefly lights up and
+  // fades earlier in some waves' approach, before the real catch window.
+  // Paddling for it is a trap; reading past it costs nothing. This is a
+  // second read/decide axis (behavior-over-time), independent of the
+  // existing X-axis drift.
+  var DOUBLEUP_WINDOW = 0.45;      // seconds the decoy's own "ready" window lasts
+  var DOUBLEUP_GAP = 0.25;         // required gap between decoy window closing and the real catch window opening
+  var DOUBLEUP_LEAD_FRAC = 0.15;   // earliest the decoy window can start, as a fraction of approach duration
+  var DOUBLEUP_FORM_TIME = 0.3;    // seconds the decoy visibly fades in before its window opens
+  var DOUBLEUP_FADE_TIME = 0.2;    // seconds the decoy visibly fades out after its window closes
+  var DOUBLEUP_MAX_PROB = 0.32;    // ceiling chance (at full difficulty) an eligible wave is a double-up, subject to timing fitting
 
   var TIER_DATA = {
     small:  { key: 'small',  base: 8,  zoneFrac: 0.34, requiredTaps: 3, label: 'Small' },
@@ -116,11 +182,18 @@
   var pointerActive = false;
   var tapFlashT = 0; // brief visual pulse when a tap registers
 
-  // purely cosmetic state (background motion, screen shake, tap splashes) —
-  // never read by game logic, only by the render layer.
+  // purely cosmetic state (background motion, screen shake, tap splashes,
+  // catch/wipeout/good-read flourishes, player wake trail) — never read by
+  // game logic, only by the render layer.
   var bgTime = 0;
   var shakeT = 0;
   var splashes = [];
+  var bursts = [];       // spark/foam particles on a clean catch
+  var readRings = [];    // soft acknowledgment ring on a good read (closeout skipped)
+  var flashT = 0;        // full-screen tint pulse (wipeouts)
+  var trail = [];        // fading marker positions behind the player, for a wake
+  var prevRenderState = null; // tracks state transitions purely for cosmetic triggers
+  var grainPattern = null;    // precomputed low-alpha poster-grain tile
 
   function resetSession() {
     score = 0;
@@ -164,6 +237,32 @@
     var wobbleFreq = lerp(1.2, 2.6, d);
     var startCenter = 0.20 + Math.random() * 0.60;
     var endCenter = 0.20 + Math.random() * 0.60;
+    var catchWindowStart = approachDuration - CATCH_WINDOW;
+
+    // Roll a double-up (fake-peak) for eligible, non-closeout waves — only
+    // when there's enough approach time left before the real catch window
+    // to fairly telegraph the decoy and let it fade. This naturally rules
+    // itself out on the fastest, late-session waves.
+    var isDoubleUp = false;
+    var decoyStartCenter = 0, decoyEndCenter = 0, decoyWindowStart = 0, decoyWindowEnd = 0;
+    if (!isCloseout) {
+      var earliestDecoyStart = approachDuration * DOUBLEUP_LEAD_FRAC;
+      var latestDecoyEnd = catchWindowStart - DOUBLEUP_GAP;
+      var span = latestDecoyEnd - earliestDecoyStart - DOUBLEUP_WINDOW;
+      if (span > 0 && Math.random() < lerp(0.0, DOUBLEUP_MAX_PROB, d)) {
+        isDoubleUp = true;
+        decoyWindowStart = earliestDecoyStart + Math.random() * span;
+        decoyWindowEnd = decoyWindowStart + DOUBLEUP_WINDOW;
+        decoyStartCenter = 0.20 + Math.random() * 0.60;
+        if (Math.abs(decoyStartCenter - startCenter) < 0.18) {
+          decoyStartCenter = clamp(startCenter + (startCenter < 0.5 ? 0.30 : -0.30), 0.06, 0.94);
+        }
+        decoyEndCenter = 0.20 + Math.random() * 0.60;
+        if (Math.abs(decoyEndCenter - endCenter) < 0.18) {
+          decoyEndCenter = clamp(endCenter + (endCenter < 0.5 ? 0.30 : -0.30), 0.06, 0.94);
+        }
+      }
+    }
 
     currentWave = {
       tier: tier,
@@ -175,27 +274,49 @@
       wobbleFreq: wobbleFreq,
       startCenter: startCenter,
       endCenter: endCenter,
-      catchWindowStart: approachDuration - CATCH_WINDOW,
+      catchWindowStart: catchWindowStart,
       inWindow: false,
       tapCount: 0,
       minDist: Infinity,
-      lastCenter: startCenter
+      lastCenter: startCenter,
+      isDoubleUp: isDoubleUp,
+      decoyStartCenter: decoyStartCenter,
+      decoyEndCenter: decoyEndCenter,
+      decoyWindowStart: decoyWindowStart,
+      decoyWindowEnd: decoyWindowEnd,
+      decoyInWindow: false,
+      decoyTapCount: 0,
+      decoyLastCenter: decoyStartCenter
     };
     state = STATE.APPROACH;
   }
 
-  function zoneCenterAt(wave, t) {
+  function centerAt(startCenter, endCenter, wobbleAmp, wobbleFreq, t) {
     var eased = easeInOut(t);
-    var c = lerp(wave.startCenter, wave.endCenter, eased);
-    c += Math.sin(t * Math.PI * 2 * wave.wobbleFreq) * wave.wobbleAmp;
+    var c = lerp(startCenter, endCenter, eased);
+    c += Math.sin(t * Math.PI * 2 * wobbleFreq) * wobbleAmp;
     return clamp(c, 0.06, 0.94);
+  }
+
+  function zoneCenterAt(wave, t) {
+    return centerAt(wave.startCenter, wave.endCenter, wave.wobbleAmp, wave.wobbleFreq, t);
+  }
+
+  function decoyCenterAt(wave, t) {
+    // Slightly faster wobble than the real peak so the decoy reads as a touch more erratic.
+    return centerAt(wave.decoyStartCenter, wave.decoyEndCenter, wave.wobbleAmp, wave.wobbleFreq * 1.4, t);
   }
 
   function resolveWave() {
     var wave = currentWave;
     var resultType, resultText, points = 0;
 
-    if (wave.isCloseout) {
+    if (wave.isDoubleUp && wave.decoyTapCount >= 2) {
+      resultType = 'wipeout';
+      lives--;
+      resultText = 'You committed to the inside bump — the real wave broke behind you!';
+      counts.wipeout++;
+    } else if (wave.isCloseout) {
       if (wave.tapCount >= 2) {
         resultType = 'wipeout';
         lives--;
@@ -322,6 +443,12 @@
         var g = trackGeom();
         spawnSplash(g.trackX + playerXFrac * g.trackWidth, g.breakY);
         beep(520, 0.06, 'sine', 0.05);
+      } else if (currentWave && currentWave.isDoubleUp && currentWave.decoyInWindow) {
+        currentWave.decoyTapCount++;
+        tapFlashT = 0.15;
+        var g2 = trackGeom();
+        spawnSplash(g2.trackX + playerXFrac * g2.trackWidth, g2.breakY);
+        beep(520, 0.06, 'sine', 0.05);
       }
       return;
     }
@@ -379,6 +506,29 @@
       s.alpha -= dt * 1.3;
       if (s.alpha <= 0) splashes.splice(i, 1);
     }
+    for (var bi = bursts.length - 1; bi >= 0; bi--) {
+      var b = bursts[bi];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.vy += dt * 60; // gentle gravity, purely decorative
+      b.life -= dt;
+      if (b.life <= 0) bursts.splice(bi, 1);
+    }
+    for (var ri = readRings.length - 1; ri >= 0; ri--) {
+      var rr = readRings[ri];
+      rr.r += dt * 40;
+      rr.alpha -= dt * 1.1;
+      if (rr.alpha <= 0) readRings.splice(ri, 1);
+    }
+    if (flashT > 0) flashT = Math.max(0, flashT - dt);
+    if (state === STATE.APPROACH) {
+      trail.push({ x: playerXFrac, life: 1 });
+      if (trail.length > 9) trail.shift();
+    }
+    for (var ti = trail.length - 1; ti >= 0; ti--) {
+      trail[ti].life -= dt * 3.2;
+      if (trail[ti].life <= 0) trail.splice(ti, 1);
+    }
 
     if (state === STATE.APPROACH && currentWave) {
       var wave = currentWave;
@@ -387,6 +537,11 @@
       var center = zoneCenterAt(wave, t);
       wave.lastCenter = center;
       wave.inWindow = wave.elapsed >= wave.catchWindowStart;
+
+      if (wave.isDoubleUp) {
+        wave.decoyLastCenter = decoyCenterAt(wave, t);
+        wave.decoyInWindow = wave.elapsed >= wave.decoyWindowStart && wave.elapsed < wave.decoyWindowEnd;
+      }
 
       if (wave.inWindow && !wave.isCloseout) {
         var halfWidth = wave.zoneWidthFrac / 2;
@@ -398,6 +553,40 @@
         resolveWave();
       }
     }
+
+    // cosmetic-only: react to a state transition into RESOLVE with a
+    // one-shot flourish keyed off the already-computed result. Reads
+    // lastResult/state but never writes any gameplay variable.
+    if (state !== prevRenderState) {
+      if (state === STATE.RESOLVE && lastResult) {
+        var pg = trackGeom();
+        var px = pg.trackX + playerXFrac * pg.trackWidth;
+        var py = pg.breakY;
+        if (lastResult.type === 'caught') spawnCatchBurst(px, py);
+        else if (lastResult.type === 'wipeout') flashT = FLASH_DURATION;
+        else if (lastResult.type === 'goodread') spawnReadRing(px, py);
+      }
+      prevRenderState = state;
+    }
+  }
+
+  // cosmetic-only particle helpers (never touched by game logic)
+  function spawnCatchBurst(x, y) {
+    for (var i = 0; i < 12; i++) {
+      var ang = (Math.PI * 2 * i) / 12 + Math.random() * 0.3;
+      var speed = 60 + Math.random() * 70;
+      bursts.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed - 40,
+        life: 0.5 + Math.random() * 0.3,
+        maxLife: 0.8,
+        hue: Math.random() < 0.5 ? COLORS.textSeafoam : COLORS.textGold
+      });
+    }
+  }
+  function spawnReadRing(x, y) {
+    readRings.push({ x: x, y: y, r: 4, alpha: 0.7 });
   }
 
   // ---------- render helpers ----------
@@ -418,38 +607,61 @@
   function drawBackground() {
     var sky = ctx.createLinearGradient(0, 0, 0, H);
     sky.addColorStop(0, COLORS.skyTop);
-    sky.addColorStop(0.32, COLORS.skyHorizon);
-    sky.addColorStop(0.52, COLORS.seaSurface);
+    sky.addColorStop(0.30, COLORS.skyHorizon);
+    sky.addColorStop(0.55, COLORS.seaSurface);
     sky.addColorStop(1, COLORS.seaDeep);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
 
     // low sun glow near the horizon
-    var sunX = W * 0.5, sunY = H * 0.16;
-    var glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, H * 0.38);
-    glow.addColorStop(0, 'rgba(255, 233, 190, 0.55)');
-    glow.addColorStop(1, 'rgba(255, 233, 190, 0)');
+    var sunX = W * 0.5, sunY = H * 0.15;
+    var glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, H * 0.4);
+    glow.addColorStop(0, COLORS.sunGlow);
+    glow.addColorStop(1, 'rgba(255, 158, 122, 0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
 
-    // faint ambient swell lines low on the screen — decorative only
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1.5;
-    for (var i = 0; i < 3; i++) {
-      var yy = H * 0.80 + i * 26;
+    // layered wave-silhouette bands (parallax) — a poster-style stand-in for
+    // detailed wave art: each band drifts at its own speed/scale so the
+    // background reads with depth instead of a flat gradient.
+    var layerColors = [COLORS.layerFar, COLORS.layerMid, COLORS.layerNear];
+    for (var li = 0; li < WAVE_LAYERS.length; li++) {
+      var layer = WAVE_LAYERS[li];
       ctx.beginPath();
-      var step = Math.max(16, W / 40);
+      ctx.moveTo(0, H);
+      var step = Math.max(14, W / 46);
       for (var x = 0; x <= W; x += step) {
-        var yy2 = yy + Math.sin(x * 0.02 + bgTime * 0.6 + i * 1.3) * 4;
-        if (x === 0) ctx.moveTo(x, yy2); else ctx.lineTo(x, yy2);
+        var yy = H * layer.y + Math.sin(x * 0.01 * layer.freq + bgTime * layer.speed + layer.phase) * layer.amp;
+        ctx.lineTo(x, yy);
       }
-      ctx.stroke();
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = layerColors[li];
+      ctx.fill();
+    }
+
+    // gently pulsing foam flecks scattered across the sea — decorative only
+    ctx.fillStyle = COLORS.foamFleck;
+    for (var fi = 0; fi < FOAM_FLECKS.length; fi++) {
+      var f = FOAM_FLECKS[fi];
+      var pulse = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(bgTime * f.speed + f.phase));
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.arc(f.xFrac * W, f.yFrac * H, f.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // faint tiled poster-grain texture over everything so far
+    if (grainPattern) {
+      ctx.fillStyle = grainPattern;
+      ctx.fillRect(0, 0, W, H);
     }
   }
 
   function drawLineup(g) {
     ctx.strokeStyle = COLORS.trackLine;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(g.trackX, g.topY - 20);
     ctx.lineTo(g.trackX, g.breakY + 30);
@@ -457,15 +669,48 @@
     ctx.lineTo(g.trackX + g.trackWidth, g.breakY + 30);
     ctx.stroke();
 
-    // break line, styled as a soft foam edge
+    // break line, styled as a scalloped foam edge instead of a plain dash
     ctx.strokeStyle = COLORS.breakLine;
-    ctx.setLineDash([7, 7]);
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(g.trackX, g.breakY);
     ctx.lineTo(g.trackX + g.trackWidth, g.breakY);
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,246,232,0.30)';
+    var puffR = 3, puffGap = 12;
+    for (var px = g.trackX + puffGap / 2; px < g.trackX + g.trackWidth; px += puffGap) {
+      ctx.beginPath();
+      ctx.arc(px, g.breakY, puffR, Math.PI, 0);
+      ctx.fill();
+    }
+  }
+
+  // Shared styling for the real peak zone and the double-up decoy so the
+  // two are pixel-identical apart from position/alpha/active-glow — the
+  // only legitimate "tell" stays *when* one lights up, never how it looks.
+  function drawFoamBand(zoneX, y, zoneW, barH, isActive, alpha, wobblePhase) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (isActive) { ctx.shadowColor = COLORS.zoneGlow; ctx.shadowBlur = 20; }
+    ctx.fillStyle = isActive ? COLORS.zoneActive : COLORS.zoneIdle;
+    roundRect(zoneX, y - barH / 2, zoneW, barH, 7);
+    ctx.fill();
+    ctx.restore();
+
+    // scalloped foam cap along the top edge, clipped to the band
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    roundRect(zoneX, y - barH / 2, zoneW, barH, 7);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    var bump = 4.5, gap = 11;
+    for (var bx = zoneX - bump; bx < zoneX + zoneW + bump; bx += gap) {
+      var bob = Math.sin(bx * 0.4 + wobblePhase) * 1.4;
+      ctx.beginPath();
+      ctx.arc(bx, y - barH / 2 + bob, bump, Math.PI, 0);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   function drawWave(wave, g) {
@@ -518,38 +763,131 @@
       }
       ctx.restore();
 
-      ctx.fillStyle = COLORS.textPrimary;
-      ctx.font = fontStr(700, 12);
-      ctx.textAlign = 'center';
-      ctx.fillText('CLOSEOUT', x0 + wtot / 2, y - barH / 2 - 16);
+      drawZoneLabel(x0 + wtot / 2, y - barH / 2 - 16, 'CLOSEOUT', COLORS.closeoutActive);
     } else {
       var center = wave.lastCenter;
       var zoneW = wave.zoneWidthFrac * wtot;
       var zoneX = x0 + center * wtot - zoneW / 2;
 
-      ctx.save();
-      if (wave.inWindow) { ctx.shadowColor = COLORS.zoneGlow; ctx.shadowBlur = 18; }
-      ctx.fillStyle = wave.inWindow ? COLORS.zoneActive : COLORS.zoneIdle;
-      roundRect(zoneX, y - barH / 2, zoneW, barH, 7);
-      ctx.fill();
-      ctx.restore();
+      // decoy (fake) peak — drawn with the exact same helper/style as the
+      // real zone below, so the only tell is behavior over time (when it
+      // lights up and fades), never color or shape.
+      if (wave.isDoubleUp) {
+        var dFormStart = Math.max(0, wave.decoyWindowStart - DOUBLEUP_FORM_TIME);
+        var dFadeEnd = wave.decoyWindowEnd + DOUBLEUP_FADE_TIME;
+        if (wave.elapsed >= dFormStart && wave.elapsed < dFadeEnd) {
+          var dAlpha = 1;
+          if (wave.elapsed < wave.decoyWindowStart) {
+            dAlpha = clamp((wave.elapsed - dFormStart) / DOUBLEUP_FORM_TIME, 0, 1);
+          } else if (wave.elapsed >= wave.decoyWindowEnd) {
+            dAlpha = clamp(1 - (wave.elapsed - wave.decoyWindowEnd) / DOUBLEUP_FADE_TIME, 0, 1);
+          }
+          var dCenter = wave.decoyLastCenter;
+          var dZoneX = x0 + dCenter * wtot - zoneW / 2;
+          drawFoamBand(dZoneX, y, zoneW, barH, wave.decoyInWindow, dAlpha, wave.elapsed * 5);
 
-      ctx.fillStyle = COLORS.textPrimary;
-      ctx.font = fontStr(700, 12);
-      ctx.textAlign = 'center';
-      ctx.fillText(wave.tier.label + ' wave', x0 + wtot / 2, y - barH / 2 - 16);
+          // purely cosmetic acknowledgment: once the decoy's window has
+          // already closed with no taps landed on it, ripple it away with a
+          // soft dissipating ring instead of just alpha-fading to nothing.
+          // This only ever fires after that read is already locked in (the
+          // real catch window hasn't opened yet, per DOUBLEUP_GAP), so it
+          // can't leak information that changes any decision.
+          if (wave.decoyTapCount === 0 && wave.elapsed >= wave.decoyWindowEnd) {
+            var dissT = clamp((wave.elapsed - wave.decoyWindowEnd) / DOUBLEUP_FADE_TIME, 0, 1);
+            ctx.save();
+            ctx.globalAlpha = (1 - dissT) * 0.6;
+            ctx.strokeStyle = COLORS.zoneGlow;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(dZoneX + zoneW / 2, y, zoneW / 2 + dissT * 14, barH / 2 + dissT * 10, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+
+      drawFoamBand(zoneX, y, zoneW, barH, wave.inWindow, 1, wave.elapsed * 5);
+
+      drawZoneLabel(x0 + wtot / 2, y - barH / 2 - 16, wave.tier.label + ' wave', COLORS.textPrimary);
     }
+  }
+
+  // Small poster-style pill badge for the wave-tier / closeout label —
+  // replaces the old bare text for a bit more HUD-chrome polish.
+  function drawZoneLabel(cx, badgeBottomY, text, accent) {
+    ctx.font = fontStr(700, 11);
+    var padX = 9;
+    var textW = ctx.measureText(text).width;
+    var w = textW + padX * 2, h = 19;
+    var top = badgeBottomY - h;
+    var midY = top + h / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(7, 23, 38, 0.45)';
+    roundRect(cx - w / 2, top, w, h, h / 2);
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    roundRect(cx - w / 2, top, w, h, h / 2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, midY + 1);
+    ctx.restore();
   }
 
   function drawSplashes() {
     for (var i = 0; i < splashes.length; i++) {
       var s = splashes[i];
+      var a = Math.max(0, s.alpha);
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255,255,255,' + Math.max(0, s.alpha) + ')';
+      ctx.strokeStyle = 'rgba(255,255,255,' + a + ')';
       ctx.lineWidth = 2;
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(99,230,192,' + (a * 0.6) + ')';
+      ctx.lineWidth = 1;
+      ctx.arc(s.x, s.y, s.r * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
     }
+  }
+
+  // catch-burst spark particles (see spawnCatchBurst) and the soft
+  // good-read acknowledgment ring (see spawnReadRing) — purely decorative.
+  function drawBursts() {
+    for (var i = 0; i < bursts.length; i++) {
+      var b = bursts[i];
+      var a = clamp(b.life / b.maxLife, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = b.hue;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (var j = 0; j < readRings.length; j++) {
+      var rr = readRings[j];
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, rr.alpha);
+      ctx.strokeStyle = COLORS.textSky;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(rr.x, rr.y, rr.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawWipeoutFlash() {
+    if (flashT <= 0) return;
+    var a = (flashT / FLASH_DURATION) * 0.35;
+    ctx.fillStyle = 'rgba(255, 74, 58, ' + a + ')';
+    ctx.fillRect(0, 0, W, H);
   }
 
   function drawPlayer(g) {
@@ -558,80 +896,188 @@
     var py = g.breakY + bob;
     var flashScale = 1 + tapFlashT * 2;
 
+    // fading wake trail behind the marker's recent positions
+    for (var i = 0; i < trail.length; i++) {
+      var tpt = trail[i];
+      if (tpt.life <= 0) continue;
+      var tx = g.trackX + tpt.x * g.trackWidth;
+      ctx.save();
+      ctx.globalAlpha = tpt.life * 0.22;
+      ctx.fillStyle = COLORS.playerRim;
+      ctx.beginPath();
+      ctx.ellipse(tx, py, 7 * tpt.life, 4 * tpt.life, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.save();
+    ctx.translate(px, py);
     ctx.shadowColor = 'rgba(255, 122, 77, 0.65)';
     ctx.shadowBlur = 8 + tapFlashT * 30;
+
+    // simple surfboard silhouette: an elongated capsule with a nose taper
     ctx.beginPath();
-    ctx.ellipse(px, py, 13 * flashScale, 8 * flashScale, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 14 * flashScale, 6.5 * flashScale, 0, 0, Math.PI * 2);
     ctx.fillStyle = COLORS.player;
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.6;
     ctx.strokeStyle = COLORS.playerRim;
+    ctx.stroke();
+
+    // stringer line (board centerline) + small deck highlight
+    ctx.beginPath();
+    ctx.moveTo(-11 * flashScale, 0);
+    ctx.lineTo(11 * flashScale, 0);
+    ctx.strokeStyle = COLORS.playerDeck;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();
   }
 
+  // Manually letter-spaced text — canvas has no reliable cross-browser
+  // letter-spacing property, so small caps labels are spaced by hand for a
+  // touch of poster-style HUD chrome. Respects the current textAlign.
+  function drawTracked(text, x, y, spacing) {
+    var total = 0;
+    var i;
+    for (i = 0; i < text.length; i++) {
+      total += ctx.measureText(text[i]).width + (i < text.length - 1 ? spacing : 0);
+    }
+    var align = ctx.textAlign;
+    var startX = align === 'center' ? x - total / 2 : (align === 'right' ? x - total : x);
+    ctx.textAlign = 'left';
+    var cx = startX;
+    for (i = 0; i < text.length; i++) {
+      ctx.fillText(text[i], cx, y);
+      cx += ctx.measureText(text[i]).width + spacing;
+    }
+    ctx.textAlign = align;
+  }
+
   function drawHUD() {
-    var barH = 42;
+    var barH = 50;
     var grad = ctx.createLinearGradient(0, 0, 0, barH);
-    grad.addColorStop(0, 'rgba(4, 32, 46, 0.50)');
-    grad.addColorStop(1, 'rgba(4, 32, 46, 0)');
+    grad.addColorStop(0, COLORS.panelFill);
+    grad.addColorStop(1, 'rgba(7, 23, 38, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, barH);
+    ctx.strokeStyle = COLORS.hudRule;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, barH - 0.5);
+    ctx.lineTo(W, barH - 0.5);
+    ctx.stroke();
 
     ctx.textBaseline = 'top';
-    ctx.font = fontStr(700, 15);
-    ctx.fillStyle = COLORS.textPrimary;
+
+    // score: small tracked label over a bold value
     ctx.textAlign = 'left';
-    ctx.fillText('SCORE ' + score, 16, 13);
+    ctx.font = fontStr(600, 9);
+    ctx.fillStyle = COLORS.textDim;
+    drawTracked('SCORE', 16, 8, 1.5);
+    ctx.font = fontDisplayStr(700, 19);
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.fillText(String(score), 16, 19);
 
+    // wave progress: tracked label + a compact dot-track of all 10 waves
     ctx.textAlign = 'center';
-    ctx.fillStyle = COLORS.textGold;
-    ctx.fillText('WAVE ' + Math.min(waveIndex, SESSION_WAVES) + ' / ' + SESSION_WAVES, W / 2, 13);
-
-    // life pips (small filled circles) instead of plain "Lives: n" text
-    var pipR = 5, gap = 14;
-    for (var i = 0; i < START_LIVES; i++) {
-      var cx = W - 16 - pipR - (START_LIVES - 1 - i) * gap;
+    ctx.font = fontStr(600, 9);
+    ctx.fillStyle = COLORS.textDim;
+    drawTracked('WAVE ' + Math.min(waveIndex, SESSION_WAVES) + ' / ' + SESSION_WAVES, W / 2, 8, 1.2);
+    var dotR = 2.6, dotGap = 8.5;
+    var trackW = (SESSION_WAVES - 1) * dotGap;
+    var dotX0 = W / 2 - trackW / 2;
+    for (var wi = 0; wi < SESSION_WAVES; wi++) {
+      var done = wi < waveIndex;
+      var isCurrent = wi === Math.min(waveIndex, SESSION_WAVES) - 1;
       ctx.beginPath();
-      ctx.arc(cx, 13 + 7, pipR, 0, Math.PI * 2);
-      ctx.fillStyle = i < lives ? COLORS.textCoral : 'rgba(255,255,255,0.20)';
+      ctx.arc(dotX0 + wi * dotGap, 33, isCurrent ? dotR + 1 : dotR, 0, Math.PI * 2);
+      ctx.fillStyle = done ? COLORS.textGold : 'rgba(255,246,232,0.22)';
       ctx.fill();
+    }
+
+    // lives: small wave-chevron icons instead of plain circles
+    ctx.textAlign = 'right';
+    ctx.font = fontStr(600, 9);
+    ctx.fillStyle = COLORS.textDim;
+    drawTracked('LIVES', W - 16, 8, 1.5);
+    var chevW = 10, chevGap = 15;
+    for (var li = 0; li < START_LIVES; li++) {
+      var ccx = W - 16 - chevW - (START_LIVES - 1 - li) * chevGap;
+      var ccy = 24;
+      var alive = li < lives;
+      ctx.beginPath();
+      ctx.moveTo(ccx - chevW / 2, ccy + 4);
+      ctx.lineTo(ccx, ccy - 3);
+      ctx.lineTo(ccx + chevW / 2, ccy + 4);
+      ctx.strokeStyle = alive ? COLORS.textCoral : 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
     }
   }
 
   function drawPrompt(g) {
-    ctx.textAlign = 'center';
-    ctx.font = fontStr(700, 15);
     var wave = currentWave;
+    var label, color;
     if (wave.inWindow) {
-      if (wave.isCloseout) {
-        ctx.fillStyle = COLORS.textCoral;
-        ctx.fillText("DON'T PADDLE", W / 2, g.breakY + 40);
-      } else {
-        ctx.fillStyle = COLORS.textSeafoam;
-        ctx.fillText('PADDLE! ' + wave.tapCount + '/' + wave.tier.requiredTaps + ' taps', W / 2, g.breakY + 40);
-      }
+      if (wave.isCloseout) { label = "DON'T PADDLE"; color = COLORS.textCoral; }
+      else { label = 'PADDLE  ' + wave.tapCount + '/' + wave.tier.requiredTaps; color = COLORS.textSeafoam; }
     } else {
-      ctx.fillStyle = 'rgba(255,246,232,0.75)';
-      ctx.fillText('Line up with the peak…', W / 2, g.breakY + 40);
+      label = 'LINE UP WITH THE PEAK'; color = COLORS.textDim;
     }
+
+    ctx.font = fontStr(700, 13);
+    var w = ctx.measureText(label).width + label.length * 1.5 + 32;
+    var h = 26;
+    var cy = g.breakY + 40;
+    ctx.save();
+    ctx.fillStyle = COLORS.panelFill;
+    roundRect(W / 2 - w / 2, cy - h / 2, w, h, h / 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    roundRect(W / 2 - w / 2, cy - h / 2, w, h, h / 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    drawTracked(label, W / 2, cy + 1, 1.5);
+    ctx.textBaseline = 'alphabetic';
   }
 
   function overlayBg() {
     var grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.75);
-    grad.addColorStop(0, 'rgba(4, 32, 46, 0.55)');
-    grad.addColorStop(1, 'rgba(2, 18, 26, 0.90)');
+    grad.addColorStop(0, 'rgba(7, 23, 38, 0.58)');
+    grad.addColorStop(1, 'rgba(3, 12, 20, 0.92)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawDivider(cy, w) {
+    var grad = ctx.createLinearGradient(W / 2 - w / 2, 0, W / 2 + w / 2, 0);
+    grad.addColorStop(0, 'rgba(255,210,124,0)');
+    grad.addColorStop(0.5, 'rgba(255,210,124,0.6)');
+    grad.addColorStop(1, 'rgba(255,210,124,0)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - w / 2, cy);
+    ctx.lineTo(W / 2 + w / 2, cy);
+    ctx.stroke();
   }
 
   function drawIntro() {
     overlayBg();
     ctx.fillStyle = COLORS.textGold;
     ctx.textAlign = 'center';
-    ctx.font = fontStr(800, 32);
-    ctx.fillText('PEAK READER', W / 2, H * 0.22);
+    ctx.font = fontDisplayStr(700, 34);
+    ctx.fillText('Peak Reader', W / 2, H * 0.20);
+    drawDivider(H * 0.235, Math.min(220, W * 0.5));
 
     ctx.font = fontStr(400, 16);
     ctx.fillStyle = COLORS.textPrimary;
@@ -644,6 +1090,11 @@
       'red CLOSEOUT, and don’t scratch in late',
       'on a big wave.',
       '',
+      'Some sets fake you out with a second peak',
+      'that lights up and fades early — read it',
+      'before you commit, or you’ll paddle for',
+      'nothing and get caught inside.',
+      '',
       SESSION_WAVES + ' waves per session. ' + START_LIVES + ' wipeouts and you’re done.'
     ];
     var ly = H * 0.32;
@@ -652,9 +1103,9 @@
       ly += 24;
     }
 
-    ctx.font = fontStr(700, 20);
+    ctx.font = fontStr(700, 17);
     ctx.fillStyle = COLORS.textSeafoam;
-    ctx.fillText('Tap anywhere to paddle out', W / 2, H * 0.78);
+    drawTracked('TAP ANYWHERE TO PADDLE OUT', W / 2, H * 0.78, 1.5);
   }
 
   function drawResolve() {
@@ -666,24 +1117,25 @@
     else if (lastResult.type === 'goodread') color = COLORS.textSky;
     else color = COLORS.textGold;
     ctx.fillStyle = color;
-    wrapText(lastResult.text, W / 2, H * 0.42, W * 0.8, 26);
+    wrapText(lastResult.text, W / 2, H * 0.42, W * 0.8, 28);
 
-    ctx.fillStyle = COLORS.textPrimary;
-    ctx.font = fontStr(600, 16);
-    ctx.fillText('Tap to continue', W / 2, H * 0.62);
+    ctx.fillStyle = COLORS.textDim;
+    ctx.font = fontStr(600, 13);
+    drawTracked('TAP TO CONTINUE', W / 2, H * 0.62, 1.5);
   }
 
   function drawGameOver() {
     overlayBg();
     ctx.textAlign = 'center';
-    ctx.font = fontStr(700, 26);
-    ctx.fillStyle = COLORS.textPrimary;
+    ctx.font = fontStr(600, 12);
+    ctx.fillStyle = COLORS.textDim;
     var title = lives <= 0 ? 'SESSION OVER' : 'SESSION COMPLETE';
-    ctx.fillText(title, W / 2, H * 0.18);
+    drawTracked(title, W / 2, H * 0.15, 2);
 
-    ctx.font = fontStr(800, 40);
+    ctx.font = fontDisplayStr(700, 42);
     ctx.fillStyle = COLORS.textSeafoam;
     ctx.fillText(score + ' pts', W / 2, H * 0.28);
+    drawDivider(H * 0.315, Math.min(180, W * 0.4));
 
     ctx.font = fontStr(600, 18);
     ctx.fillStyle = COLORS.textGold;
@@ -697,13 +1149,13 @@
     ctx.fillText('Wipeouts: ' + counts.wipeout, W / 2, sy); sy += 24;
     ctx.fillText('Good reads (closeouts skipped): ' + counts.goodread, W / 2, sy); sy += 24;
 
-    ctx.font = fontStr(700, 20);
+    ctx.font = fontStr(700, 17);
     ctx.fillStyle = COLORS.textSeafoam;
-    ctx.fillText('Tap to paddle out again', W / 2, H * 0.82);
+    drawTracked('TAP TO PADDLE OUT AGAIN', W / 2, H * 0.82, 1.5);
   }
 
   function wrapText(text, cx, cy, maxWidth, lineHeight) {
-    ctx.font = fontStr(700, 22);
+    ctx.font = fontDisplayStr(700, 23);
     var words = text.split(' ');
     var lines = [];
     var current = '';
@@ -740,7 +1192,9 @@
     }
 
     drawSplashes();
+    drawBursts();
     drawPlayer(g);
+    drawWipeoutFlash();
     drawHUD();
 
     if (state === STATE.APPROACH && currentWave) drawPrompt(g);

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Gyre Gate</title>
+<style>
+  :root {
+    --bg-0: #05070c;
+    --bg-1: #0c1120;
+    --bg-2: #131a2c;
+    --ink: #eef2fb;
+    --ink-dim: #7f8bad;
+    --gold: #ffd166;
+    --mint: #6dffc4;
+    --coral: #ff6b6b;
+    --panel: rgba(11, 15, 26, 0.72);
+    --panel-border: rgba(255, 209, 102, 0.18);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-0);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #game {
+    display: block;
+    touch-action: none;
+    background: var(--bg-0);
+  }
+  #hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .hud-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(6px);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  }
+  #scoreLabel { color: var(--gold); }
+  #scoreLabel .icon { color: var(--gold); opacity: 0.9; }
+  #livesLabel { color: var(--coral); letter-spacing: 3px; font-size: 16px; }
+  #livesLabel .lost { opacity: 0.28; filter: grayscale(1); }
+
+  #flash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 45%, rgba(255, 90, 90, 0.5), rgba(255, 90, 90, 0) 65%);
+    opacity: 0;
+    z-index: 4;
+  }
+  #flash.active { animation: flashPulse 0.4s ease-out; }
+  @keyframes flashPulse {
+    0% { opacity: 0.9; }
+    100% { opacity: 0; }
+  }
+
+  #overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 50% 38%, rgba(20, 26, 46, 0.92), rgba(4, 5, 10, 0.96));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 28px;
+    box-sizing: border-box;
+    z-index: 10;
+    animation: overlayIn 0.35s ease-out;
+  }
+  #overlay.hidden { display: none; }
+  @keyframes overlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  #overlay h1 {
+    font-size: 40px;
+    margin: 0 0 14px 0;
+    letter-spacing: 0.06em;
+    font-weight: 800;
+    background: linear-gradient(120deg, var(--gold), var(--mint) 85%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 18px rgba(255, 209, 102, 0.35));
+  }
+  #overlay p {
+    font-size: 15.5px;
+    max-width: 340px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    margin: 0 0 22px 0;
+  }
+  #overlay .score {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--mint);
+    margin-bottom: 22px;
+    letter-spacing: 0.02em;
+  }
+  #startBtn {
+    font-size: 18px;
+    padding: 16px 42px;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(135deg, var(--gold), #ff9f5c);
+    color: #17110a;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    box-shadow: 0 6px 24px rgba(255, 209, 102, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  #startBtn:active {
+    transform: scale(0.95);
+    box-shadow: 0 3px 14px rgba(255, 209, 102, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<div id="flash"></div>
+
+<div id="hud">
+  <span id="scoreLabel" class="hud-chip"><span class="icon">&#9678;</span><span id="scoreValue">0</span></span>
+  <span id="livesLabel" class="hud-chip"><span id="livesValue">&#9679;&#9679;&#9679;</span></span>
+</div>
+
+<div id="overlay">
+  <h1 id="overlayTitle">Gyre Gate</h1>
+  <p id="overlayText">Rings spin on their own. Drag a finger along a ring to spin it and line up its open gate with the top marker before the ball reaches it. Miss and you lose a life. Multiple fingers can steer different rings at once.</p>
+  <div class="score" id="overlayScore"></div>
+  <button id="startBtn">Tap to Start</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var hudScore = document.getElementById('scoreValue');
+  var hudLives = document.getElementById('livesValue');
+  var flashEl = document.getElementById('flash');
+  var overlay = document.getElementById('overlay');
+  var overlayTitle = document.getElementById('overlayTitle');
+  var overlayText = document.getElementById('overlayText');
+  var overlayScore = document.getElementById('overlayScore');
+  var startBtn = document.getElementById('startBtn');
+
+  var W = 0, H = 0, cx = 0, cy = 0;
+  var TAU = Math.PI * 2;
+  var TOP_ANGLE = -Math.PI / 2; // 12 o'clock, the fixed gate-check angle
+  var TOLERANCE = 0.06; // radians of forgiveness added to each gate's half-width
+
+  var NUM_RINGS = 4;
+  var RING_GRAB_TOLERANCE = 26; // px, how close a touch must be to a ring's radius to grab it
+  var STARTING_LIVES = 3;
+
+  // ---- difficulty ramp ----
+  // All four pacing stats ease from their BASE value toward their hard-ceiling
+  // value together, driven by a single smoothstep progress curve (see
+  // difficultyProgress() below) over DIFFICULTY_RAMP_TIME seconds. Smoothstep
+  // has zero slope at both ends, so the ramp starts imperceptibly slow (a
+  // genuinely easy opening), accelerates through the middle of the run, and
+  // eases into the plateau at the ceiling with no jarring corner — instead of
+  // the old per-stat linear-ramp-then-hard-clamp shape, which reached max
+  // difficulty as early as ~65s and had a slope discontinuity right at the cap.
+  var DIFFICULTY_RAMP_TIME = 100; // seconds to reach ~full difficulty (was ~65-72s)
+
+  var BASE_FALL_SPEED = 85;      // px/s
+  var MAX_FALL_SPEED = 230;
+
+  var BASE_SPAWN_INTERVAL = 2.3; // seconds
+  var MIN_SPAWN_INTERVAL = 1.0;
+
+  var BASE_GATE_HALF_WIDTH = 0.62; // radians (~71 deg total width)
+  var MIN_GATE_HALF_WIDTH = 0.34;  // (~39 deg total width)
+
+  var BASE_SPIN = 0.35;  // rad/s
+  var MAX_SPIN = 1.15;
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // 0..1 smoothstep of elapsed time vs. the ramp duration; eases in AND out
+  // (zero derivative at p=0 and p=1) so there's no sudden kick at the start
+  // and no abrupt corner where the ramp meets its plateau.
+  function difficultyProgress() {
+    var p = clamp(elapsed / DIFFICULTY_RAMP_TIME, 0, 1);
+    return p * p * (3 - 2 * p);
+  }
+
+  function angularDiff(a, b) {
+    var d = (a - b) % TAU;
+    if (d > Math.PI) d -= TAU;
+    if (d < -Math.PI) d += TAU;
+    return d;
+  }
+
+  var rings = [];
+  var balls = [];
+  var activePointers = new Map();
+
+  var state = 'start'; // 'start' | 'playing' | 'gameover'
+  var score = 0;
+  var lives = 3;
+  var elapsed = 0;
+  var spawnTimer = 0;
+  var lastTime = null;
+
+  // ---- purely cosmetic presentation state (does not influence gameplay) ----
+  var particles = [];
+  var shakeTime = 0;
+  var shakeMag = 0;
+  var audioCtx = null;
+
+  function ringHue(i) {
+    var t = NUM_RINGS > 1 ? i / (NUM_RINGS - 1) : 0;
+    return 195 + t * 100; // cyan -> blue -> violet, outer to inner
+  }
+
+  function formatScore(n) { return String(n); }
+
+  function formatLives(n) {
+    var out = '';
+    for (var i = 0; i < STARTING_LIVES; i++) {
+      out += (i < n) ? '&#9679;' : '<span class="lost">&#9679;</span>';
+    }
+    return out;
+  }
+
+  function ensureAudio() {
+    if (audioCtx) return audioCtx;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new Ctx();
+    } catch (err) { audioCtx = null; }
+    return audioCtx;
+  }
+
+  function beep(freq, duration, type, gain) {
+    var ac = ensureAudio();
+    if (!ac) return;
+    try {
+      var osc = ac.createOscillator();
+      var g = ac.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      g.gain.value = 0;
+      osc.connect(g);
+      g.connect(ac.destination);
+      var now = ac.currentTime;
+      g.gain.linearRampToValueAtTime(gain || 0.08, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    } catch (err) {}
+  }
+
+  function triggerShake(mag, time) {
+    shakeMag = Math.max(shakeMag, mag);
+    shakeTime = Math.max(shakeTime, time);
+  }
+
+  function triggerFlash() {
+    flashEl.classList.remove('active');
+    // force reflow so the animation can restart if triggered again quickly
+    void flashEl.offsetWidth;
+    flashEl.classList.add('active');
+  }
+
+  function spawnBurst(x, y, color, count) {
+    for (var i = 0; i < count; i++) {
+      var a = Math.random() * TAU;
+      var speed = 60 + Math.random() * 120;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        life: 0.5 + Math.random() * 0.3,
+        maxLife: 0.5 + Math.random() * 0.3,
+        color: color,
+        r: 1.5 + Math.random() * 2
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+    }
+  }
+
+  function drawParticles() {
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var t = clamp(p.life / p.maxLife, 0, 1);
+      ctx.globalAlpha = t;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * t, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // ---- end cosmetic helpers ----
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    cx = W / 2;
+    cy = H * 0.52;
+    layoutRings();
+  }
+
+  function layoutRings() {
+    var outerRadius = Math.min(W, H) * 0.44;
+    var innerRadius = outerRadius * 0.22;
+    for (var i = 0; i < rings.length; i++) {
+      rings[i].radius = outerRadius - i * (outerRadius - innerRadius) / (NUM_RINGS - 1);
+    }
+  }
+
+  function initRings() {
+    rings = [];
+    for (var i = 0; i < NUM_RINGS; i++) {
+      rings.push({
+        radius: 0,
+        rotation: Math.random() * TAU,
+        spinDir: (i % 2 === 0) ? 1 : -1,
+        grabbedBy: null
+      });
+    }
+    layoutRings();
+  }
+
+  function currentFallSpeed() { var t = difficultyProgress(); return BASE_FALL_SPEED + (MAX_FALL_SPEED - BASE_FALL_SPEED) * t; }
+  function currentSpawnInterval() { var t = difficultyProgress(); return BASE_SPAWN_INTERVAL - (BASE_SPAWN_INTERVAL - MIN_SPAWN_INTERVAL) * t; }
+  function currentGateHalfWidth() { var t = difficultyProgress(); return BASE_GATE_HALF_WIDTH - (BASE_GATE_HALF_WIDTH - MIN_GATE_HALF_WIDTH) * t; }
+  function currentSpin() { var t = difficultyProgress(); return BASE_SPIN + (MAX_SPIN - BASE_SPIN) * t; }
+
+  function spawnBall() {
+    balls.push({ y: -14, nextRingIndex: 0, flashUntil: 0 });
+  }
+
+  function loseLife() {
+    lives--;
+    hudLives.innerHTML = formatLives(Math.max(0, lives));
+    triggerShake(9, 0.3);
+    triggerFlash();
+    beep(140, 0.28, 'sawtooth', 0.07);
+    if (lives <= 0 && state === 'playing') {
+      gameOver();
+    }
+  }
+
+  function addScore() {
+    score++;
+    hudScore.textContent = formatScore(score);
+    spawnBurst(cx, cy, '#6dffc4', 14);
+    beep(660, 0.14, 'sine', 0.06);
+  }
+
+  function resetGame() {
+    score = 0;
+    lives = STARTING_LIVES;
+    elapsed = 0;
+    spawnTimer = 1.0;
+    balls = [];
+    activePointers.clear();
+    particles = [];
+    shakeTime = 0;
+    shakeMag = 0;
+    initRings();
+    hudScore.textContent = formatScore(0);
+    hudLives.innerHTML = formatLives(STARTING_LIVES);
+  }
+
+  function startGame() {
+    ensureAudio();
+    resetGame();
+    state = 'playing';
+    overlay.classList.add('hidden');
+    lastTime = null;
+    requestAnimationFrame(loop);
+  }
+
+  function gameOver() {
+    state = 'gameover';
+    overlayTitle.textContent = 'Sealed Shut';
+    overlayText.textContent = 'A gate closed on you. Drag rings to keep their gaps under the top marker as balls fall.';
+    overlayScore.textContent = 'Final Score: ' + score;
+    startBtn.textContent = 'Tap to Retry';
+    overlay.classList.remove('hidden');
+  }
+
+  function update(dt) {
+    elapsed += dt;
+
+    var spin = currentSpin();
+    for (var i = 0; i < rings.length; i++) {
+      var r = rings[i];
+      if (r.grabbedBy === null) {
+        r.rotation += r.spinDir * spin * dt;
+      }
+    }
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnBall();
+      spawnTimer += currentSpawnInterval();
+    }
+
+    var fallSpeed = currentFallSpeed();
+    var gateHalfWidth = currentGateHalfWidth();
+
+    for (var b = balls.length - 1; b >= 0; b--) {
+      if (state !== 'playing') break; // stop processing if a prior ball already ended the game
+      var ball = balls[b];
+      ball.y += fallSpeed * dt;
+      var dead = false;
+
+      while (ball.nextRingIndex < rings.length) {
+        var ring = rings[ball.nextRingIndex];
+        var threshold = cy - ring.radius;
+        if (ball.y < threshold) break;
+        var diff = angularDiff(ring.rotation, TOP_ANGLE);
+        if (Math.abs(diff) <= gateHalfWidth + TOLERANCE) {
+          ball.nextRingIndex++;
+        } else {
+          dead = true;
+          break;
+        }
+      }
+
+      if (dead) {
+        balls.splice(b, 1);
+        loseLife();
+        continue;
+      }
+
+      if (ball.nextRingIndex >= rings.length && ball.y >= cy) {
+        balls.splice(b, 1);
+        addScore();
+      }
+    }
+  }
+
+  function draw(dt) {
+    // cosmetic timers (visual only, do not feed back into gameplay state)
+    if (shakeTime > 0) {
+      shakeTime = Math.max(0, shakeTime - dt);
+    } else {
+      shakeMag = 0;
+    }
+    updateParticles(dt);
+
+    ctx.save();
+    if (shakeTime > 0) {
+      var falloff = shakeTime / 0.3;
+      var sx = (Math.random() - 0.5) * shakeMag * falloff;
+      var sy = (Math.random() - 0.5) * shakeMag * falloff;
+      ctx.translate(sx, sy);
+    }
+
+    // background: soft vignette instead of flat fill
+    var bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+    bg.addColorStop(0, '#141b2e');
+    bg.addColorStop(1, '#05070c');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-40, -40, W + 80, H + 80);
+
+    // center target
+    var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 480);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5 + pulse * 1.5, 0, TAU);
+    ctx.fillStyle = 'rgba(238, 242, 251, 0.12)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(238, 242, 251, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, TAU);
+    ctx.stroke();
+
+    // top marker (fixed gate-check line)
+    var outerR = rings.length ? rings[0].radius : 0;
+    ctx.save();
+    ctx.shadowColor = '#ffd166';
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerR - 18);
+    ctx.lineTo(cx, cy - outerR + 6);
+    ctx.stroke();
+    ctx.restore();
+
+    var gateHalfWidth = currentGateHalfWidth();
+
+    for (var i = 0; i < rings.length; i++) {
+      var ring = rings[i];
+      var start = ring.rotation + gateHalfWidth;
+      var end = ring.rotation - gateHalfWidth + TAU;
+      var grabbed = ring.grabbedBy !== null;
+      var color = grabbed ? '#6dffc4' : ('hsl(' + ringHue(i) + ', 85%, 62%)');
+
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = grabbed ? 18 : 8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ring.radius, start, end);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = grabbed ? 11 : 9;
+      ctx.lineCap = 'butt';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // balls: soft glow + short motion trail
+    for (var b = 0; b < balls.length; b++) {
+      var ball = balls[b];
+      if (ball._prevY === undefined) ball._prevY = ball.y;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 107, 107, 0.35)';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx, ball._prevY);
+      ctx.lineTo(cx, ball.y);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = '#ff6b6b';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.arc(cx, ball.y, 8, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      ball._prevY = ball.y;
+    }
+
+    drawParticles();
+
+    ctx.restore();
+  }
+
+  function loop(ts) {
+    if (state !== 'playing') return;
+    if (lastTime === null) lastTime = ts;
+    var dt = Math.min(0.05, (ts - lastTime) / 1000);
+    lastTime = ts;
+
+    update(dt);
+    draw(dt);
+
+    if (state === 'playing') {
+      requestAnimationFrame(loop);
+    }
+  }
+
+  // ---- input ----
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function onPointerDown(e) {
+    if (state !== 'playing') return; // overlay button handles start/restart
+    e.preventDefault();
+    var p = getPos(e);
+    var dx = p.x - cx, dy = p.y - cy;
+    var dist = Math.hypot(dx, dy);
+
+    var best = -1, bestDiff = Infinity;
+    for (var i = 0; i < rings.length; i++) {
+      var d = Math.abs(dist - rings[i].radius);
+      if (d < RING_GRAB_TOLERANCE && d < bestDiff) {
+        bestDiff = d;
+        best = i;
+      }
+    }
+    if (best === -1) return;
+    if (rings[best].grabbedBy !== null) return;
+
+    rings[best].grabbedBy = e.pointerId;
+    activePointers.set(e.pointerId, {
+      ringIndex: best,
+      lastAngle: Math.atan2(dy, dx)
+    });
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  function onPointerMove(e) {
+    if (!activePointers.has(e.pointerId)) return;
+    e.preventDefault();
+    var info = activePointers.get(e.pointerId);
+    var p = getPos(e);
+    var dx = p.x - cx, dy = p.y - cy;
+    var angle = Math.atan2(dy, dx);
+    var delta = angularDiff(angle, info.lastAngle);
+    rings[info.ringIndex].rotation += delta;
+    info.lastAngle = angle;
+  }
+
+  function onPointerUp(e) {
+    if (!activePointers.has(e.pointerId)) return;
+    var info = activePointers.get(e.pointerId);
+    rings[info.ringIndex].grabbedBy = null;
+    activePointers.delete(e.pointerId);
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+  canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+  canvas.addEventListener('pointerup', onPointerUp, { passive: false });
+  canvas.addEventListener('pointercancel', onPointerUp, { passive: false });
+
+  // prevent double-tap zoom / other gestures on canvas
+  canvas.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+
+  startBtn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    startGame();
+  }, { passive: false });
+
+  window.addEventListener('resize', resize);
+
+  resize();
+  initRings();
+  hudScore.textContent = formatScore(0);
+  hudLives.innerHTML = formatLives(STARTING_LIVES);
+  draw(0);
+})();
+</script>
+</body>
+</html>

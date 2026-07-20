@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Peak Reader</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(#ffefd6, #1c6387 58%, #04202e);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  canvas {
+    display: block;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+(function () {
+  'use strict';
+
+  // ---------- setup ----------
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function easeInOut(t) { return t * t * (3 - 2 * t); }
+
+  function trackGeom() {
+    return {
+      trackX: W * 0.10,
+      trackWidth: W * 0.80,
+      topY: H * 0.20,
+      breakY: H * 0.68
+    };
+  }
+
+  // ---------- visual theme (ocean / surf) ----------
+  var FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+  function fontStr(weight, size) { return weight + ' ' + size + 'px ' + FONT_STACK; }
+
+  var COLORS = {
+    skyTop: '#FFEFD6',
+    skyHorizon: '#FFD9A0',
+    seaSurface: '#1C6387',
+    seaDeep: '#04202E',
+    trackLine: 'rgba(255, 246, 232, 0.28)',
+    breakLine: 'rgba(255, 246, 232, 0.55)',
+    waveBandHi: 'rgba(255, 255, 255, 0.30)',
+    waveBandLo: 'rgba(140, 210, 225, 0.16)',
+    zoneIdle: 'rgba(77, 217, 176, 0.55)',
+    zoneActive: 'rgba(92, 224, 184, 0.95)',
+    zoneGlow: 'rgba(92, 224, 184, 0.85)',
+    closeoutIdle: 'rgba(255, 90, 70, 0.55)',
+    closeoutActive: 'rgba(255, 74, 58, 0.88)',
+    player: '#FF7A4D',
+    playerRim: '#FFF6E8',
+    panelBorder: 'rgba(255, 214, 140, 0.55)',
+    textPrimary: '#FFF6E8',
+    textGold: '#FFD27C',
+    textSeafoam: '#5CE0B8',
+    textCoral: '#FF6B5A',
+    textSky: '#8FE1FF'
+  };
+
+  // ---------- constants ----------
+  var STATE = { INTRO: 'intro', APPROACH: 'approach', RESOLVE: 'resolve', GAMEOVER: 'gameover' };
+  var SESSION_WAVES = 10;
+  var START_LIVES = 3;
+  var CATCH_WINDOW = 1.1; // seconds, always the tail end of the approach
+  var SHAKE_DURATION = 0.28; // cosmetic screen-shake length on a wipeout
+
+  var TIER_DATA = {
+    small:  { key: 'small',  base: 8,  zoneFrac: 0.34, requiredTaps: 3, label: 'Small' },
+    medium: { key: 'medium', base: 16, zoneFrac: 0.24, requiredTaps: 4, label: 'Medium' },
+    big:    { key: 'big',    base: 30, zoneFrac: 0.15, requiredTaps: 5, label: 'Big', lateThreshold: 0.35 }
+  };
+
+  var RANKS = [
+    { min: 230, name: 'Big-Wave Legend' },
+    { min: 160, name: 'Charger' },
+    { min: 100, name: 'Local' },
+    { min: 50,  name: 'Grommet' },
+    { min: -Infinity, name: 'Beach Walker' }
+  ];
+
+  // ---------- game state ----------
+  var state = STATE.INTRO;
+  var score = 0;
+  var lives = START_LIVES;
+  var waveIndex = 0; // 1-based index of current/last wave
+  var playerXFrac = 0.5;
+  var currentWave = null;
+  var lastResult = null; // {type, text}
+  var counts = { caught: 0, missed: 0, wipeout: 0, goodread: 0 };
+  var pointerActive = false;
+  var tapFlashT = 0; // brief visual pulse when a tap registers
+
+  // purely cosmetic state (background motion, screen shake, tap splashes) —
+  // never read by game logic, only by the render layer.
+  var bgTime = 0;
+  var shakeT = 0;
+  var splashes = [];
+
+  function resetSession() {
+    score = 0;
+    lives = START_LIVES;
+    waveIndex = 0;
+    counts = { caught: 0, missed: 0, wipeout: 0, goodread: 0 };
+    playerXFrac = 0.5;
+    lastResult = null;
+  }
+
+  function pickTier(d) {
+    var w = {
+      small: lerp(0.90, 0.12, d),
+      medium: lerp(0.10, 0.40, d),
+      big: lerp(0.00, 0.48, d)
+    };
+    var total = w.small + w.medium + w.big;
+    var r = Math.random() * total;
+    if (r < w.small) return TIER_DATA.small;
+    r -= w.small;
+    if (r < w.medium) return TIER_DATA.medium;
+    return TIER_DATA.big;
+  }
+
+  // Session-progress -> difficulty amount, eased so the first waves barely
+  // move off the easy baseline and the back half of the session does most
+  // of the ramping, landing at the full "hard but fair" ceiling on wave 10.
+  function difficultyT(index) {
+    var p = (index - 1) / (SESSION_WAVES - 1); // 0..1 raw wave progress
+    return p * p; // ease-in (quadratic): gentle start, accelerating ramp
+  }
+
+  function spawnWave() {
+    waveIndex++;
+    var d = difficultyT(waveIndex); // 0..1 eased difficulty ramp
+    var tier = pickTier(d);
+    var isCloseout = Math.random() < lerp(0.03, 0.35, d);
+    var approachDuration = lerp(2.6, 1.8, d);
+    var zoneWidthFrac = tier.zoneFrac * lerp(1.0, 0.85, d);
+    var wobbleAmp = lerp(0.02, 0.07, d);
+    var wobbleFreq = lerp(1.2, 2.6, d);
+    var startCenter = 0.20 + Math.random() * 0.60;
+    var endCenter = 0.20 + Math.random() * 0.60;
+
+    currentWave = {
+      tier: tier,
+      isCloseout: isCloseout,
+      approachDuration: approachDuration,
+      elapsed: 0,
+      zoneWidthFrac: zoneWidthFrac,
+      wobbleAmp: wobbleAmp,
+      wobbleFreq: wobbleFreq,
+      startCenter: startCenter,
+      endCenter: endCenter,
+      catchWindowStart: approachDuration - CATCH_WINDOW,
+      inWindow: false,
+      tapCount: 0,
+      minDist: Infinity,
+      lastCenter: startCenter
+    };
+    state = STATE.APPROACH;
+  }
+
+  function zoneCenterAt(wave, t) {
+    var eased = easeInOut(t);
+    var c = lerp(wave.startCenter, wave.endCenter, eased);
+    c += Math.sin(t * Math.PI * 2 * wave.wobbleFreq) * wave.wobbleAmp;
+    return clamp(c, 0.06, 0.94);
+  }
+
+  function resolveWave() {
+    var wave = currentWave;
+    var resultType, resultText, points = 0;
+
+    if (wave.isCloseout) {
+      if (wave.tapCount >= 2) {
+        resultType = 'wipeout';
+        lives--;
+        resultText = 'CLOSEOUT! You paddled for a dud and got caught inside.';
+        counts.wipeout++;
+      } else {
+        resultType = 'goodread';
+        resultText = 'Good read — you let the closeout pass.';
+        counts.goodread++;
+      }
+    } else {
+      var wasInZone = wave.minDist <= 1.0;
+      if (wasInZone && wave.tapCount >= wave.tier.requiredTaps) {
+        var accuracy = clamp(1 - wave.minDist, 0, 1);
+        if (wave.tier.key === 'big' && accuracy < wave.tier.lateThreshold) {
+          resultType = 'wipeout';
+          lives--;
+          resultText = 'Scratched in too late — pitched over the falls!';
+          counts.wipeout++;
+        } else {
+          points = Math.round(wave.tier.base * (0.6 + 0.7 * accuracy));
+          score += points;
+          resultType = 'caught';
+          resultText = 'Caught a ' + wave.tier.label.toLowerCase() + ' one! +' + points;
+          counts.caught++;
+        }
+      } else if (wasInZone) {
+        resultType = 'missed';
+        resultText = 'In position, but too slow to paddle — it rolled past.';
+        counts.missed++;
+      } else {
+        resultType = 'missed';
+        resultText = 'Out of position — the wave rolled past you.';
+        counts.missed++;
+      }
+    }
+
+    lastResult = { type: resultType, text: resultText, points: points };
+    state = STATE.RESOLVE;
+
+    // cosmetic feedback only — does not affect score/lives/state above.
+    if (resultType === 'wipeout') {
+      shakeT = SHAKE_DURATION;
+      beep(110, 0.35, 'sawtooth', 0.09);
+    } else if (resultType === 'caught') {
+      beep(760, 0.18, 'triangle', 0.09);
+    } else if (resultType === 'goodread') {
+      beep(340, 0.12, 'sine', 0.06);
+    }
+  }
+
+  function afterResolveTap() {
+    if (lives <= 0) { state = STATE.GAMEOVER; return; }
+    if (waveIndex >= SESSION_WAVES) { state = STATE.GAMEOVER; return; }
+    spawnWave();
+  }
+
+  function startSession() {
+    resetSession();
+    spawnWave();
+  }
+
+  function rankFor(s) {
+    for (var i = 0; i < RANKS.length; i++) {
+      if (s >= RANKS[i].min) return RANKS[i].name;
+    }
+    return RANKS[RANKS.length - 1].name;
+  }
+
+  // ---------- cosmetic audio (tiny WebAudio beeps, never blocks input) ----------
+  var audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) return audioCtx;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    } catch (e) { audioCtx = null; }
+    return audioCtx;
+  }
+  function beep(freq, dur, type, vol) {
+    var ctxA = ensureAudio();
+    if (!ctxA) return;
+    try {
+      if (ctxA.state === 'suspended') ctxA.resume();
+      var osc = ctxA.createOscillator();
+      var gain = ctxA.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0;
+      osc.connect(gain);
+      gain.connect(ctxA.destination);
+      var now = ctxA.currentTime;
+      gain.gain.linearRampToValueAtTime(vol || 0.08, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+    } catch (e) { /* audio is optional flourish, ignore failures */ }
+  }
+
+  // ---------- input ----------
+  function xFracFromClientX(clientX) {
+    var rect = canvas.getBoundingClientRect();
+    var localX = clientX - rect.left;
+    var g = trackGeom();
+    return clamp((localX - g.trackX) / g.trackWidth, 0, 1);
+  }
+
+  function spawnSplash(x, y) {
+    splashes.push({ x: x, y: y, r: 6, alpha: 0.55 });
+    if (splashes.length > 8) splashes.shift();
+  }
+
+  function handleStart(clientX) {
+    pointerActive = true;
+    if (state === STATE.INTRO) { startSession(); return; }
+    if (state === STATE.GAMEOVER) { startSession(); return; }
+    if (state === STATE.RESOLVE) { afterResolveTap(); return; }
+    if (state === STATE.APPROACH) {
+      playerXFrac = xFracFromClientX(clientX);
+      if (currentWave && currentWave.inWindow) {
+        currentWave.tapCount++;
+        tapFlashT = 0.15;
+        var g = trackGeom();
+        spawnSplash(g.trackX + playerXFrac * g.trackWidth, g.breakY);
+        beep(520, 0.06, 'sine', 0.05);
+      }
+      return;
+    }
+  }
+
+  function handleMove(clientX) {
+    if (!pointerActive) return;
+    if (state === STATE.APPROACH) {
+      playerXFrac = xFracFromClientX(clientX);
+    }
+  }
+
+  function handleEnd() {
+    pointerActive = false;
+  }
+
+  canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    var t = e.changedTouches[0];
+    handleStart(t.clientX);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    var t = e.touches[0];
+    if (t) handleMove(t.clientX);
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    handleEnd();
+  }, { passive: false });
+
+  canvas.addEventListener('touchcancel', function (e) {
+    e.preventDefault();
+    handleEnd();
+  }, { passive: false });
+
+  // Mouse fallback for desktop testing only (not required for play).
+  canvas.addEventListener('mousedown', function (e) { handleStart(e.clientX); });
+  canvas.addEventListener('mousemove', function (e) { handleMove(e.clientX); });
+  window.addEventListener('mouseup', function () { handleEnd(); });
+
+  // ---------- update ----------
+  var lastTime = null;
+  function update(dt) {
+    if (tapFlashT > 0) tapFlashT = Math.max(0, tapFlashT - dt);
+
+    // cosmetic-only updates (background motion, screen shake, tap splashes)
+    bgTime += dt;
+    if (shakeT > 0) shakeT = Math.max(0, shakeT - dt);
+    for (var i = splashes.length - 1; i >= 0; i--) {
+      var s = splashes[i];
+      s.r += dt * 46;
+      s.alpha -= dt * 1.3;
+      if (s.alpha <= 0) splashes.splice(i, 1);
+    }
+
+    if (state === STATE.APPROACH && currentWave) {
+      var wave = currentWave;
+      wave.elapsed += dt;
+      var t = clamp(wave.elapsed / wave.approachDuration, 0, 1);
+      var center = zoneCenterAt(wave, t);
+      wave.lastCenter = center;
+      wave.inWindow = wave.elapsed >= wave.catchWindowStart;
+
+      if (wave.inWindow && !wave.isCloseout) {
+        var halfWidth = wave.zoneWidthFrac / 2;
+        var dist = Math.abs(playerXFrac - center) / halfWidth;
+        if (dist < wave.minDist) wave.minDist = dist;
+      }
+
+      if (wave.elapsed >= wave.approachDuration) {
+        resolveWave();
+      }
+    }
+  }
+
+  // ---------- render helpers ----------
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  function drawBackground() {
+    var sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, COLORS.skyTop);
+    sky.addColorStop(0.32, COLORS.skyHorizon);
+    sky.addColorStop(0.52, COLORS.seaSurface);
+    sky.addColorStop(1, COLORS.seaDeep);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // low sun glow near the horizon
+    var sunX = W * 0.5, sunY = H * 0.16;
+    var glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, H * 0.38);
+    glow.addColorStop(0, 'rgba(255, 233, 190, 0.55)');
+    glow.addColorStop(1, 'rgba(255, 233, 190, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // faint ambient swell lines low on the screen — decorative only
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1.5;
+    for (var i = 0; i < 3; i++) {
+      var yy = H * 0.80 + i * 26;
+      ctx.beginPath();
+      var step = Math.max(16, W / 40);
+      for (var x = 0; x <= W; x += step) {
+        var yy2 = yy + Math.sin(x * 0.02 + bgTime * 0.6 + i * 1.3) * 4;
+        if (x === 0) ctx.moveTo(x, yy2); else ctx.lineTo(x, yy2);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawLineup(g) {
+    ctx.strokeStyle = COLORS.trackLine;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(g.trackX, g.topY - 20);
+    ctx.lineTo(g.trackX, g.breakY + 30);
+    ctx.moveTo(g.trackX + g.trackWidth, g.topY - 20);
+    ctx.lineTo(g.trackX + g.trackWidth, g.breakY + 30);
+    ctx.stroke();
+
+    // break line, styled as a soft foam edge
+    ctx.strokeStyle = COLORS.breakLine;
+    ctx.setLineDash([7, 7]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(g.trackX, g.breakY);
+    ctx.lineTo(g.trackX + g.trackWidth, g.breakY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawWave(wave, g) {
+    var t = clamp(wave.elapsed / wave.approachDuration, 0, 1);
+    var y = lerp(g.topY, g.breakY, t);
+    var barH = 18;
+    var x0 = g.trackX;
+    var wtot = g.trackWidth;
+
+    // base wave band (a soft glassy strip of water energy)
+    var bandGrad = ctx.createLinearGradient(0, y - barH / 2, 0, y + barH / 2);
+    bandGrad.addColorStop(0, COLORS.waveBandHi);
+    bandGrad.addColorStop(1, COLORS.waveBandLo);
+    ctx.fillStyle = bandGrad;
+    roundRect(x0, y - barH / 2, wtot, barH, 8);
+    ctx.fill();
+
+    // thin energy squiggle riding along the top of the band — decorative only
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    var step = Math.max(10, wtot / 24);
+    for (var x = 0; x <= wtot; x += step) {
+      var frac = x / wtot;
+      var wob = Math.sin(frac * Math.PI * 2 * wave.wobbleFreq + wave.elapsed * 3) * 2.5;
+      var yy = y - barH / 2 - 3 + wob;
+      if (x === 0) ctx.moveTo(x0 + x, yy); else ctx.lineTo(x0 + x, yy);
+    }
+    ctx.stroke();
+
+    if (wave.isCloseout) {
+      ctx.save();
+      if (wave.inWindow) { ctx.shadowColor = 'rgba(255,80,60,0.7)'; ctx.shadowBlur = 16; }
+      ctx.fillStyle = wave.inWindow ? COLORS.closeoutActive : COLORS.closeoutIdle;
+      roundRect(x0, y - barH / 2, wtot, barH, 8);
+      ctx.fill();
+      ctx.restore();
+
+      // subtle hazard texture (thin diagonal ticks), clipped to the band
+      ctx.save();
+      roundRect(x0, y - barH / 2, wtot, barH, 8);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 3;
+      for (var dx = -barH; dx < wtot + barH; dx += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x0 + dx, y - barH / 2 - 2);
+        ctx.lineTo(x0 + dx + barH, y + barH / 2 + 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.fillStyle = COLORS.textPrimary;
+      ctx.font = fontStr(700, 12);
+      ctx.textAlign = 'center';
+      ctx.fillText('CLOSEOUT', x0 + wtot / 2, y - barH / 2 - 16);
+    } else {
+      var center = wave.lastCenter;
+      var zoneW = wave.zoneWidthFrac * wtot;
+      var zoneX = x0 + center * wtot - zoneW / 2;
+
+      ctx.save();
+      if (wave.inWindow) { ctx.shadowColor = COLORS.zoneGlow; ctx.shadowBlur = 18; }
+      ctx.fillStyle = wave.inWindow ? COLORS.zoneActive : COLORS.zoneIdle;
+      roundRect(zoneX, y - barH / 2, zoneW, barH, 7);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = COLORS.textPrimary;
+      ctx.font = fontStr(700, 12);
+      ctx.textAlign = 'center';
+      ctx.fillText(wave.tier.label + ' wave', x0 + wtot / 2, y - barH / 2 - 16);
+    }
+  }
+
+  function drawSplashes() {
+    for (var i = 0; i < splashes.length; i++) {
+      var s = splashes[i];
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255,255,255,' + Math.max(0, s.alpha) + ')';
+      ctx.lineWidth = 2;
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawPlayer(g) {
+    var px = g.trackX + playerXFrac * g.trackWidth;
+    var bob = Math.sin(bgTime * 2.4) * 2; // decorative bob, doesn't affect hit-testing
+    var py = g.breakY + bob;
+    var flashScale = 1 + tapFlashT * 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 122, 77, 0.65)';
+    ctx.shadowBlur = 8 + tapFlashT * 30;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 13 * flashScale, 8 * flashScale, 0, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.player;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = COLORS.playerRim;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    var barH = 42;
+    var grad = ctx.createLinearGradient(0, 0, 0, barH);
+    grad.addColorStop(0, 'rgba(4, 32, 46, 0.50)');
+    grad.addColorStop(1, 'rgba(4, 32, 46, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, barH);
+
+    ctx.textBaseline = 'top';
+    ctx.font = fontStr(700, 15);
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.textAlign = 'left';
+    ctx.fillText('SCORE ' + score, 16, 13);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = COLORS.textGold;
+    ctx.fillText('WAVE ' + Math.min(waveIndex, SESSION_WAVES) + ' / ' + SESSION_WAVES, W / 2, 13);
+
+    // life pips (small filled circles) instead of plain "Lives: n" text
+    var pipR = 5, gap = 14;
+    for (var i = 0; i < START_LIVES; i++) {
+      var cx = W - 16 - pipR - (START_LIVES - 1 - i) * gap;
+      ctx.beginPath();
+      ctx.arc(cx, 13 + 7, pipR, 0, Math.PI * 2);
+      ctx.fillStyle = i < lives ? COLORS.textCoral : 'rgba(255,255,255,0.20)';
+      ctx.fill();
+    }
+  }
+
+  function drawPrompt(g) {
+    ctx.textAlign = 'center';
+    ctx.font = fontStr(700, 15);
+    var wave = currentWave;
+    if (wave.inWindow) {
+      if (wave.isCloseout) {
+        ctx.fillStyle = COLORS.textCoral;
+        ctx.fillText("DON'T PADDLE", W / 2, g.breakY + 40);
+      } else {
+        ctx.fillStyle = COLORS.textSeafoam;
+        ctx.fillText('PADDLE! ' + wave.tapCount + '/' + wave.tier.requiredTaps + ' taps', W / 2, g.breakY + 40);
+      }
+    } else {
+      ctx.fillStyle = 'rgba(255,246,232,0.75)';
+      ctx.fillText('Line up with the peak…', W / 2, g.breakY + 40);
+    }
+  }
+
+  function overlayBg() {
+    var grad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.75);
+    grad.addColorStop(0, 'rgba(4, 32, 46, 0.55)');
+    grad.addColorStop(1, 'rgba(2, 18, 26, 0.90)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawIntro() {
+    overlayBg();
+    ctx.fillStyle = COLORS.textGold;
+    ctx.textAlign = 'center';
+    ctx.font = fontStr(800, 32);
+    ctx.fillText('PEAK READER', W / 2, H * 0.22);
+
+    ctx.font = fontStr(400, 16);
+    ctx.fillStyle = COLORS.textPrimary;
+    var lines = [
+      'Drag left/right to sit where the wave',
+      'peak (green zone) will break.',
+      '',
+      'When it gets close, tap rapidly to paddle',
+      'and catch it — but never paddle for a',
+      'red CLOSEOUT, and don’t scratch in late',
+      'on a big wave.',
+      '',
+      SESSION_WAVES + ' waves per session. ' + START_LIVES + ' wipeouts and you’re done.'
+    ];
+    var ly = H * 0.32;
+    for (var i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], W / 2, ly);
+      ly += 24;
+    }
+
+    ctx.font = fontStr(700, 20);
+    ctx.fillStyle = COLORS.textSeafoam;
+    ctx.fillText('Tap anywhere to paddle out', W / 2, H * 0.78);
+  }
+
+  function drawResolve() {
+    overlayBg();
+    ctx.textAlign = 'center';
+    var color = COLORS.textPrimary;
+    if (lastResult.type === 'caught') color = COLORS.textSeafoam;
+    else if (lastResult.type === 'wipeout') color = COLORS.textCoral;
+    else if (lastResult.type === 'goodread') color = COLORS.textSky;
+    else color = COLORS.textGold;
+    ctx.fillStyle = color;
+    wrapText(lastResult.text, W / 2, H * 0.42, W * 0.8, 26);
+
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.font = fontStr(600, 16);
+    ctx.fillText('Tap to continue', W / 2, H * 0.62);
+  }
+
+  function drawGameOver() {
+    overlayBg();
+    ctx.textAlign = 'center';
+    ctx.font = fontStr(700, 26);
+    ctx.fillStyle = COLORS.textPrimary;
+    var title = lives <= 0 ? 'SESSION OVER' : 'SESSION COMPLETE';
+    ctx.fillText(title, W / 2, H * 0.18);
+
+    ctx.font = fontStr(800, 40);
+    ctx.fillStyle = COLORS.textSeafoam;
+    ctx.fillText(score + ' pts', W / 2, H * 0.28);
+
+    ctx.font = fontStr(600, 18);
+    ctx.fillStyle = COLORS.textGold;
+    ctx.fillText(rankFor(score), W / 2, H * 0.37);
+
+    ctx.font = fontStr(400, 16);
+    ctx.fillStyle = COLORS.textPrimary;
+    var sy = H * 0.46;
+    ctx.fillText('Waves caught: ' + counts.caught, W / 2, sy); sy += 24;
+    ctx.fillText('Missed: ' + counts.missed, W / 2, sy); sy += 24;
+    ctx.fillText('Wipeouts: ' + counts.wipeout, W / 2, sy); sy += 24;
+    ctx.fillText('Good reads (closeouts skipped): ' + counts.goodread, W / 2, sy); sy += 24;
+
+    ctx.font = fontStr(700, 20);
+    ctx.fillStyle = COLORS.textSeafoam;
+    ctx.fillText('Tap to paddle out again', W / 2, H * 0.82);
+  }
+
+  function wrapText(text, cx, cy, maxWidth, lineHeight) {
+    ctx.font = fontStr(700, 22);
+    var words = text.split(' ');
+    var lines = [];
+    var current = '';
+    for (var i = 0; i < words.length; i++) {
+      var test = current ? current + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && current) {
+        lines.push(current);
+        current = words[i];
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    var startY = cy - (lines.length - 1) * lineHeight / 2;
+    for (var j = 0; j < lines.length; j++) {
+      ctx.fillText(lines[j], cx, startY + j * lineHeight);
+    }
+  }
+
+  // ---------- render ----------
+  function render() {
+    ctx.save();
+    if (shakeT > 0) {
+      var mag = (shakeT / SHAKE_DURATION) * 6;
+      ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+    }
+
+    drawBackground();
+    var g = trackGeom();
+    drawLineup(g);
+
+    if (currentWave && (state === STATE.APPROACH || state === STATE.RESOLVE)) {
+      drawWave(currentWave, g);
+    }
+
+    drawSplashes();
+    drawPlayer(g);
+    drawHUD();
+
+    if (state === STATE.APPROACH && currentWave) drawPrompt(g);
+    if (state === STATE.INTRO) drawIntro();
+    if (state === STATE.RESOLVE) drawResolve();
+    if (state === STATE.GAMEOVER) drawGameOver();
+
+    ctx.restore();
+  }
+
+  // ---------- main loop ----------
+  function loop(now) {
+    if (lastTime === null) lastTime = now;
+    var dt = (now - lastTime) / 1000;
+    dt = clamp(dt, 0, 0.05);
+    lastTime = now;
+
+    update(dt);
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -137,7 +137,7 @@ At 15 seconds in, the new curve is only 10% ramped versus the old curve's 25% �
 
 ## Assets
 
-Original poster-style illustrations (not screenshots) inspired by the game's bio-luminescent palette and pinch/squeeze concept, saved under `thumbnails/`:
+Original poster-style illustrations (not screenshots), regenerated 2026-07-20 to match the game's current flat, lightweight visual theme (adopted in the performance pass above), saved under `thumbnails/`:
 
 | File               | Dimensions   | Intended web use                                                                 |
 |---------------------|--------------|-----------------------------------------------------------------------------------|
@@ -145,7 +145,7 @@ Original poster-style illustrations (not screenshots) inspired by the game's bio
 | `thumb-medium.png` | 640 × 360 px | Grid/card layout tiles on a games gallery page (the default "cover image")        |
 | `thumb-large.png`  | 1280 × 720 px| Hero banner on the game's own page; also works directly as an Open Graph / Twitter Card social-preview image |
 
-The artwork depicts the glowing mint blob mid-pinch (a dashed vertical guide with two ring handles evoking the two-finger gesture) facing a run of coral-pink gate walls whose gaps narrow from left to right, with the "PINCH POINT" title rendered in the same mint-to-coral gradient used on the game's own game-over screen.
+The artwork depicts the blob mid-growth on a solid dark backdrop (`#0a0a12`) — a small flat mint circle at its minimum size linked by a dashed motion guide to a larger flat gold circle near its maximum size (with a thin white gauge-ring arc), echoing the game's live mint-to-gold size cue — approaching a run of flat light-gray (`#c7ccd6`) gate walls whose gaps narrow left to right, each edged with the same thin white "sensor line" used in-game. No gradients or glow effects are used anywhere in the artwork, matching the game's current flat rendering style. The "PINCH POINT" title is rendered in flat solid mint and gold (no gradient fill), with a monospace tagline echoing the HUD font.
 
 ## Edit Log
 

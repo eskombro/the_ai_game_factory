@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ripple Rescue</title>
+<style>
+  /* Twilight-pond palette: deep teal water, mist white, duck gold, coral danger. */
+  :root {
+    --deep:  #081a24;
+    --water: #14465c;
+    --mist:  #e9f6fb;
+    --aqua:  #7fd4f0;
+    --gold:  #ffd75e;
+    --amber: #f2c14e;
+    --coral: #ff8a7a;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 8%, #0f3346 0%, #0a2331 55%, var(--deep) 100%);
+    font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN",
+                 Quicksand, Nunito, -apple-system, "Segoe UI", sans-serif;
+    color: var(--mist);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #game {
+    display: block;
+    touch-action: none; /* stop scrolling/zoom so taps go to the game */
+    background: #16394d;
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px rgba(127, 212, 240, 0.14),
+                0 18px 50px rgba(0, 0, 0, 0.55);
+  }
+  #hud {
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(8, 26, 36, 0.62);
+    border: 1px solid rgba(127, 212, 240, 0.22);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    font-size: 13px;
+  }
+  .chipLabel {
+    color: rgba(233, 246, 251, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 10px;
+  }
+  .chip b {
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    color: var(--aqua);
+  }
+  .chip.lost b { color: var(--coral); }
+  .chip.gold b { color: var(--gold); }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 17, 24, 0.78);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    text-align: center;
+    padding: 24px;
+    z-index: 3;
+    animation: fadeIn 0.45s ease both;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .emblem {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    margin-bottom: 18px;
+  }
+  .emblem span {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--aqua);
+    border-radius: 50%;
+    opacity: 0;
+    animation: emblemRipple 2.6s ease-out infinite;
+  }
+  .emblem span:nth-child(2) { animation-delay: 0.85s; }
+  .emblem span:nth-child(3) { animation-delay: 1.7s; }
+  .emblem::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 14px rgba(255, 215, 94, 0.8);
+  }
+  @keyframes emblemRipple {
+    0%   { transform: scale(0.15); opacity: 0.9; }
+    100% { transform: scale(1);    opacity: 0; }
+  }
+  #overlay h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin: 0 0 12px;
+    color: var(--mist);
+    text-shadow: 0 2px 18px rgba(127, 212, 240, 0.35);
+  }
+  #overlay p {
+    font-size: 15px;
+    line-height: 1.55;
+    max-width: 320px;
+    margin: 6px 0;
+    color: rgba(233, 246, 251, 0.82);
+  }
+  #overlay p b { color: var(--aqua); font-weight: 600; }
+  #overlay p i { color: var(--coral); font-style: normal; }
+  #ovScore {
+    font-size: 17px;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+  #bigBtn {
+    margin-top: 24px;
+    font-family: inherit;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 16px 52px; /* large finger target */
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #8edcf5 0%, #3d9cc4 100%);
+    color: #06222f;
+    box-shadow: 0 6px 22px rgba(127, 212, 240, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    touch-action: manipulation;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  #bigBtn:active {
+    transform: scale(0.94);
+    box-shadow: 0 3px 10px rgba(127, 212, 240, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <span class="chip gold"><span class="chipLabel">Rescued</span><b id="hudScore">0</b></span>
+  <span class="chip lost"><span class="chipLabel">Lost</span><b id="hudLost">0/3</b></span>
+  <span class="chip"><span class="chipLabel">Level</span><b id="hudLevel">1</b></span>
+</div>
+
+<div id="overlay">
+  <div class="emblem"><span></span><span></span><span></span></div>
+  <h1 id="ovTitle">Ripple Rescue</h1>
+  <p id="ovBody">
+    Lost ducklings drift in a pond pulled by hungry whirlpools.
+    You can't touch them &mdash; <b>tap the water</b> to make a ripple that
+    pushes everything away from your finger. Shepherd ducklings into the
+    <b>nest ring</b> at the bottom. Careful: every ripple pushes <i>every</i>
+    duckling, even the ones you didn't mean to move.
+  </p>
+  <p id="ovScore"></p>
+  <button id="bigBtn" type="button">Start</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- Canvas / logical coordinates ----------
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var hudScore = document.getElementById('hudScore');
+  var hudLost = document.getElementById('hudLost');
+  var hudLevel = document.getElementById('hudLevel');
+  var overlay = document.getElementById('overlay');
+  var ovTitle = document.getElementById('ovTitle');
+  var ovBody = document.getElementById('ovBody');
+  var ovScore = document.getElementById('ovScore');
+  var bigBtn = document.getElementById('bigBtn');
+
+  // Fixed logical playfield (portrait); scaled to fit the phone screen.
+  var W = 400, H = 700;
+  var scale = 1, dpr = 1;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    scale = Math.min(vw / W, vh / H);
+    canvas.style.width = (W * scale) + 'px';
+    canvas.style.height = (H * scale) + 'px';
+    canvas.width = Math.round(W * scale * dpr);
+    canvas.height = Math.round(H * scale * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- Tuning constants (balancer will adjust later) ----------
+  var MAX_LOST = 3;              // ducklings lost before game over
+  var DUCK_R = 11;               // duckling radius
+  var NEST = { x: W / 2, y: H - 78, r: 46 };
+  var RIPPLE_SPEED = 190;        // px/s ring expansion
+  var RIPPLE_MAX_R = 240;        // ripple dies past this radius
+  var RIPPLE_BAND = 30;          // thickness of the pushing wavefront
+  var RIPPLE_PUSH = 340;         // impulse strength at radius 0
+  var RIPPLE_COOLDOWN = 0.18;    // s between taps (prevents spam-carry)
+  var DUCK_DAMP = 1.6;           // per-second velocity damping
+  var BASE_PULL = 24;            // whirlpool pull strength at 0 rescues
+  var PULL_PER_RESCUE = 1.5;     // smooth pull growth per rescue
+  var PULL_BONUS_MAX = 34;       // pull plateaus at BASE_PULL + 34 (= 58)
+  var SWIRL = 46;                // whirlpool tangential swirl strength
+  var CAPTURE_R = 16;            // duckling eaten inside this radius
+  var SPAWN_START = 4.2;         // s between spawns at 0 rescues
+  var SPAWN_PER_RESCUE = 0.09;   // smooth spawn-interval shrink per rescue
+  var SPAWN_MIN = 1.8;           // spawn-interval floor (reached ~27 rescues)
+  var POOL_FADE_IN = 10;         // s for a new whirlpool to reach full strength
+  var LEVEL_EVERY = 5;           // rescues per level (display + pool unlocks)
+
+  // Whirlpool slots unlocked as levels rise.
+  var POOL_SLOTS = [
+    { x: W * 0.50, y: H * 0.34 },
+    { x: W * 0.20, y: H * 0.60 },
+    { x: W * 0.80, y: H * 0.58 }
+  ];
+
+  // ---------- Game state ----------
+  var state;          // 'menu' | 'playing' | 'gameover'
+  var ducks, ripples, pools;
+  var score, lost, level;
+  var spawnTimer, rippleCd, elapsed;
+  var best = 0;
+
+  // ---------- Cosmetic-only FX (particles, shake, tiny beeps) ----------
+  var fx = [];        // {x,y,vx,vy,life,max,color,r}
+  var shake = 0;      // decaying screen-shake magnitude
+
+  function burst(x, y, color, n, speed) {
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var s = speed * (0.4 + Math.random() * 0.6);
+      fx.push({
+        x: x, y: y,
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: 0, max: 0.5 + Math.random() * 0.4,
+        color: color, r: 1.5 + Math.random() * 2
+      });
+    }
+  }
+
+  function stepFx(dt) {
+    for (var i = fx.length - 1; i >= 0; i--) {
+      var p = fx[i];
+      p.life += dt;
+      if (p.life >= p.max) { fx.splice(i, 1); continue; }
+      p.vx *= 0.92; p.vy *= 0.92;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    shake = Math.max(0, shake - dt * 26);
+  }
+
+  var AC = null;
+  function ensureAudio() {
+    if (AC) return;
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; }
+  }
+  function beep(freq, endFreq, dur, type, vol) {
+    if (!AC) return;
+    try {
+      if (AC.state === 'suspended') AC.resume();
+      var t = AC.currentTime;
+      var o = AC.createOscillator();
+      var g = AC.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.exponentialRampToValueAtTime(Math.max(30, endFreq), t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(AC.destination);
+      o.start(t);
+      o.stop(t + dur + 0.02);
+    } catch (e) { /* audio is optional polish */ }
+  }
+  function sndTap()    { beep(300, 130, 0.12, 'sine', 0.10); }
+  function sndRescue() { beep(620, 620, 0.10, 'sine', 0.12); setTimeout(function () { beep(880, 880, 0.16, 'sine', 0.10); }, 90); }
+  function sndLost()   { beep(160, 55, 0.35, 'triangle', 0.16); }
+
+  function reset() {
+    ducks = [];
+    ripples = [];
+    fx = [];
+    shake = 0;
+    score = 0;
+    lost = 0;
+    level = 1;
+    elapsed = 0;
+    spawnTimer = 0.8;   // first duckling arrives quickly
+    rippleCd = 0;
+    pools = [makePool(POOL_SLOTS[0])];
+  }
+
+  function makePool(slot) {
+    // age/str: pools fade in (see update) so a fresh whirlpool is gentle at first
+    return { x: slot.x, y: slot.y, phase: Math.random() * Math.PI * 2, age: 0, str: 0.35 };
+  }
+
+  function currentSpawnInterval() {
+    // Smooth per-rescue shrink instead of a step every level.
+    return Math.max(SPAWN_MIN, SPAWN_START - score * SPAWN_PER_RESCUE);
+  }
+
+  function currentPull() {
+    // Smooth per-rescue growth, plateauing so long runs stay fair.
+    return BASE_PULL + Math.min(score * PULL_PER_RESCUE, PULL_BONUS_MAX);
+  }
+
+  // ---------- Spawning ----------
+  function spawnDuck() {
+    // Enter from top, left or right edge, drifting gently inward.
+    var side = Math.floor(Math.random() * 3); // 0 top, 1 left, 2 right
+    var x, y, vx, vy;
+    if (side === 0) {
+      x = 40 + Math.random() * (W - 80);
+      y = -DUCK_R;
+      vx = (Math.random() - 0.5) * 20;
+      vy = 25 + Math.random() * 15;
+    } else if (side === 1) {
+      x = -DUCK_R;
+      y = 60 + Math.random() * (H * 0.5);
+      vx = 25 + Math.random() * 15;
+      vy = (Math.random() - 0.5) * 20;
+    } else {
+      x = W + DUCK_R;
+      y = 60 + Math.random() * (H * 0.5);
+      vx = -(25 + Math.random() * 15);
+      vy = (Math.random() - 0.5) * 20;
+    }
+    ducks.push({ x: x, y: y, vx: vx, vy: vy, wob: Math.random() * Math.PI * 2 });
+  }
+
+  // ---------- Input (touch/pointer only) ----------
+  function canvasPoint(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) / scale,
+      y: (clientY - rect.top) / scale
+    };
+  }
+
+  function onTap(clientX, clientY) {
+    if (state !== 'playing') return;
+    if (rippleCd > 0) return;
+    var p = canvasPoint(clientX, clientY);
+    if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) return;
+    ripples.push({ x: p.x, y: p.y, r: 6 });
+    rippleCd = RIPPLE_COOLDOWN;
+    ensureAudio();
+    sndTap();
+  }
+
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    onTap(e.clientX, e.clientY);
+  });
+  // Fallback for browsers without pointer events.
+  canvas.addEventListener('touchstart', function (e) {
+    if (window.PointerEvent) return; // pointerdown already handled it
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      onTap(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+    }
+  }, { passive: false });
+  document.addEventListener('touchmove', function (e) {
+    if (e.target === canvas) e.preventDefault();
+  }, { passive: false });
+
+  bigBtn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    startGame();
+  });
+  bigBtn.addEventListener('click', function (e) {
+    // click also fires from taps on some browsers; guard double-start
+    if (state !== 'playing') startGame();
+  });
+
+  function startGame() {
+    ensureAudio();
+    reset();
+    state = 'playing';
+    overlay.classList.add('hidden');
+  }
+
+  function gameOver() {
+    state = 'gameover';
+    if (score > best) best = score;
+    ovTitle.textContent = 'The Pond Went Quiet';
+    ovBody.innerHTML = 'Three ducklings were swallowed by the whirlpools.';
+    ovScore.textContent = 'Rescued: ' + score + '  •  Best: ' + best;
+    bigBtn.textContent = 'Play Again';
+    overlay.classList.remove('hidden');
+  }
+
+  // ---------- Update ----------
+  function update(dt) {
+    elapsed += dt;
+    rippleCd -= dt;
+
+    // Spawning
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnDuck();
+      spawnTimer = currentSpawnInterval();
+    }
+
+    // Ripples expand
+    for (var i = ripples.length - 1; i >= 0; i--) {
+      ripples[i].r += RIPPLE_SPEED * dt;
+      if (ripples[i].r > RIPPLE_MAX_R) ripples.splice(i, 1);
+    }
+
+    var pull = currentPull();
+
+    // Whirlpools ramp in over POOL_FADE_IN seconds: softens the opening
+    // moments and smooths the level-3/5 extra-pool steps into a curve.
+    for (var pj = 0; pj < pools.length; pj++) {
+      pools[pj].age += dt;
+      pools[pj].str = 0.35 + 0.65 * Math.min(1, pools[pj].age / POOL_FADE_IN);
+    }
+
+    // Ducks
+    for (i = ducks.length - 1; i >= 0; i--) {
+      var d = ducks[i];
+      d.wob += dt * 3;
+
+      // Whirlpool forces: radial pull + tangential swirl
+      var eaten = false;
+      for (var j = 0; j < pools.length; j++) {
+        var pl = pools[j];
+        var dx = pl.x - d.x, dy = pl.y - d.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CAPTURE_R) { eaten = true; break; }
+        // constant gentle far-field drift + strong near-field pull
+        var f = pull * pl.str * (0.4 + 90 / Math.max(dist, 40));
+        f = Math.min(f, 240);
+        d.vx += (dx / dist) * f * dt;
+        d.vy += (dy / dist) * f * dt;
+        // swirl only matters near the pool
+        if (dist < 150) {
+          var sw = SWIRL * pl.str * (1 - dist / 150);
+          d.vx += (-dy / dist) * sw * dt;
+          d.vy += (dx / dist) * sw * dt;
+        }
+      }
+      if (eaten) {
+        burst(d.x, d.y, 'rgba(127, 212, 240, 0.9)', 14, 120); // splash (cosmetic)
+        shake = 7;
+        sndLost();
+        ducks.splice(i, 1);
+        lost++;
+        if (lost >= MAX_LOST) { gameOver(); return; }
+        continue;
+      }
+
+      // Ripple pushes: impulse when the wavefront passes over the duck
+      for (j = 0; j < ripples.length; j++) {
+        var rp = ripples[j];
+        var rx = d.x - rp.x, ry = d.y - rp.y;
+        var rd = Math.sqrt(rx * rx + ry * ry);
+        if (rd < 1) { rx = 1; ry = 0; rd = 1; }
+        var gap = Math.abs(rd - rp.r);
+        if (gap < RIPPLE_BAND) {
+          var falloff = 1 - rp.r / RIPPLE_MAX_R;        // weaker as it spreads
+          var bandFactor = 1 - gap / RIPPLE_BAND;       // strongest at the crest
+          var imp = RIPPLE_PUSH * falloff * bandFactor * dt * 4;
+          d.vx += (rx / rd) * imp;
+          d.vy += (ry / rd) * imp;
+        }
+      }
+
+      // Damping + integrate
+      var damp = Math.max(0, 1 - DUCK_DAMP * dt);
+      d.vx *= damp;
+      d.vy *= damp;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+
+      // Soft walls: bounce back inside
+      if (d.x < DUCK_R && d.vx < 0) { d.x = DUCK_R; d.vx *= -0.5; }
+      if (d.x > W - DUCK_R && d.vx > 0) { d.x = W - DUCK_R; d.vx *= -0.5; }
+      if (d.y < DUCK_R && d.vy < 0) { d.y = DUCK_R; d.vy *= -0.5; }
+      if (d.y > H - DUCK_R && d.vy > 0) { d.y = H - DUCK_R; d.vy *= -0.5; }
+
+      // Rescue check: inside the nest ring
+      var nx = d.x - NEST.x, ny = d.y - NEST.y;
+      if (nx * nx + ny * ny < (NEST.r - DUCK_R * 0.4) * (NEST.r - DUCK_R * 0.4)) {
+        burst(d.x, d.y, 'rgba(255, 215, 94, 0.95)', 12, 90); // gold sparkle (cosmetic)
+        sndRescue();
+        ducks.splice(i, 1);
+        score++;
+        var newLevel = 1 + Math.floor(score / LEVEL_EVERY);
+        if (newLevel !== level) {
+          level = newLevel;
+          // Unlock extra whirlpools at levels 3 and 5
+          if (level >= 3 && pools.length < 2) pools.push(makePool(POOL_SLOTS[1]));
+          if (level >= 5 && pools.length < 3) pools.push(makePool(POOL_SLOTS[2]));
+        }
+      }
+    }
+
+    for (j = 0; j < pools.length; j++) pools[j].phase += dt * 2.2;
+
+    hudScore.textContent = score;
+    hudLost.textContent = lost + '/' + MAX_LOST;
+    hudLevel.textContent = level;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    var t = performance.now() / 1000; // cosmetic animation clock (runs on menu too)
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+
+    // Pond: soft vertical depth gradient + drifting light bands
+    var pond = ctx.createLinearGradient(0, 0, 0, H);
+    pond.addColorStop(0, '#1a566e');
+    pond.addColorStop(0.55, '#14465c');
+    pond.addColorStop(1, '#0d3448');
+    ctx.fillStyle = pond;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+
+    // Faint caustic shimmer: three slow horizontal light bands
+    for (var b = 0; b < 3; b++) {
+      var by = ((t * 12 + b * 233) % (H + 160)) - 80;
+      var lg = ctx.createLinearGradient(0, by - 40, 0, by + 40);
+      lg.addColorStop(0, 'rgba(168, 230, 245, 0)');
+      lg.addColorStop(0.5, 'rgba(168, 230, 245, 0.035)');
+      lg.addColorStop(1, 'rgba(168, 230, 245, 0)');
+      ctx.fillStyle = lg;
+      ctx.fillRect(-10, by - 40, W + 20, 80);
+    }
+
+    // Nest: glowing lily-pad ring of twigs
+    var glow = ctx.createRadialGradient(NEST.x, NEST.y, NEST.r * 0.2, NEST.x, NEST.y, NEST.r * 1.7);
+    glow.addColorStop(0, 'rgba(242, 193, 78, 0.22)');
+    glow.addColorStop(1, 'rgba(242, 193, 78, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(NEST.x, NEST.y, NEST.r * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(242, 193, 78, 0.10)';
+    ctx.beginPath();
+    ctx.arc(NEST.x, NEST.y, NEST.r, 0, Math.PI * 2);
+    ctx.fill();
+    // twig ring: short dashed strokes around the rim
+    ctx.strokeStyle = '#c8934a';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    for (var s = 0; s < 22; s++) {
+      var a0 = (s / 22) * Math.PI * 2 + Math.sin(s * 7.3) * 0.06;
+      ctx.beginPath();
+      ctx.arc(NEST.x, NEST.y, NEST.r + (s % 2 ? 1.5 : -1.5), a0, a0 + 0.19);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(242, 193, 78, ' + (0.55 + 0.25 * Math.sin(t * 2)).toFixed(3) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(NEST.x, NEST.y, NEST.r - 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // Whirlpools: dark vortex disc + two-tone spiral arcs
+    for (var j = 0; j < pools.length; j++) {
+      var pl = pools[j];
+      var vg = ctx.createRadialGradient(pl.x, pl.y, 2, pl.x, pl.y, 46);
+      vg.addColorStop(0, 'rgba(5, 14, 20, 0.85)');
+      vg.addColorStop(0.5, 'rgba(9, 30, 42, 0.5)');
+      vg.addColorStop(1, 'rgba(9, 30, 42, 0)');
+      ctx.fillStyle = vg;
+      ctx.beginPath();
+      ctx.arc(pl.x, pl.y, 46, 0, Math.PI * 2);
+      ctx.fill();
+      for (var k = 0; k < 3; k++) {
+        var rr = 10 + k * 9 + 3 * Math.sin(pl.phase + k);
+        ctx.strokeStyle = k === 1 ? 'rgba(168, 230, 245, 0.85)' : 'rgba(127, 212, 240, 0.55)';
+        ctx.lineWidth = 2.5 - k * 0.5;
+        ctx.beginPath();
+        ctx.arc(pl.x, pl.y, rr, pl.phase + k, pl.phase + k + Math.PI * 1.5);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#050e14';
+      ctx.beginPath();
+      ctx.arc(pl.x, pl.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Ripples: bright crest ring + fainter trailing ring
+    for (var i = 0; i < ripples.length; i++) {
+      var rp = ripples[i];
+      var a = Math.max(0, 1 - rp.r / RIPPLE_MAX_R);
+      ctx.strokeStyle = 'rgba(233, 246, 251, ' + (0.85 * a).toFixed(3) + ')';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.stroke();
+      if (rp.r > 14) {
+        ctx.strokeStyle = 'rgba(127, 212, 240, ' + (0.3 * a).toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(rp.x, rp.y, rp.r - 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // FX particles (cosmetic)
+    for (i = 0; i < fx.length; i++) {
+      var p = fx[i];
+      var pa = 1 - p.life / p.max;
+      ctx.globalAlpha = pa;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * pa, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Ducklings: gold body, wing arc, oriented beak, eye, soft shadow
+    for (i = 0; i < ducks.length; i++) {
+      var d = ducks[i];
+      var bob = Math.sin(d.wob) * 1.5;
+      var sp = Math.sqrt(d.vx * d.vx + d.vy * d.vy);
+      var ang = sp > 4 ? Math.atan2(d.vy, d.vx) : 0;
+      var cy = d.y + bob;
+      // water shadow
+      ctx.fillStyle = 'rgba(5, 20, 28, 0.30)';
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y + DUCK_R * 0.75, DUCK_R * 1.05, DUCK_R * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // body
+      var dg = ctx.createRadialGradient(d.x - 3, cy - 4, 2, d.x, cy, DUCK_R + 2);
+      dg.addColorStop(0, '#ffe98f');
+      dg.addColorStop(1, '#ffd75e');
+      ctx.fillStyle = dg;
+      ctx.beginPath();
+      ctx.arc(d.x, cy, DUCK_R, 0, Math.PI * 2);
+      ctx.fill();
+      // wing
+      ctx.strokeStyle = 'rgba(224, 158, 46, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(d.x, cy, DUCK_R * 0.55, ang + Math.PI * 0.55, ang + Math.PI * 1.45);
+      ctx.stroke();
+      // beak: small triangle pointing along drift
+      var bx = d.x + Math.cos(ang) * DUCK_R * 0.95;
+      var by2 = cy + Math.sin(ang) * DUCK_R * 0.95;
+      ctx.fillStyle = '#f0913c';
+      ctx.beginPath();
+      ctx.moveTo(bx + Math.cos(ang) * 5, by2 + Math.sin(ang) * 5);
+      ctx.lineTo(bx + Math.cos(ang + 2.2) * 3.6, by2 + Math.sin(ang + 2.2) * 3.6);
+      ctx.lineTo(bx + Math.cos(ang - 2.2) * 3.6, by2 + Math.sin(ang - 2.2) * 3.6);
+      ctx.closePath();
+      ctx.fill();
+      // eye
+      ctx.fillStyle = '#2b2013';
+      ctx.beginPath();
+      ctx.arc(d.x + Math.cos(ang - 0.7) * DUCK_R * 0.45, cy + Math.sin(ang - 0.7) * DUCK_R * 0.45, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // subtle vignette to frame the pond
+    var vg2 = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.72);
+    vg2.addColorStop(0, 'rgba(5, 14, 20, 0)');
+    vg2.addColorStop(1, 'rgba(5, 14, 20, 0.32)');
+    ctx.fillStyle = vg2;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ---------- Main loop ----------
+  var last = performance.now();
+  function frame(now) {
+    var dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state === 'playing') update(dt);
+    stepFx(dt); // cosmetic particles/shake decay
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  state = 'menu';
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -36,6 +36,8 @@ Games are produced by a fixed pipeline of specialist subagents defined in `.clau
 
 After all five stages, `game-producer` itself (not a subagent) adds the game to the root `./index.html` landing page — a new `<li>` plus matching entries in that page's `translations` object — and resyncs the description text of any other already-listed game whose `description.json` has since changed. `game-producer` blocks on each stage's result before starting the next (via `run_in_background: false`), captures what changed at each step, does a light sanity pass afterward, and reports one final summary. If a stage reports an unresolved bug, the pipeline stops rather than letting a later stage build on a broken foundation.
 
+**Landing page ordering (always applies, to every pipeline run — local, remote, or autonomous):** the `<ul>` list in the root `index.html` must always be newest-first, oldest-last. A new game's `<li>` must be inserted as the *first* child of `<ul>`, immediately after the opening tag — never appended at the end. Verify the final ordering after adding any game; do not rely on default append behavior.
+
 ### When to use which agent
 
 - Full new game, finished and playable: `game-producer` (drives all five stages plus the site listing).

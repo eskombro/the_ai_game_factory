@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Roll Call</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(900px 600px at 50% -8%, #23324e 0%, rgba(35,50,78,0) 60%),
+      linear-gradient(180deg, #0c1220 0%, #070a12 100%);
+    color: #eaf2ff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Segoe UI Rounded", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overscroll-behavior: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    height: 100%;
+    width: 100%;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+    padding: 14px 10px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin: 2px 0 12px 0;
+    color: #eaf6ff;
+    text-shadow: 0 0 18px rgba(142, 202, 230, 0.35);
+  }
+  #hud {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  #hud span {
+    display: block;
+    flex: 1;
+    text-align: center;
+    padding: 7px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(142, 202, 230, 0.16);
+    color: #cfe3f7;
+    letter-spacing: 0.02em;
+    transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
+  }
+  #movesLabel.moves-ok { color: #8ee6c8; border-color: rgba(142, 230, 200, 0.3); }
+  #movesLabel.moves-warn { color: #f4a261; border-color: rgba(244, 162, 97, 0.4); background: rgba(244, 162, 97, 0.08); }
+  #movesLabel.moves-danger { color: #ff8a94; border-color: rgba(230, 57, 70, 0.5); background: rgba(230, 57, 70, 0.1); }
+  #starsLabel { color: #f4d35e; }
+  #boardWrap {
+    position: relative;
+    touch-action: none;
+    border-radius: 18px;
+    padding: 4px;
+    background: linear-gradient(160deg, rgba(142, 202, 230, 0.16), rgba(142, 202, 230, 0.02));
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  }
+  #boardWrap.shake { animation: shakeAnim 240ms ease; }
+  @keyframes shakeAnim {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+    100% { transform: translateX(0); }
+  }
+  canvas {
+    display: block;
+    border-radius: 14px;
+    background: linear-gradient(160deg, #1b2740 0%, #121a2c 100%);
+    touch-action: none;
+  }
+  #controls {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 12px 22px;
+    min-width: 96px;
+    min-height: 48px;
+    border-radius: 999px;
+    border: 1px solid rgba(142, 202, 230, 0.3);
+    background: linear-gradient(135deg, #2a3a5c, #1c2740);
+    color: #eaf2ff;
+    letter-spacing: 0.02em;
+    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  button:active {
+    transform: scale(0.94);
+    background: linear-gradient(135deg, #35507a, #24304c);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+  .overlay button {
+    background: linear-gradient(135deg, #457b9d, #2a9d8a);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  #hint {
+    max-width: 420px;
+    font-size: 12.5px;
+    color: #8fa2bd;
+    text-align: center;
+    margin-top: 12px;
+    line-height: 1.45;
+    padding: 0 6px;
+  }
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(6, 9, 16, 0.66);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    border-radius: 14px;
+    opacity: 1;
+    transition: opacity 220ms ease;
+  }
+  .overlay.hidden {
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .overlay .card {
+    width: 100%;
+    max-width: 320px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(142, 202, 230, 0.28);
+    border-radius: 16px;
+    padding: 22px 20px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    transform: scale(1);
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .overlay.hidden .card {
+    transform: scale(0.9);
+  }
+  .overlay h2 {
+    margin: 0 0 10px 0;
+    font-size: 21px;
+    font-weight: 700;
+    color: #eaf6ff;
+    letter-spacing: 0.02em;
+  }
+  .overlay p {
+    margin: 5px 0;
+    font-size: 14.5px;
+    color: #c4d3e8;
+    line-height: 1.4;
+  }
+  .overlay button {
+    margin-top: 16px;
+  }
+  .hidden { display: none; }
+  #stars {
+    font-size: 30px;
+    letter-spacing: 6px;
+    margin: 10px 0;
+    color: #f4d35e;
+    text-shadow: 0 0 14px rgba(244, 211, 94, 0.55);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Roll Call</h1>
+  <div id="hud">
+    <span id="levelLabel">Level 1 / 9</span>
+    <span id="movesLabel">Moves: 0 / 5</span>
+    <span id="starsLabel">Stars: 0</span>
+  </div>
+  <div id="boardWrap">
+    <canvas id="board"></canvas>
+    <div id="startOverlay" class="overlay">
+      <div class="card">
+        <h2>Roll Call</h2>
+        <p>Swipe up, down, left or right to slide <b>every</b> marble at once.</p>
+        <p>Each marble stops only when it hits a wall, the edge, or another marble.</p>
+        <p>Get each color onto its matching ring. A marble that reaches its own goal locks in place and becomes a wall for the others.</p>
+        <button id="startBtn">Start</button>
+      </div>
+    </div>
+    <div id="winOverlay" class="overlay hidden">
+      <div class="card">
+        <h2>Level Complete!</h2>
+        <div id="stars"></div>
+        <p id="winStats"></p>
+        <button id="nextBtn">Next Level</button>
+      </div>
+    </div>
+    <div id="loseOverlay" class="overlay hidden">
+      <div class="card">
+        <h2>Out of Moves</h2>
+        <p>You ran out of swipes before every marble reached home.</p>
+        <button id="retryBtn">Retry Level</button>
+      </div>
+    </div>
+    <div id="finishOverlay" class="overlay hidden">
+      <div class="card">
+        <h2>All Levels Cleared!</h2>
+        <p id="finishStats"></p>
+        <button id="restartAllBtn">Play Again</button>
+      </div>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="undoBtn">Undo</button>
+    <button id="restartBtn">Restart</button>
+  </div>
+  <div id="hint">Swipe anywhere on the board. Locked (homed) marbles show a ring and no longer move.</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Level data ----------
+  // wr: walls on the RIGHT side of cell [r,c] (blocks crossing between [r,c] and [r,c+1])
+  // wb: walls on the BOTTOM side of cell [r,c] (blocks crossing between [r,c] and [r+1,c])
+  // Every level below was validated with an offline BFS solver to guarantee it is solvable
+  // within moveLimit (moveLimit = par + slackForPar(par), see below), and "par" is the true
+  // minimum number of swipes. Levels are ordered for a smooth par ramp across the session.
+  const LEVELS = [
+    {
+      size: 4, par: 2,
+      wr: [[0,1]], wb: [[0,2]],
+      marbles: [
+        { start: [1,1], goal: [0,0], color: "#e63946" }
+      ]
+    },
+    {
+      size: 4, par: 4,
+      wr: [[0,1],[2,0]], wb: [[2,3]],
+      marbles: [
+        { start: [0,2], goal: [3,1], color: "#e63946" }
+      ]
+    },
+    {
+      size: 5, par: 3,
+      wr: [[3,0],[4,0],[4,3]], wb: [],
+      marbles: [
+        { start: [2,0], goal: [4,0], color: "#e63946" },
+        { start: [1,4], goal: [0,0], color: "#457b9d" }
+      ]
+    },
+    {
+      size: 5, par: 5,
+      wr: [[3,1],[2,1],[2,2]], wb: [[1,4]],
+      marbles: [
+        { start: [1,2], goal: [0,4], color: "#e63946" },
+        { start: [2,0], goal: [1,1], color: "#457b9d" },
+        { start: [3,1], goal: [4,0], color: "#2a9d8a" }
+      ]
+    },
+    {
+      size: 5, par: 7,
+      wr: [[3,0],[4,3]], wb: [[2,0],[0,4]],
+      marbles: [
+        { start: [1,2], goal: [4,0], color: "#e63946" },
+        { start: [1,0], goal: [0,3], color: "#457b9d" }
+      ]
+    },
+    {
+      size: 6, par: 9,
+      wr: [[1,4],[0,3],[2,1]], wb: [[4,0],[2,4]],
+      marbles: [
+        { start: [0,4], goal: [3,5], color: "#e63946" },
+        { start: [4,4], goal: [0,2], color: "#457b9d" },
+        { start: [2,1], goal: [2,5], color: "#2a9d8a" }
+      ]
+    },
+    {
+      size: 6, par: 10,
+      wr: [[5,2],[1,0]], wb: [[2,3],[1,2],[4,4]],
+      marbles: [
+        { start: [3,1], goal: [5,3], color: "#e63946" },
+        { start: [1,4], goal: [0,4], color: "#457b9d" },
+        { start: [0,0], goal: [2,3], color: "#2a9d8a" },
+        { start: [3,2], goal: [3,3], color: "#f4a261" }
+      ]
+    },
+    {
+      size: 7, par: 10,
+      wr: [[4,2]], wb: [[1,0],[1,4],[1,3],[1,5],[0,2]],
+      marbles: [
+        { start: [2,1], goal: [0,6], color: "#e63946" },
+        { start: [2,5], goal: [5,1], color: "#457b9d" },
+        { start: [4,2], goal: [0,0], color: "#2a9d8a" },
+        { start: [1,5], goal: [1,0], color: "#f4a261" }
+      ]
+    },
+    {
+      size: 7, par: 13,
+      wr: [[6,1],[2,2],[5,2],[5,5]], wb: [[5,3],[4,1],[1,6],[5,0]],
+      marbles: [
+        { start: [1,2], goal: [0,5], color: "#e63946" },
+        { start: [3,1], goal: [4,6], color: "#457b9d" },
+        { start: [5,0], goal: [0,4], color: "#2a9d8a" },
+        { start: [5,2], goal: [4,1], color: "#f4a261" }
+      ]
+    }
+  ];
+
+  // moveLimit = par + slackForPar(par). Slack grows gently with par so early, short
+  // puzzles stay tight enough to teach the mechanic while later, longer puzzles (more
+  // marbles/moves to plan around) get a bit more forgiveness for a single misstep.
+  // par 2-4 -> +3, par 5-7 -> +4, par 8-10 -> +5, par 11+ -> +6, etc.
+  function slackForPar(par) {
+    return 2 + Math.round(par * 0.3);
+  }
+
+  // ---------- DOM references ----------
+  const canvas = document.getElementById("board");
+  const ctx = canvas.getContext("2d");
+  const boardWrap = document.getElementById("boardWrap");
+  const levelLabel = document.getElementById("levelLabel");
+  const movesLabel = document.getElementById("movesLabel");
+  const starsLabel = document.getElementById("starsLabel");
+  const startOverlay = document.getElementById("startOverlay");
+  const winOverlay = document.getElementById("winOverlay");
+  const loseOverlay = document.getElementById("loseOverlay");
+  const finishOverlay = document.getElementById("finishOverlay");
+  const starsEl = document.getElementById("stars");
+  const winStats = document.getElementById("winStats");
+  const finishStats = document.getElementById("finishStats");
+
+  // ---------- Game state ----------
+  let levelIndex = 0;
+  let size = 0;
+  let wrSet = new Set();
+  let wbSet = new Set();
+  let marbles = []; // { r, c, startR, startC, goalR, goalC, color, locked }
+  let moveCount = 0;
+  let moveLimit = 0;
+  let par = 0;
+  let history = []; // snapshots of marble positions for undo
+  let totalStars = 0;
+  let state = "start"; // start | playing | levelComplete | levelFailed | gameComplete
+  let cellPx = 0;
+
+  // ---------- Visual/animation-only state (purely cosmetic, no gameplay effect) ----------
+  let visual = []; // rendered {r, c} float positions per marble, for smooth sliding
+  let animFrame = null;
+  let animPhase = null; // "move" | "settle" | null
+  let animFrom = [], animTo = [];
+  let animLockIdx = [];
+  let animStartTime = 0;
+  let lockPulse = 1;
+  const MOVE_ANIM_MS = 150;
+  const SETTLE_ANIM_MS = 260;
+
+  function keyRC(r, c) { return r + "," + c; }
+
+  function resetVisual() {
+    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+    animPhase = null;
+    animLockIdx = [];
+    lockPulse = 1;
+    visual = marbles.map(m => ({ r: m.r, c: m.c }));
+  }
+
+  function loadLevel(idx) {
+    const lvl = LEVELS[idx];
+    size = lvl.size;
+    wrSet = new Set(lvl.wr.map(([r, c]) => keyRC(r, c)));
+    wbSet = new Set(lvl.wb.map(([r, c]) => keyRC(r, c)));
+    marbles = lvl.marbles.map(m => ({
+      r: m.start[0], c: m.start[1],
+      startR: m.start[0], startC: m.start[1],
+      goalR: m.goal[0], goalC: m.goal[1],
+      color: m.color
+    }));
+    par = lvl.par;
+    moveLimit = par + slackForPar(par);
+    moveCount = 0;
+    history = [];
+    state = "playing";
+    resetVisual();
+    resizeCanvas();
+    updateHud();
+    render();
+  }
+
+  function isLocked(m) {
+    return m.r === m.goalR && m.c === m.goalC;
+  }
+
+  function inBounds(r, c) {
+    return r >= 0 && r < size && c >= 0 && c < size;
+  }
+
+  function canCross(r1, c1, r2, c2) {
+    if (!inBounds(r2, c2)) return false;
+    if (r1 === r2 && c2 === c1 + 1) return !wrSet.has(keyRC(r1, c1));
+    if (r1 === r2 && c2 === c1 - 1) return !wrSet.has(keyRC(r1, c2));
+    if (c1 === c2 && r2 === r1 + 1) return !wbSet.has(keyRC(r1, c1));
+    if (c1 === c2 && r2 === r1 - 1) return !wbSet.has(keyRC(r2, c1));
+    return false;
+  }
+
+  const DIRS = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+
+  function snapshot() {
+    return marbles.map(m => ({ r: m.r, c: m.c }));
+  }
+
+  function restoreSnapshot(snap) {
+    for (let i = 0; i < marbles.length; i++) {
+      marbles[i].r = snap[i].r;
+      marbles[i].c = snap[i].c;
+    }
+  }
+
+  function computeSlide(dirName) {
+    const [dr, dc] = DIRS[dirName];
+    const n = marbles.length;
+    const pos = marbles.map(m => [m.r, m.c]);
+    const lockedFlags = marbles.map(m => isLocked(m));
+
+    const order = [];
+    for (let i = 0; i < n; i++) if (!lockedFlags[i]) order.push(i);
+    order.sort((a, b) => {
+      if (dirName === "right") return pos[b][1] - pos[a][1];
+      if (dirName === "left") return pos[a][1] - pos[b][1];
+      if (dirName === "down") return pos[b][0] - pos[a][0];
+      if (dirName === "up") return pos[a][0] - pos[b][0];
+      return 0;
+    });
+
+    const occ = new Set(pos.map(p => keyRC(p[0], p[1])));
+
+    for (const i of order) {
+      let [r, c] = pos[i];
+      occ.delete(keyRC(r, c));
+      while (true) {
+        const nr = r + dr, nc = c + dc;
+        if (!canCross(r, c, nr, nc)) break;
+        if (occ.has(keyRC(nr, nc))) break;
+        r = nr; c = nc;
+      }
+      pos[i] = [r, c];
+      occ.add(keyRC(r, c));
+    }
+    return pos;
+  }
+
+  function attemptMove(dirName) {
+    if (state !== "playing") return;
+    const newPos = computeSlide(dirName);
+    let changed = false;
+    for (let i = 0; i < marbles.length; i++) {
+      if (marbles[i].r !== newPos[i][0] || marbles[i].c !== newPos[i][1]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) {
+      shakeBoard(); // brief no-move feedback (cosmetic only)
+      render();
+      return;
+    }
+
+    const fromPos = marbles.map(m => ({ r: m.r, c: m.c }));
+    const wasLocked = marbles.map(m => isLocked(m));
+
+    history.push(snapshot());
+    for (let i = 0; i < marbles.length; i++) {
+      marbles[i].r = newPos[i][0];
+      marbles[i].c = newPos[i][1];
+    }
+    moveCount++;
+
+    const newlyLocked = [];
+    marbles.forEach((m, i) => {
+      if (!wasLocked[i] && isLocked(m)) newlyLocked.push(i);
+    });
+
+    const solved = marbles.every(m => isLocked(m));
+    if (solved) {
+      totalStars += starsForMoves(moveCount);
+      if (levelIndex >= LEVELS.length - 1) {
+        state = "gameComplete";
+        showFinish();
+      } else {
+        state = "levelComplete";
+        showWin();
+      }
+    } else if (moveCount >= moveLimit) {
+      state = "levelFailed";
+      showLose();
+    }
+
+    updateHud();
+    startMoveAnim(fromPos, marbles.map(m => ({ r: m.r, c: m.c })), newlyLocked);
+  }
+
+  function starsForMoves(moves) {
+    if (moves <= par) return 3;
+    if (moves <= par + 1) return 2;
+    return 1;
+  }
+
+  function undo() {
+    // Undo is only meaningful while actively playing or after failing a level.
+    // Once a level/game is already marked complete, its stars are locked in,
+    // so block undo/restart there to avoid double-counting stars.
+    if (state === "levelComplete" || state === "gameComplete" || state === "start") return;
+    if (history.length === 0) return;
+    const fromPos = marbles.map(m => ({ r: m.r, c: m.c }));
+    const snap = history.pop();
+    restoreSnapshot(snap);
+    moveCount = Math.max(0, moveCount - 1);
+    if (state === "levelFailed") {
+      state = "playing";
+      hideOverlays();
+    }
+    updateHud();
+    startMoveAnim(fromPos, marbles.map(m => ({ r: m.r, c: m.c })), []);
+  }
+
+  function restartLevel() {
+    // Block restarting a level whose stars have already been awarded (levelComplete/
+    // gameComplete) or before the game has started, to avoid double-counting stars.
+    if (state === "levelComplete" || state === "gameComplete" || state === "start") return;
+    const lvl = LEVELS[levelIndex];
+    marbles.forEach((m, i) => {
+      m.r = lvl.marbles[i].start[0];
+      m.c = lvl.marbles[i].start[1];
+    });
+    moveCount = 0;
+    history = [];
+    state = "playing";
+    hideOverlays();
+    resetVisual();
+    updateHud();
+    render();
+  }
+
+  function nextLevel() {
+    levelIndex++;
+    hideOverlays();
+    loadLevel(levelIndex);
+  }
+
+  function restartAll() {
+    levelIndex = 0;
+    totalStars = 0;
+    hideOverlays();
+    loadLevel(levelIndex);
+  }
+
+  function hideOverlays() {
+    startOverlay.classList.add("hidden");
+    winOverlay.classList.add("hidden");
+    loseOverlay.classList.add("hidden");
+    finishOverlay.classList.add("hidden");
+  }
+
+  function showWin() {
+    hideOverlays();
+    const stars = starsForMoves(moveCount);
+    starsEl.textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
+    winStats.textContent = "Moves used: " + moveCount + " (par " + par + ")";
+    winOverlay.classList.remove("hidden");
+  }
+
+  function showLose() {
+    hideOverlays();
+    loseOverlay.classList.remove("hidden");
+  }
+
+  function showFinish() {
+    hideOverlays();
+    finishStats.textContent = "Total stars: " + totalStars + " / " + (LEVELS.length * 3);
+    finishOverlay.classList.remove("hidden");
+  }
+
+  function updateHud() {
+    levelLabel.textContent = "Level " + (levelIndex + 1) + " / " + LEVELS.length;
+    movesLabel.textContent = "Moves: " + moveCount + " / " + moveLimit;
+    starsLabel.textContent = "Stars: " + totalStars;
+
+    // Cosmetic-only: tint the moves badge as the limit approaches.
+    const remaining = moveLimit - moveCount;
+    movesLabel.classList.remove("moves-ok", "moves-warn", "moves-danger");
+    if (remaining <= 1) movesLabel.classList.add("moves-danger");
+    else if (remaining <= Math.max(2, Math.ceil(moveLimit * 0.3))) movesLabel.classList.add("moves-warn");
+    else movesLabel.classList.add("moves-ok");
+  }
+
+  // ---------- Cosmetic animation helpers (do not affect game state) ----------
+  function shakeBoard() {
+    boardWrap.classList.remove("shake");
+    void boardWrap.offsetWidth; // restart CSS animation
+    boardWrap.classList.add("shake");
+  }
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeOutBack(t) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  function startMoveAnim(fromPos, toPos, lockIdx) {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrom = fromPos;
+    animTo = toPos;
+    animLockIdx = lockIdx;
+    animPhase = "move";
+    animStartTime = performance.now();
+    visual = fromPos.map(p => ({ r: p.r, c: p.c }));
+    animFrame = requestAnimationFrame(animStep);
+  }
+
+  function animStep(now) {
+    if (animPhase === "move") {
+      const t = Math.min(1, (now - animStartTime) / MOVE_ANIM_MS);
+      const e = easeOutCubic(t);
+      visual = animFrom.map((p, i) => ({
+        r: p.r + (animTo[i].r - p.r) * e,
+        c: p.c + (animTo[i].c - p.c) * e
+      }));
+      render();
+      if (t >= 1) {
+        visual = animTo.map(p => ({ r: p.r, c: p.c }));
+        if (animLockIdx.length > 0) {
+          animPhase = "settle";
+          animStartTime = now;
+          lockPulse = 0;
+        } else {
+          animPhase = null;
+          animFrame = null;
+          render();
+          return;
+        }
+      }
+      animFrame = requestAnimationFrame(animStep);
+    } else if (animPhase === "settle") {
+      const t = Math.min(1, (now - animStartTime) / SETTLE_ANIM_MS);
+      lockPulse = t;
+      render();
+      if (t >= 1) {
+        animPhase = null;
+        animFrame = null;
+        lockPulse = 1;
+        render();
+        return;
+      }
+      animFrame = requestAnimationFrame(animStep);
+    }
+  }
+
+  function shadeColor(hex, percent) {
+    const num = parseInt(hex.slice(1), 16);
+    let r = (num >> 16) + percent;
+    let g = ((num >> 8) & 0x00ff) + percent;
+    let b = (num & 0x0000ff) + percent;
+    r = Math.max(Math.min(255, r), 0);
+    g = Math.max(Math.min(255, g), 0);
+    b = Math.max(Math.min(255, b), 0);
+    return "#" + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+  }
+
+  // ---------- Rendering ----------
+  function resizeCanvas() {
+    const maxWidth = Math.min(window.innerWidth - 24, 400);
+    const boardPx = Math.max(200, Math.floor(maxWidth / size) * size);
+    cellPx = Math.floor(boardPx / size);
+    const px = cellPx * size;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = px + "px";
+    canvas.style.height = px + "px";
+    canvas.width = px * dpr;
+    canvas.height = px * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function render() {
+    const px = cellPx * size;
+    ctx.clearRect(0, 0, px, px);
+
+    // subtle checkerboard tint for depth
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if ((r + c) % 2 === 0) {
+          ctx.fillStyle = "rgba(255,255,255,0.02)";
+          ctx.fillRect(c * cellPx, r * cellPx, cellPx, cellPx);
+        }
+      }
+    }
+
+    // grid
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= size; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * cellPx, 0);
+      ctx.lineTo(i * cellPx, px);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * cellPx);
+      ctx.lineTo(px, i * cellPx);
+      ctx.stroke();
+    }
+
+    // walls, reimagined as glowing frost cracks
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#8ecae6";
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = "rgba(142, 202, 230, 0.7)";
+    ctx.shadowBlur = 7;
+    wrSet.forEach(key => {
+      const [r, c] = key.split(",").map(Number);
+      const x = (c + 1) * cellPx;
+      ctx.beginPath();
+      ctx.moveTo(x, r * cellPx + 3);
+      ctx.lineTo(x, (r + 1) * cellPx - 3);
+      ctx.stroke();
+    });
+    wbSet.forEach(key => {
+      const [r, c] = key.split(",").map(Number);
+      const y = (r + 1) * cellPx;
+      ctx.beginPath();
+      ctx.moveTo(c * cellPx + 3, y);
+      ctx.lineTo((c + 1) * cellPx - 3, y);
+      ctx.stroke();
+    });
+    ctx.shadowBlur = 0;
+    ctx.lineCap = "butt";
+
+    // goals: dashed rings in the marble's own color
+    marbles.forEach(m => {
+      const cx = m.goalC * cellPx + cellPx / 2;
+      const cy = m.goalR * cellPx + cellPx / 2;
+      ctx.beginPath();
+      ctx.setLineDash([cellPx * 0.09, cellPx * 0.09]);
+      ctx.arc(cx, cy, cellPx * 0.34, 0, Math.PI * 2);
+      ctx.strokeStyle = m.color;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    });
+
+    // marbles: glossy gradient beads with a soft shadow, locked ones get a glowing ring
+    marbles.forEach((m, i) => {
+      const vp = visual[i] || { r: m.r, c: m.c };
+      const cx = vp.c * cellPx + cellPx / 2;
+      const cy = vp.r * cellPx + cellPx / 2;
+      const locked = isLocked(m);
+      const baseRadius = cellPx * 0.3;
+      let radius = baseRadius;
+      let ringAlpha = locked ? 1 : 0;
+
+      if (locked && animPhase === "settle" && animLockIdx.indexOf(i) !== -1) {
+        const e = easeOutBack(lockPulse);
+        radius = baseRadius * (0.55 + 0.45 * e);
+        ringAlpha = Math.min(1, lockPulse * 1.3);
+      }
+
+      ctx.beginPath();
+      const grad = ctx.createRadialGradient(
+        cx - radius * 0.35, cy - radius * 0.35, radius * 0.1,
+        cx, cy, radius
+      );
+      grad.addColorStop(0, shadeColor(m.color, 70));
+      grad.addColorStop(0.55, m.color);
+      grad.addColorStop(1, shadeColor(m.color, -35));
+      ctx.fillStyle = grad;
+      ctx.shadowColor = "rgba(0,0,0,0.4)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      if (locked) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + cellPx * 0.12, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255," + (0.9 * ringAlpha) + ")";
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = "rgba(255,255,255,0.6)";
+        ctx.shadowBlur = 8 * ringAlpha;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    });
+  }
+
+  // ---------- Input (touch / pointer only) ----------
+  let pointerId = null;
+  let startX = 0, startY = 0;
+  const SWIPE_THRESHOLD = 20;
+
+  function onPointerDown(e) {
+    if (pointerId !== null) return; // ignore extra touches
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (e.pointerId !== pointerId) return;
+    e.preventDefault();
+  }
+
+  function onPointerUp(e) {
+    if (e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    pointerId = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) {
+      return; // tap, not a swipe: no-op
+    }
+    let dir;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      dir = dx > 0 ? "right" : "left";
+    } else {
+      dir = dy > 0 ? "down" : "up";
+    }
+    attemptMove(dir);
+  }
+
+  canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+  canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+  canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+  canvas.addEventListener("pointercancel", () => { pointerId = null; }, { passive: false });
+
+  // ---------- Buttons (tap-friendly, fire on click which touch taps trigger) ----------
+  document.getElementById("startBtn").addEventListener("click", () => {
+    state = "playing";
+    hideOverlays();
+  });
+  document.getElementById("undoBtn").addEventListener("click", undo);
+  document.getElementById("restartBtn").addEventListener("click", restartLevel);
+  document.getElementById("nextBtn").addEventListener("click", nextLevel);
+  document.getElementById("retryBtn").addEventListener("click", restartLevel);
+  document.getElementById("restartAllBtn").addEventListener("click", restartAll);
+
+  window.addEventListener("resize", () => { resizeCanvas(); render(); });
+
+  // ---------- Init ----------
+  loadLevel(levelIndex);
+  state = "start"; // show start overlay first, board rendered underneath
+})();
+</script>
+</body>
+</html>
+</content>

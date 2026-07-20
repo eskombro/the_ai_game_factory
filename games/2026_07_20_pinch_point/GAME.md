@@ -10,7 +10,7 @@ Most "gap dodger" games (Flappy Bird and its many clones) only ever give you con
 
 A single point of contact — one finger, or one held mouse button — controls everything:
 
-- **Drag up/down:** press and drag anywhere on the screen to move the blob's vertical position, following your pointer.
+- **Drag up/down:** press anywhere and drag to move the blob's vertical position by the same amount you drag. Pressing down does not snap the blob to your finger/cursor — only movement from that press point shifts it, relative to wherever the blob already was.
 - **Drag left/right to resize:** the blob's size follows the horizontal offset between your pointer's current position and where the press started. Drag right of the start point to grow the blob toward its max size, drag left to shrink it toward its min size. No horizontal movement leaves the blob at whatever size it was when you pressed down; releasing and pressing again resets that neutral baseline to the blob's current size.
 - **Tap/click to start:** touch or click anywhere on the start screen to begin a run.
 - **Tap "Play Again":** after a collision, tap the on-screen button to restart immediately.
@@ -20,7 +20,7 @@ Mouse and touch drive the exact same underlying logic, so the game plays identic
 ## Core mechanics
 
 - The blob sits at a fixed horizontal position on the left third of the screen. Red wall segments ("gates"), each with one gap, scroll in from the right at a steadily increasing speed.
-- The blob's vertical position follows the pointer's Y while a single finger or mouse button is held down; if no pointer is down, the blob holds its last position and size while gates keep advancing.
+- The blob's vertical position moves by the pointer's Y *delta* since the current press began (not an absolute jump to the press point) while a single finger or mouse button is held down; if no pointer is down, the blob holds its last position and size while gates keep advancing.
 - The blob's radius is controlled live by the horizontal offset from wherever the current press started, mapped toward a minimum or maximum radius (relative to screen width, so it scales to any phone size).
 - Passing a gate cleanly awards `10 + round(radius / 2)` points — staying bigger is worth more per gate, creating a constant push to grow versus the safety of shrinking for tight gaps.
 - Difficulty ramps smoothly over the first ~60 seconds of a run: gate speed increases, gates spawn more frequently, and the range of gap sizes shrinks (both the largest and smallest possible gap get tighter).
@@ -150,3 +150,4 @@ The artwork depicts the glowing mint blob mid-pinch (a dashed vertical guide wit
 ## Edit Log
 
 - **2026-07-20:** Fixed the start screen not responding to any tap/click on first load (the `#overlay` div was intercepting pointer events before they ever reached the canvas's own listeners, and the only working entry point, `restartBtn`, was hidden until after a game over). Also replaced the two-finger pinch-to-resize control scheme with a single-pointer drag: blob.y follows the pointer's Y, and blob.r follows the horizontal offset from where the current press started (right = grow, left = shrink), so the game is now fully playable with either one finger or a single held mouse button — no multi-touch required. Updated the on-screen start instructions and this doc's controls/mechanics sections to match.
+- **2026-07-20:** Fixed vertical movement snapping the blob to the press point on every new touch/click. `blob.y` now moves by the pointer's Y *delta* since the current press began (relative to the blob's position when the press started), matching how horizontal drag already controlled size relatively. Pressing down no longer teleports the blob; only subsequent movement of that same press does.

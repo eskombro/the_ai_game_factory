@@ -313,8 +313,12 @@
 
   // ---- input handling ----
   // A single continuous pointer (one finger, or one held mouse button) drives
-  // both axes of control at once:
-  //   - blob.y always follows the pointer's current vertical position.
+  // both axes of control at once, both as *relative* offsets from wherever the
+  // current press started (never an absolute jump to the press point):
+  //   - blob.y follows the vertical offset between the pointer's current Y and
+  //     the Y where the current press started, added to the blob's Y at that
+  //     moment — so pressing down doesn't snap the blob to the touch point,
+  //     only subsequent movement of that same press does.
   //   - blob.r follows the horizontal offset between the pointer's current X
   //     and the X where the current press started: dragging right grows the
   //     blob toward BLOB_MAX_R, dragging left shrinks it toward BLOB_MIN_R,
@@ -324,19 +328,22 @@
   // so the two input paths can never diverge.
   var pointerActive = false;
   var pointerStartX = 0;
+  var pointerStartY = 0;
   var pointerStartR = BLOB_START_R;
+  var pointerStartBlobY = 0;
   var SIZE_DRAG_RANGE = 0.35; // fraction of screen width for a full min<->max swing
 
   function pointerDown(x, y) {
     pointerActive = true;
     pointerStartX = x;
+    pointerStartY = y;
     pointerStartR = blob.r;
-    updatePointer(x, y);
+    pointerStartBlobY = blob.y;
   }
 
   function updatePointer(x, y) {
     if (gameState !== "playing") return;
-    blob.y = clamp(y, blob.r, height - blob.r);
+    blob.y = clamp(pointerStartBlobY + (y - pointerStartY), blob.r, height - blob.r);
     var range = Math.max(1, width * SIZE_DRAG_RANGE);
     var t = clamp((x - pointerStartX) / range, -1, 1);
     blob.r = (t >= 0) ? lerp(pointerStartR, BLOB_MAX_R, t) : lerp(pointerStartR, BLOB_MIN_R, -t);

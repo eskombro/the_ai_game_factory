@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pinch Point</title>
+<style>
+  :root {
+    --bg-deep: #050b12;
+    --bg-mid: #0b1c26;
+    --mint: #6dfad0;
+    --mint-deep: #189a82;
+    --coral: #ff6b81;
+    --coral-deep: #ff3d5e;
+    --text: #eafff6;
+    --text-dim: rgba(234, 255, 246, 0.6);
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #game {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  #ui {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: max(14px, env(safe-area-inset-top)) 16px 0;
+    pointer-events: none;
+  }
+  .hud-pill {
+    background: rgba(8, 20, 28, 0.55);
+    border: 1px solid rgba(109, 250, 208, 0.22);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0.4px;
+  }
+  #scoreLine {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--mint);
+    text-shadow: 0 0 12px rgba(109, 250, 208, 0.45);
+  }
+  #bestLine {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  #overlay {
+    position: fixed;
+    left: 0; right: 0; top: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--text);
+    background: radial-gradient(circle at 50% 38%, rgba(14, 38, 48, 0.94), rgba(4, 9, 15, 0.97));
+    padding: 20px;
+    box-sizing: border-box;
+    transition: opacity 0.2s ease;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 {
+    font-size: 32px;
+    margin: 0 0 12px 0;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, var(--mint), var(--coral));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  #overlay p {
+    font-size: 16px;
+    line-height: 1.55;
+    max-width: 340px;
+    margin: 6px 0;
+    color: rgba(234, 255, 246, 0.85);
+  }
+  #overlayText2 {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-top: 12px;
+    letter-spacing: 0.3px;
+  }
+  #restartBtn {
+    margin-top: 20px;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 14px 34px;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(135deg, var(--mint), var(--mint-deep));
+    color: #04211c;
+    touch-action: manipulation;
+    box-shadow: 0 6px 22px rgba(109, 250, 208, 0.3);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  #restartBtn.hidden { display: none; }
+  #restartBtn:active {
+    transform: scale(0.95);
+    box-shadow: 0 3px 12px rgba(109, 250, 208, 0.22);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div class="hud-pill">
+    <div id="scoreLine">Score: 0</div>
+    <div id="bestLine">Best: 0</div>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1 id="overlayTitle">Pinch Point</h1>
+  <p id="overlayText">
+    Drag with one finger to move up and down.<br>
+    Pinch with two fingers to shrink or grow.<br>
+    Squeeze through every gap without touching a wall.
+  </p>
+  <p id="overlayText2">Touch anywhere to begin.</p>
+  <button id="restartBtn" class="hidden">Play Again</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var overlay = document.getElementById("overlay");
+  var overlayTitle = document.getElementById("overlayTitle");
+  var overlayText = document.getElementById("overlayText");
+  var overlayText2 = document.getElementById("overlayText2");
+  var restartBtn = document.getElementById("restartBtn");
+  var scoreLine = document.getElementById("scoreLine");
+  var bestLine = document.getElementById("bestLine");
+
+  var width = 0, height = 0;
+
+  function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+    blob.x = width * 0.28;
+    blob.y = clamp(blob.y, blob.r, height - blob.r);
+    updateBgGradients(); // cosmetic only
+  }
+
+  // ---- constants (mechanics-only baseline; balancing pass will tune) ----
+  var BLOB_MIN_R = 14;
+  var BLOB_MAX_R = 55;
+  var BLOB_START_R = 26;
+
+  var GATE_WIDTH = 56;
+  var GATE_SPEED_START = 140;   // px/s
+  var GATE_SPEED_MAX = 380;     // px/s
+  var SPAWN_INTERVAL_START = 1.8; // s
+  var SPAWN_INTERVAL_MIN = 1.0;   // s
+  var GAP_HALF_MAX_START = 120;
+  var GAP_HALF_MAX_END = 75;
+  var GAP_HALF_MIN_START = 75;
+  var GAP_HALF_MIN_END = 42;
+  var RAMP_SECONDS = 75; // time to reach full difficulty
+
+  var GAP_EDGE_MARGIN = 16; // keep gaps away from screen edges
+
+  // ---- state ----
+  var blob = { x: 0, y: 0, r: BLOB_START_R };
+  var gates = [];
+  var score = 0;
+  var best = 0;
+  try {
+    var storedBest = window.localStorage && window.localStorage.getItem("pinchPointBest");
+    if (storedBest) best = parseInt(storedBest, 10) || 0;
+  } catch (e) { /* localStorage unavailable, ignore */ }
+
+  var elapsed = 0;
+  var spawnTimer = 1.5; // short delay before first gate
+  var gameState = "start"; // "start" | "playing" | "over"
+
+  var touches = new Map(); // identifier -> {x, y}
+
+  // ---- purely cosmetic state (visuals/juice only; never read by game logic) ----
+  var bgGradient = null;
+  var vignetteGradient = null;
+  var particles = [];
+  var shakeTime = 0, shakeDur = 0, shakeMag = 0;
+  var shakeOffX = 0, shakeOffY = 0;
+
+  var audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) return audioCtx;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch (e) { /* audio unavailable, ignore */ }
+    return audioCtx;
+  }
+  function beep(freq, dur, type, vol) {
+    var ac = ensureAudio();
+    if (!ac) return;
+    try {
+      var osc = ac.createOscillator();
+      var gain = ac.createGain();
+      osc.type = type || "sine";
+      osc.frequency.value = freq;
+      var t0 = ac.currentTime;
+      gain.gain.setValueAtTime(vol || 0.06, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur);
+    } catch (e) { /* ignore */ }
+  }
+
+  function triggerShake(mag, dur) {
+    shakeMag = mag;
+    shakeDur = dur;
+    shakeTime = dur;
+  }
+
+  function spawnParticles(x, y, color, count) {
+    for (var i = 0; i < count; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var spd = 50 + Math.random() * 170;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        age: 0,
+        life: 0.45 + Math.random() * 0.4,
+        r: 2 + Math.random() * 3,
+        color: color
+      });
+    }
+  }
+
+  function updateCosmetics(dt) {
+    if (shakeTime > 0) {
+      shakeTime = Math.max(0, shakeTime - dt);
+      var amt = shakeDur > 0 ? shakeMag * (shakeTime / shakeDur) : 0;
+      shakeOffX = (Math.random() * 2 - 1) * amt;
+      shakeOffY = (Math.random() * 2 - 1) * amt;
+    } else {
+      shakeOffX = 0;
+      shakeOffY = 0;
+    }
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.age += dt;
+      if (p.age >= p.life) { particles.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.93;
+      p.vy *= 0.93;
+    }
+  }
+
+  function updateBgGradients() {
+    bgGradient = ctx.createRadialGradient(
+      width * 0.32, height * 0.5, 30,
+      width * 0.32, height * 0.5, Math.max(width, height) * 0.95
+    );
+    bgGradient.addColorStop(0, "#12333d");
+    bgGradient.addColorStop(0.55, "#0b1c26");
+    bgGradient.addColorStop(1, "#050b12");
+
+    vignetteGradient = ctx.createRadialGradient(
+      width / 2, height / 2, height * 0.32,
+      width / 2, height / 2, height * 0.78
+    );
+    vignetteGradient.addColorStop(0, "rgba(0,0,0,0)");
+    vignetteGradient.addColorStop(1, "rgba(0,0,0,0.42)");
+  }
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function difficultyT() {
+    // Raw progress toward the ramp cap, then smoothstep-eased (3t^2 - 2t^3)
+    // so difficulty rises gently at first (easy, low-pressure opening),
+    // accelerates through the middle, and eases into the plateau at the
+    // cap instead of hitting it with an abrupt linear "kink".
+    var raw = clamp(elapsed / RAMP_SECONDS, 0, 1);
+    return raw * raw * (3 - 2 * raw);
+  }
+
+  // ---- input handling ----
+  function updateBlobFromTouches() {
+    if (gameState !== "playing") return;
+    var pts = Array.from(touches.values());
+    if (pts.length === 0) {
+      // no finger down: hold position and size
+      return;
+    }
+    if (pts.length === 1) {
+      blob.y = clamp(pts[0].y, blob.r, height - blob.r);
+      return;
+    }
+    // two or more touches: first two drive movement + pinch size
+    var a = pts[0], b = pts[1];
+    var avgY = (a.y + b.y) / 2;
+    var dx = a.x - b.x, dy = a.y - b.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+
+    var minPinch = width * 0.05;
+    var maxPinch = width * 0.55;
+    var t = clamp((dist - minPinch) / (maxPinch - minPinch), 0, 1);
+    blob.r = clamp(lerp(BLOB_MIN_R, BLOB_MAX_R, t), BLOB_MIN_R, BLOB_MAX_R);
+    blob.y = clamp(avgY, blob.r, height - blob.r);
+  }
+
+  function touchPoint(t) {
+    var rect = canvas.getBoundingClientRect();
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function onTouchStart(e) {
+    e.preventDefault();
+    ensureAudio(); // unlock WebAudio on first touch (cosmetic sound only)
+    if (gameState === "start") {
+      startGame();
+    }
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      touches.set(t.identifier, touchPoint(t));
+    }
+    updateBlobFromTouches();
+  }
+
+  function onTouchMove(e) {
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      if (touches.has(t.identifier)) {
+        touches.set(t.identifier, touchPoint(t));
+      }
+    }
+    updateBlobFromTouches();
+  }
+
+  function onTouchEnd(e) {
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      touches.delete(e.changedTouches[i].identifier);
+    }
+    updateBlobFromTouches();
+  }
+
+  canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+  canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+  canvas.addEventListener("touchend", onTouchEnd, { passive: false });
+  canvas.addEventListener("touchcancel", onTouchEnd, { passive: false });
+
+  // Desktop-testing convenience only (not required for play): mouse drag.
+  // Touch already covers every required action; this is purely a bonus.
+  var mouseDown = false;
+  canvas.addEventListener("mousedown", function (e) {
+    if (gameState === "start") startGame();
+    mouseDown = true;
+    blob.y = clamp(e.clientY - canvas.getBoundingClientRect().top, blob.r, height - blob.r);
+  });
+  window.addEventListener("mousemove", function (e) {
+    if (!mouseDown || gameState !== "playing") return;
+    blob.y = clamp(e.clientY - canvas.getBoundingClientRect().top, blob.r, height - blob.r);
+  });
+  window.addEventListener("mouseup", function () { mouseDown = false; });
+
+  restartBtn.addEventListener("click", function () {
+    startGame();
+  });
+
+  window.addEventListener("resize", resize);
+
+  // ---- game flow ----
+  function startGame() {
+    gates = [];
+    score = 0;
+    elapsed = 0;
+    spawnTimer = 1.5;
+    blob.r = BLOB_START_R;
+    blob.y = height / 2;
+    particles = []; // cosmetic reset
+    shakeTime = 0;  // cosmetic reset
+    gameState = "playing";
+    overlay.classList.add("hidden");
+    updateHud();
+  }
+
+  function endGame() {
+    triggerShake(10, 0.35); // cosmetic
+    spawnParticles(blob.x, blob.y, "#ff6b81", 26); // cosmetic
+    beep(90, 0.28, "sawtooth", 0.09); // cosmetic
+    gameState = "over";
+    if (score > best) {
+      best = score;
+      try {
+        if (window.localStorage) window.localStorage.setItem("pinchPointBest", String(best));
+      } catch (e) { /* ignore */ }
+    }
+    overlayTitle.textContent = "Squeezed!";
+    overlayText.innerHTML = "Score: " + score + "<br>Best: " + best;
+    overlayText2.textContent = "Tap Play Again to retry.";
+    restartBtn.classList.remove("hidden");
+    overlay.classList.remove("hidden");
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreLine.textContent = "Score: " + score;
+    bestLine.textContent = "Best: " + best;
+  }
+
+  function spawnGate() {
+    var t = difficultyT();
+    var gapMax = lerp(GAP_HALF_MAX_START, GAP_HALF_MAX_END, t);
+    var gapMin = lerp(GAP_HALF_MIN_START, GAP_HALF_MIN_END, t);
+    var gapHalf = lerp(gapMin, gapMax, Math.random());
+    var lo = gapHalf + GAP_EDGE_MARGIN;
+    var hi = height - gapHalf - GAP_EDGE_MARGIN;
+    var gapY;
+    if (hi <= lo) {
+      gapY = height / 2;
+    } else {
+      gapY = lerp(lo, hi, Math.random());
+    }
+    gates.push({
+      x: width + GATE_WIDTH,
+      gapY: gapY,
+      gapHalf: gapHalf,
+      passed: false
+    });
+  }
+
+  function update(dt) {
+    if (gameState !== "playing") return;
+    elapsed += dt;
+
+    var t = difficultyT();
+    var speed = lerp(GATE_SPEED_START, GATE_SPEED_MAX, t);
+    var spawnInterval = lerp(SPAWN_INTERVAL_START, SPAWN_INTERVAL_MIN, t);
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnGate();
+      spawnTimer += spawnInterval;
+    }
+
+    for (var i = gates.length - 1; i >= 0; i--) {
+      var g = gates[i];
+      g.x -= speed * dt;
+
+      var overlapsX = (blob.x + blob.r > g.x) && (blob.x - blob.r < g.x + GATE_WIDTH);
+      if (overlapsX) {
+        var topOk = blob.y - blob.r >= g.gapY - g.gapHalf;
+        var botOk = blob.y + blob.r <= g.gapY + g.gapHalf;
+        if (!topOk || !botOk) {
+          endGame();
+          return;
+        }
+      }
+
+      if (!g.passed && (blob.x - blob.r) > (g.x + GATE_WIDTH)) {
+        g.passed = true;
+        score += 10 + Math.round(blob.r / 2);
+        updateHud();
+        spawnParticles(blob.x, blob.y, "#6dfad0", 10); // cosmetic
+        beep(560, 0.09, "sine", 0.05); // cosmetic
+      }
+
+      if (g.x + GATE_WIDTH < -10) {
+        gates.splice(i, 1);
+      }
+    }
+  }
+
+  // ---- rendering (presentation only; reads game state, never mutates it) ----
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    ctx.translate(shakeOffX, shakeOffY);
+
+    // background
+    ctx.fillStyle = bgGradient || "#0b1c26";
+    ctx.fillRect(-30, -30, width + 60, height + 60);
+
+    // gates: coral gradient walls with a glowing edge along the gap ("pinch" sensor line)
+    for (var i = 0; i < gates.length; i++) {
+      var g = gates[i];
+      var topH = g.gapY - g.gapHalf;
+      var botY = g.gapY + g.gapHalf;
+      var wallGrad = ctx.createLinearGradient(g.x, 0, g.x + GATE_WIDTH, 0);
+      wallGrad.addColorStop(0, "#ff3d5e");
+      wallGrad.addColorStop(1, "#ff6b81");
+      ctx.shadowColor = "rgba(255, 77, 109, 0.4)";
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = wallGrad;
+      ctx.fillRect(g.x, 0, GATE_WIDTH, Math.max(0, topH));
+      ctx.fillRect(g.x, botY, GATE_WIDTH, Math.max(0, height - botY));
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
+      ctx.lineWidth = 2;
+      if (topH > 0) {
+        ctx.beginPath();
+        ctx.moveTo(g.x, topH);
+        ctx.lineTo(g.x + GATE_WIDTH, topH);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(g.x, botY);
+      ctx.lineTo(g.x + GATE_WIDTH, botY);
+      ctx.stroke();
+    }
+
+    // blob: mint gradient with soft glow, plus a thin gauge ring showing pinch size
+    var blobGrad = ctx.createRadialGradient(
+      blob.x - blob.r * 0.3, blob.y - blob.r * 0.3, Math.max(1, blob.r * 0.1),
+      blob.x, blob.y, blob.r
+    );
+    blobGrad.addColorStop(0, "#d3fff0");
+    blobGrad.addColorStop(0.55, "#6dfad0");
+    blobGrad.addColorStop(1, "#189a82");
+    ctx.shadowColor = "rgba(109, 250, 208, 0.6)";
+    ctx.shadowBlur = 22;
+    ctx.fillStyle = blobGrad;
+    ctx.beginPath();
+    ctx.arc(blob.x, blob.y, blob.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    var radiusT = clamp((blob.r - BLOB_MIN_R) / (BLOB_MAX_R - BLOB_MIN_R), 0, 1);
+    ctx.beginPath();
+    ctx.arc(blob.x, blob.y, blob.r + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * radiusT);
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    // particles (collision burst / gate-pass sparkle)
+    for (var p = 0; p < particles.length; p++) {
+      var particle = particles[p];
+      var pt = 1 - particle.age / particle.life;
+      ctx.globalAlpha = Math.max(0, pt);
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.r * pt, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // vignette (fixed, not affected by shake)
+    if (vignetteGradient) {
+      ctx.fillStyle = vignetteGradient;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+
+  var lastTime = null;
+  function loop(now) {
+    if (lastTime === null) lastTime = now;
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    update(dt);
+    updateCosmetics(dt); // visuals only: particles + screen shake decay
+    render();
+
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  blob.y = height / 2;
+  updateHud();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -20,6 +20,6 @@ echo "===== weekly_autonomous_run.sh starting at $(date -u +%Y-%m-%dT%H:%M:%SZ) 
 git checkout main
 git pull origin main
 
-claude -p "$(cat scripts/weekly_prompt.md)" --dangerously-skip-permissions
+claude -p "$(cat scripts/weekly_prompt.md)" --dangerously-skip-permissions --verbose
 
 echo "===== weekly_autonomous_run.sh finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="

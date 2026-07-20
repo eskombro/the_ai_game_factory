@@ -8,9 +8,14 @@
 #   0 6 * * 0 /path/to/this-checkout/scripts/weekly_autonomous_run.sh >> /path/to/logs/weekly_run.log 2>&1
 set -euo pipefail
 
-# cron runs with a minimal PATH, so binaries installed to ~/bin or via
-# `npm install -g` (claude, gh, node, npx) won't otherwise be found here.
+# cron runs with a minimal PATH and doesn't source ~/.bashrc, so neither
+# nvm-managed node/npm/claude nor manually-installed binaries (e.g. gh in
+# ~/bin) are found by default. Load both explicitly.
 export PATH="$HOME/bin:$HOME/.npm-global/bin:/usr/local/bin:$PATH"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use default > /dev/null
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"

@@ -20,3 +20,23 @@ A collection of original browser games, prototyped as self-contained HTML files 
   - `thumbnails/` — promotional artwork for the landing page and social previews (small/medium/large PNGs)
 - `.claude/agents/` — the specialist subagents that build and maintain games: `game-producer` (orchestrates the full pipeline), `game-creator` (mechanics/prototype), `game-polisher` (visual design), `game-balancer` (difficulty pacing), `game-thumbnailer` (promotional art), and `game-editor` (scoped one-off edits to an existing game, outside the creation pipeline)
 - `CLAUDE.md` — project-level instructions for Claude Code, describing the pipeline and repo conventions in detail
+
+# Purpose
+
+This project is a personal experiment, built for fun, to learn how AI agents and multi-agent pipelines actually work in practice — not a commercial product. The games themselves are a vehicle; the real subject under test is the orchestration behind them: how to decompose a task into specialist subagents, restrict each one's tools and responsibilities, pass state between them without shared conversation history, and let an orchestrator drive the whole thing end to end with minimal human intervention.
+
+Concretely, the project showcases a simple generative AI workflow — game concept → mechanics → visual design → difficulty tuning → promotional art → localized copy → site listing — where each stage is a purpose-built Claude Code subagent that only ever edits the output of the one before it. A few things it demonstrates reasonably well:
+
+- **Narrow, single-responsibility agents.** Each subagent (`game-creator`, `game-polisher`, `game-balancer`, `game-thumbnailer`, `game-describer`, `game-editor`) does exactly one job and is denied the tools/scope it doesn't need, instead of one general-purpose agent doing everything.
+- **Shared memory through artifacts, not chat history.** Each stage reads and appends to the game's `GAME.md`, so a subagent never needs the previous stage's conversation — just its written output. State lives in the repo, not in a prompt.
+- **A deliberately sequential pipeline with hard stops.** Stages run strictly in order because each depends on the last, and the orchestrator (`game-producer`) halts the whole pipeline if any stage reports an unresolved bug, rather than letting later stages build on a broken foundation.
+- **Zero-dependency, zero-build output.** Every game is a single inlined HTML file with no external calls, which keeps each pipeline run self-contained and trivially verifiable by just opening the file.
+
+# Potential Future Directions (currently out of scope)
+
+The following are ideas for extending this experiment further, kept here as notes rather than commitments — they're deliberately not being worked on right now, but they'd be the natural next steps if this project continues:
+
+- **Runtime AI, not just build-time AI.** So far the games are *built* by AI but contain none at runtime. A future game could call an LLM live (a generated-dialogue NPC, a dynamic narrator) to explore prompting under real constraints like latency and cost.
+- **An automated QA agent that gates the pipeline.** Nothing currently verifies a generated game actually works before it ships — a `game-qa` subagent (or CI step) that headlessly plays each game and blocks the pipeline on real bugs would close that gap.
+- **An MCP server instead of hand-edited HTML.** The root `index.html` listing is currently updated by direct string edits from `game-producer`. Exposing `list_games` / `register_game` / `get_game` as MCP tools over structured data would replace that with something more robust, and would be a natural way to learn the MCP protocol.
+- **A feedback loop from live usage back into the agents.** Right now the pipeline runs once and stops. Lightweight self-hosted play analytics feeding an "analyst" agent that proposes tuning changes to `game-balancer` would turn this into a closed loop instead of a one-shot generation.

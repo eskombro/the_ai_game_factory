@@ -1,0 +1,13 @@
+{
+  "name": "the-ai-game-factory-tooling",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Repo tooling only (e.g. the autonomous-pipeline smoke check). The games themselves stay zero-dependency, self-contained HTML files.",
+  "type": "module",
+  "scripts": {
+    "smoke-check": "node scripts/smoke_check.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

@@ -64,6 +64,28 @@ Mouse and touch drive the exact same underlying logic, so the game plays identic
 - [Picking the Perfect Color Palette for Your Game — itch.io blog](https://itch.io/blog/1039646/picking-the-perfect-color-palette-for-your-game) — dark-base-plus-neon-accent palette guidance for arcade-style games.
 - General search on minimalist mobile/arcade game UI trends (Dribbble/itch.io/Pinterest results) confirming flat gradients, glassy translucent HUD panels, and restrained 2-3 hue palettes as a current minimalist direction.
 
+### 2026-07-20 refresh — "too monotone" fix
+
+**Why:** playtesting feedback was that the original two-accent (mint + coral) scheme on a nearly-uniform dark-teal backdrop read as flat/monotone in motion — every gate and every frame of background looked the same hue. This pass keeps the same dark-base-plus-neon-accent family (still no images, still canvas/CSS gradients only) but widens the palette and adds depth cues so the screen has more going on at a glance, without touching any mechanic, control, or win/lose logic.
+
+**Researched via:** web search on triadic/multi-hue game-jam palettes ("Neon Night", "Space Odyssey" style dark+vivid combos) and synthwave/vaporwave CSS gradient references, confirming that layering 3-4 hues over a dark base (rather than 2) plus simple parallax depth (stars/orbs) is a common, still-lightweight way to avoid a flat look while keeping everything CSS/canvas-only.
+
+**What changed:**
+- **Background:** replaced the single teal radial gradient with a layered violet-indigo-to-near-black gradient (`#2c1f52` → `#182050` → `#0e1a3a` → `#060314`), plus two new cosmetic-only background layers drawn behind the gameplay: four slow-drifting soft color orbs (violet, teal, amber, magenta) and ~46 twinkling warm/cool star dots. All positions are stored as fractions of width/height so they stay correct across resizes; none of this state is ever read by game logic.
+- **Blob:** now shifts hue live with its own radius — cool mint (`#6dfad0`) at minimum size fading to warm gold (`#ffcf6b`) at maximum size, via a small `lerpColor()` helper — so the blob's color itself reinforces the existing "bigger = riskier, more valuable" mechanic (a pure rendering read of `blob.r`, which the renderer already treated as read-only). The glow color and gauge-ring logic are unchanged otherwise.
+- **Gate walls:** each gate is now randomly assigned one of three cosmetic gradient pairs at spawn time (`paletteIdx`, coral-red / coral-gold / magenta-pink) instead of always the same coral gradient, so consecutive gates read as visually distinct while remaining clearly "the wall/danger" color family. This is a new field on the gate object but is written once at spawn and never read anywhere near collision/scoring/position logic.
+- **HUD/UI:** score now reads in gold, "Best" in a soft violet, HUD pill background/border switched from flat teal-tinted glass to a violet-indigo glass gradient; the overlay title and "Play Again" button now use a three-stop mint→gold→coral / gold→coral gradient instead of the old two-stop mint/coral pairing, for more visible richness on the start and game-over screens.
+- **Particles:** gate-pass sparkles are now a mixed mint + gold burst (was solid mint); the collision burst is now a mixed coral-red + magenta burst (was solid coral) to match the wider palette.
+
+**Verified:** loaded the file via a headless Chrome DevTools session (mobile viewport, synthetic touch/drag input) and confirmed: the start screen, live gameplay (blob color-shift, multiple gate color variants including the new magenta/gold ones, twinkling background), and the game-over overlay all render as intended; collision/scoring behavior was unchanged (same pointer-drag steer/resize, same "clip a wall = game over" rule).
+
+**New/changed constants (all cosmetic, no gameplay effect):** `GATE_COLOR_PALETTES`, `ORB_PALETTE`/`orbs`, `STAR_COUNT`/`stars`, `cosmeticTime`, `lerpColor()`, and the `--gold`/`--gold-deep`/`--violet`/`--violet-deep` CSS custom properties. No changes to `BLOB_MIN_R/MAX_R/START_R`, `GATE_WIDTH`, difficulty/ramp constants, scoring formula, collision logic, or input handling.
+
+**Inspiration sources (this pass):**
+- [The Best 15 Gaming Color Palette Combinations — Piktochart](https://piktochart.com/blog/gaming-color-palette/) and [Gaming Color Palettes — Coolors](https://coolors.co/palettes/popular/gaming) — dark-background + multi-accent ("Neon Night", "Space Odyssey") palette combinations as an antidote to a flat two-hue scheme.
+- [Triadic Harmony — palette.site](https://palette.site/blog/2025-09-22-triadic-harmony/) — using 3 spaced hues over a dominant base color for a "vibrant but balanced" arcade look.
+- General search on synthwave/vaporwave CSS gradient backgrounds — confirmed layered multi-stop gradients plus small drifting/twinkling elements are a common lightweight (no-image) way to add background depth.
+
 ## Difficulty Tuning
 
 **Starting point:** the pre-balance version already had the right shape — a single `difficultyT()` progress value (0→1) driving gate speed, spawn interval, and gap-size range via `lerp()`, with a linear ramp that finished at a hard 60-second cutoff. The values themselves (140→380 px/s speed, 1.8s→1.0s spawn interval, gap half-width 120/75 down to 75/42) were already well-judged for an easy opening and a fair ceiling, so this pass focused on *how* progress accumulates over time rather than re-picking the endpoints.

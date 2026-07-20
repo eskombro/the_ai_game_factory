@@ -8,6 +8,10 @@
 #   0 6 * * 0 /path/to/this-checkout/scripts/weekly_autonomous_run.sh >> /path/to/logs/weekly_run.log 2>&1
 set -euo pipefail
 
+# cron runs with a minimal PATH, so binaries installed to ~/bin or via
+# `npm install -g` (claude, gh, node, npx) won't otherwise be found here.
+export PATH="$HOME/bin:$HOME/.npm-global/bin:/usr/local/bin:$PATH"
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 

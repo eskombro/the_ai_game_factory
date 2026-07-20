@@ -2,7 +2,12 @@ You are running as a fully autonomous, unattended weekly job for this repo (the_
 
 1. Confirm you are at the repo root (README.md, CLAUDE.md, and games/ should exist) and read CLAUDE.md for the project's conventions and the subagent pipeline it defines.
 2. Get today's date with `date +%Y-%m-%d`, then create and check out a new branch named `auto/game-<that date>` off an up-to-date `main`.
-3. Skim the pitches in the existing `games/*/GAME.md` files, then invoke the `game-producer` agent (via the Agent tool) to build one complete new game end-to-end, exactly as it would for a normal "create a new game" request. Nudge it toward a genre/mechanic that hasn't been used by an existing game yet, for variety, but otherwise let it choose freely.
+3. Skim the pitches in the existing `games/*/GAME.md` files, then invoke the `game-producer` agent via the Agent tool with `model: "opus"` to build one complete new game end-to-end, exactly as it would for a normal "create a new game" request. Nudge it toward a genre/mechanic that hasn't been used by an existing game yet, for variety, but otherwise let it choose freely. In the message you send it, also explicitly instruct it to pass the following `model` parameter on each of its own Agent tool calls to its pipeline subagents (this is an experimental override for this run only, do not ask it to persist these anywhere):
+   - `game-polisher` → `fable`
+   - `game-balancer` → `fable`
+   - `game-thumbnailer` → `fable`
+   - `game-describer` → `fable`
+   (`game-creator` already defaults to `sonnet` via its own agent definition — no override needed for it.)
 4. Once game-producer reports success, run: `npm install && npx playwright install --with-deps chromium && node scripts/smoke_check.mjs games/<new_folder>/index.html`.
    - If the smoke check exits non-zero: **STOP. Do not commit or push anything.** Run `gh issue create --title "Autonomous game generation failed on <date>" --body "<summary of what game-producer did and what the smoke check reported>"` and end the run.
    - If it exits zero, continue.

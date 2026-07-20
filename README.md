@@ -10,6 +10,7 @@ A collection of original browser games, prototyped as self-contained HTML files 
 - Games are built through a staged pipeline — mechanics first, then visual polish, then difficulty tuning — each stage recorded as its own section in the game's design doc
 - New games get promotional thumbnails and a listing on the root landing page, so the collection is directly browsable/playable from `index.html`
 - New games are added as dated folders, so the collection doubles as a timeline of prototypes
+- A scheduled automation loop generates and publishes new games on its own, on a recurring cadence, with no human review in the loop — gated by an automated smoke check before anything ships
 
 # Main parts of the project
 
@@ -31,12 +32,13 @@ Concretely, the project showcases a simple generative AI workflow — game conce
 - **Shared memory through artifacts, not chat history.** Each stage reads and appends to the game's `GAME.md`, so a subagent never needs the previous stage's conversation — just its written output. State lives in the repo, not in a prompt.
 - **A deliberately sequential pipeline with hard stops.** Stages run strictly in order because each depends on the last, and the orchestrator (`game-producer`) halts the whole pipeline if any stage reports an unresolved bug, rather than letting later stages build on a broken foundation.
 - **Zero-dependency, zero-build output.** Every game is a single inlined HTML file with no external calls, which keeps each pipeline run self-contained and trivially verifiable by just opening the file.
+- **A fully autonomous release loop.** A scheduled job (see `scripts/`) checks out the repo, runs the same `game-producer` pipeline a human would trigger by hand, gates the result behind an automated headless smoke check, then opens and merges its own pull request — closing the loop from idea to live deploy with no human intervention.
 
 # Potential Future Directions (currently out of scope)
 
 The following are ideas for extending this experiment further, kept here as notes rather than commitments — they're deliberately not being worked on right now, but they'd be the natural next steps if this project continues:
 
 - **Runtime AI, not just build-time AI.** So far the games are *built* by AI but contain none at runtime. A future game could call an LLM live (a generated-dialogue NPC, a dynamic narrator) to explore prompting under real constraints like latency and cost.
-- **An automated QA agent that gates the pipeline.** Nothing currently verifies a generated game actually works before it ships — a `game-qa` subagent (or CI step) that headlessly plays each game and blocks the pipeline on real bugs would close that gap.
+- **An automated QA *agent*, beyond the current deterministic check.** A headless smoke check (`scripts/smoke_check.mjs`) already gates the autonomous pipeline — it catches crashes, console errors, and stray network calls — but it can't judge whether a game is actually *fun* or *playable* the way a human or an LLM reviewer could. A `game-qa` subagent that headlessly plays each game and judges it qualitatively would go a step further.
 - **An MCP server instead of hand-edited HTML.** The root `index.html` listing is currently updated by direct string edits from `game-producer`. Exposing `list_games` / `register_game` / `get_game` as MCP tools over structured data would replace that with something more robust, and would be a natural way to learn the MCP protocol.
 - **A feedback loop from live usage back into the agents.** Right now the pipeline runs once and stops. Lightweight self-hosted play analytics feeding an "analyst" agent that proposes tuning changes to `game-balancer` would turn this into a closed loop instead of a one-shot generation.

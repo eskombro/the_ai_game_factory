@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ricochet Sling</title>
+<style>
+  :root {
+    --bg0: #0a0e1a;
+    --bg1: #12182b;
+    --ink: #e8ecf6;
+    --muted: #7c86a3;
+    --cyan: #56d1e0;
+    --amber: #ffcf5c;
+    --emerald: #4ee89e;
+    --coral: #ff6b6b;
+    --line: rgba(86,209,224,0.22);
+    --mono: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background:
+      radial-gradient(120% 80% at 50% -10%, #1a2140 0%, var(--bg1) 40%, var(--bg0) 100%);
+    color: var(--ink); font-family: var(--sans);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  #wrap {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start;
+    height: 100%; padding: 12px 10px; gap: 8px;
+    overflow: hidden;
+  }
+  #hud {
+    width: 100%; max-width: 400px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px;
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.5px;
+  }
+  #hud > span {
+    flex: 1; text-align: center;
+    padding: 7px 4px; border-radius: 10px;
+    background: rgba(86,209,224,0.06);
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+  #hud .lbl { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+  #hud .val { display: block; font-size: 17px; margin-top: 1px; font-weight: 600; }
+  #scoreDisplay .val { color: var(--amber); }
+  #shotsDisplay .val { color: var(--cyan); }
+  canvas {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 18px 50px -18px rgba(0,0,0,0.9);
+    touch-action: none; display: block;
+    transition: transform 0.04s linear;
+  }
+  #message {
+    min-height: 22px; font-size: 15px; font-weight: 600;
+    letter-spacing: 0.5px; color: var(--amber);
+    opacity: 0; transform: translateY(4px) scale(0.96);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    text-shadow: 0 0 14px rgba(255,207,92,0.5);
+  }
+  #message.show { opacity: 1; transform: translateY(0) scale(1); animation: pop 0.28s ease; }
+  @keyframes pop {
+    0% { transform: translateY(0) scale(0.82); }
+    55% { transform: translateY(0) scale(1.08); }
+    100% { transform: translateY(0) scale(1); }
+  }
+  #overlay {
+    position: fixed; inset: 0;
+    background: radial-gradient(circle at 50% 40%, rgba(18,24,43,0.82), rgba(10,14,26,0.94));
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; text-align: center; z-index: 10;
+    animation: fade 0.3s ease;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  #overlay.hidden { display: none; }
+  #overlayTitle {
+    font-size: 30px; font-weight: 700; letter-spacing: 1px;
+    color: var(--emerald); text-shadow: 0 0 24px rgba(78,232,158,0.5);
+  }
+  #overlayStats { font-size: 15px; color: var(--muted); font-family: var(--mono); }
+  #restartBtn {
+    font-size: 16px; padding: 15px 34px; border-radius: 12px;
+    border: 1px solid rgba(86,209,224,0.5);
+    background: linear-gradient(180deg, #56d1e0, #35b6c6);
+    color: #06131a; font-weight: 700; letter-spacing: 0.5px;
+    box-shadow: 0 0 24px -4px rgba(86,209,224,0.6);
+    cursor: pointer;
+  }
+  #restartBtn:active { transform: scale(0.96); }
+  #howto {
+    max-width: 400px; font-size: 12px; line-height: 1.5;
+    color: var(--muted); text-align: center; padding: 0 10px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span id="levelDisplay"><span class="lbl">Level</span><span class="val">1</span></span>
+    <span id="scoreDisplay"><span class="lbl">Score</span><span class="val">0</span></span>
+    <span id="shotsDisplay"><span class="lbl">Shots</span><span class="val">5</span></span>
+  </div>
+  <canvas id="game"></canvas>
+  <div id="message"></div>
+  <div id="howto">Drag the ball back to aim and release to fire. Tap a mirror to rotate it — even mid-flight — and bank the ball into the glowing target.</div>
+</div>
+
+<div id="overlay" class="hidden">
+  <div id="overlayTitle">Game Over</div>
+  <div id="overlayStats"></div>
+  <button id="restartBtn">Restart</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Tunable constants (balancer pass will adjust these) ----------
+  const W = 400, H = 620; // internal canvas resolution
+  const BALL_RADIUS = 7;
+  const BALL_GRAB_RADIUS = 55;      // how close a touch must start to the ball to begin aiming
+  const MAX_PULL = 130;             // max slingshot pull distance (px)
+  const MIN_PULL = 14;              // below this, release is treated as a cancel
+  const BALL_SPEED_MIN = 220;       // px/sec at minimum pull
+  const BALL_SPEED_MAX = 520;       // px/sec at max pull
+  const FLIGHT_TIMEOUT_MS = 7000;   // auto-lose the shot if it bounces forever
+  const MIRROR_LENGTH = 42;
+  const MIRROR_THICKNESS = 8;
+  const MIRROR_TAP_RADIUS = 32;     // touch target generosity for rotating a mirror
+  const TAP_MAX_MS = 300;
+  const TAP_MAX_MOVE = 12;
+  const TARGET_BASE_RADIUS = 26;
+  const TARGET_MIN_RADIUS = 15;
+  const TARGET_MARGIN = 30;
+  const MAX_MIRRORS = 7;
+  const MAX_OBSTACLES = 4;
+  const SHOTS_PER_LEVEL = 5;
+  const MIRROR_BOUNCE_SCORE = 10;
+  const LEVEL_CLEAR_BASE_SCORE = 100;
+  const SHOT_BONUS_MULTIPLIER = 25;
+
+  // ---------- Setup ----------
+  const canvas = document.getElementById("game");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+  const wrapEl = document.getElementById("wrap");
+  const hudEl = document.getElementById("hud");
+  const howtoEl = document.getElementById("howto");
+
+  function resizeCanvas() {
+    const availW = wrapEl.clientWidth;
+    const reserved = hudEl.offsetHeight + messageEl.offsetHeight + howtoEl.offsetHeight + 40;
+    const availH = window.innerHeight - reserved;
+    const aspect = W / H;
+    let cw = Math.min(availW, availH * aspect, 400);
+    if (cw < 40) cw = 40; // safety floor
+    const ch = cw / aspect;
+    canvas.style.width = cw + "px";
+    canvas.style.height = ch + "px";
+  }
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("orientationchange", resizeCanvas);
+
+  const levelDisplay = document.getElementById("levelDisplay");
+  const scoreDisplay = document.getElementById("scoreDisplay");
+  const shotsDisplay = document.getElementById("shotsDisplay");
+  const messageEl = document.getElementById("message");
+  const overlayEl = document.getElementById("overlay");
+  const overlayStats = document.getElementById("overlayStats");
+  const restartBtn = document.getElementById("restartBtn");
+
+  const cannon = { x: W / 2, y: H - 50 };
+
+  let level = 1, score = 0, shotsLeft = SHOTS_PER_LEVEL;
+  let state = "aiming"; // 'aiming' | 'flying' | 'gameover'
+  let ball = { x: cannon.x, y: cannon.y, vx: 0, vy: 0, r: BALL_RADIUS };
+  let mirrors = [], obstacles = [], target = null;
+  let flightStartTime = 0;
+
+  let aimPointerId = null, aimCurrent = null;
+  let mirrorTapCandidate = null;
+  let messageTimeout = null;
+
+  // ---------- Helpers ----------
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function dist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
+
+  // ---------- Cosmetic-only systems (no gameplay effect) ----------
+  const particles = [];
+  function spawnBurst(x, y, color, count, power) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = rand(0.3, 1) * power;
+      particles.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 1, decay: rand(1.8, 3.2), color, r: rand(1.2, 2.6)
+      });
+    }
+  }
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vx *= 0.94; p.vy *= 0.94;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  let shake = 0;
+  function addShake(amt) { shake = Math.min(shake + amt, 10); }
+
+  const trail = []; // recent ball positions, cosmetic only
+  function pushTrail(x, y) {
+    trail.push({ x, y });
+    if (trail.length > 12) trail.shift();
+  }
+
+  function pointToCanvas(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+
+  const levelVal = levelDisplay.querySelector(".val");
+  const scoreVal = scoreDisplay.querySelector(".val");
+  const shotsVal = shotsDisplay.querySelector(".val");
+  function updateHUD() {
+    levelVal.textContent = level;
+    scoreVal.textContent = score;
+    shotsVal.textContent = shotsLeft;
+  }
+
+  function showMessage(text) {
+    messageEl.textContent = text;
+    messageEl.classList.add("show");
+    if (messageTimeout) clearTimeout(messageTimeout);
+    messageTimeout = setTimeout(() => messageEl.classList.remove("show"), 850);
+  }
+
+  function resetBallToCannon() {
+    ball.x = cannon.x; ball.y = cannon.y; ball.vx = 0; ball.vy = 0;
+    state = "aiming";
+    trail.length = 0;
+  }
+
+  // ---------- Level generation ----------
+  function generateLevel(lvl) {
+    mirrors = [];
+    obstacles = [];
+    const placed = [{ x: cannon.x, y: cannon.y, r: 80 }];
+
+    const moving = lvl >= 4;
+    const amp = moving ? Math.min(16 + (lvl - 4) * 9, 100) : 0;
+    const marginX = moving ? TARGET_MARGIN + amp : TARGET_MARGIN;
+
+    let tx, ty, tries = 0;
+    do {
+      tx = rand(Math.min(marginX, W / 2 - 5), Math.max(W - marginX, W / 2 + 5));
+      ty = rand(50, H * 0.35);
+      tries++;
+    } while (placed.some(p => dist(p.x, p.y, tx, ty) < p.r + 60) && tries < 60);
+
+    const tr = Math.max(TARGET_MIN_RADIUS, TARGET_BASE_RADIUS - (lvl - 1) * 1.2);
+    target = {
+      baseX: tx, x: tx, y: ty, r: tr,
+      moving, amp, speed: 0.45 + lvl * 0.045
+    };
+    placed.push({ x: tx, y: ty, r: tr + 45 });
+
+    const mirrorCount = Math.min(2 + Math.floor((lvl - 1) / 2), MAX_MIRRORS);
+    for (let i = 0; i < mirrorCount; i++) {
+      let mx, my, attempts = 0;
+      do {
+        mx = rand(40, W - 40);
+        my = rand(H * 0.32, H - 130);
+        attempts++;
+      } while (placed.some(p => dist(p.x, p.y, mx, my) < p.r + 48) && attempts < 60);
+      placed.push({ x: mx, y: my, r: 44 });
+      mirrors.push({ x: mx, y: my, angle: Math.random() < 0.5 ? Math.PI / 4 : -Math.PI / 4 });
+    }
+
+    const obstacleCount = lvl >= 3 ? Math.min(Math.floor((lvl - 3) / 2) + 1, MAX_OBSTACLES) : 0;
+    for (let i = 0; i < obstacleCount; i++) {
+      const ow = 54, oh = 18;
+      let ox, oy, attempts = 0;
+      do {
+        ox = rand(30, W - 30 - ow);
+        oy = rand(H * 0.32, H - 150);
+        attempts++;
+      } while (placed.some(p => dist(p.x + ow / 2, p.y + oh / 2, ox + ow / 2, oy + oh / 2) < p.r + 44) && attempts < 60);
+      placed.push({ x: ox + ow / 2, y: oy + oh / 2, r: 44 });
+      obstacles.push({ x: ox, y: oy, w: ow, h: oh });
+    }
+  }
+
+  function shotsForLevel() { return SHOTS_PER_LEVEL; }
+
+  // ---------- Input ----------
+  function findMirrorNear(x, y, radius) {
+    let best = null, bestD = Infinity;
+    for (const m of mirrors) {
+      const d = dist(x, y, m.x, m.y);
+      if (d < radius && d < bestD) { best = m; bestD = d; }
+    }
+    return best;
+  }
+
+  function toggleMirror(m) { m.angle = -m.angle; }
+
+  function onPointerDown(e) {
+    if (state === "gameover") return;
+    const p = pointToCanvas(e.clientX, e.clientY);
+
+    const m = findMirrorNear(p.x, p.y, MIRROR_TAP_RADIUS);
+    if (m) {
+      mirrorTapCandidate = { mirror: m, pointerId: e.pointerId, startX: p.x, startY: p.y, startTime: performance.now() };
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      return;
+    }
+
+    if (state === "aiming" && aimPointerId === null) {
+      const d = dist(p.x, p.y, ball.x, ball.y);
+      if (d < BALL_GRAB_RADIUS) {
+        aimPointerId = e.pointerId;
+        aimCurrent = p;
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+  }
+
+  function onPointerMove(e) {
+    if (aimPointerId === e.pointerId) {
+      aimCurrent = pointToCanvas(e.clientX, e.clientY);
+    }
+  }
+
+  function onPointerUp(e) {
+    if (mirrorTapCandidate && mirrorTapCandidate.pointerId === e.pointerId) {
+      const p = pointToCanvas(e.clientX, e.clientY);
+      const dt = performance.now() - mirrorTapCandidate.startTime;
+      const moved = dist(p.x, p.y, mirrorTapCandidate.startX, mirrorTapCandidate.startY);
+      if (dt < TAP_MAX_MS && moved < TAP_MAX_MOVE) {
+        toggleMirror(mirrorTapCandidate.mirror);
+      }
+      mirrorTapCandidate = null;
+      return;
+    }
+
+    if (aimPointerId === e.pointerId) {
+      const p = pointToCanvas(e.clientX, e.clientY);
+      aimPointerId = null;
+      if (state !== "aiming") { aimCurrent = null; return; }
+
+      const pull = { x: p.x - ball.x, y: p.y - ball.y };
+      let pullDist = Math.hypot(pull.x, pull.y);
+      aimCurrent = null;
+      if (pullDist < MIN_PULL) return; // cancelled, too small a pull
+
+      pullDist = Math.min(pullDist, MAX_PULL);
+      const angle = Math.atan2(pull.y, pull.x);
+      const speed = BALL_SPEED_MIN + (BALL_SPEED_MAX - BALL_SPEED_MIN) * (pullDist / MAX_PULL);
+      ball.vx = -Math.cos(angle) * speed;
+      ball.vy = -Math.sin(angle) * speed;
+
+      shotsLeft--;
+      updateHUD();
+      state = "flying";
+      flightStartTime = performance.now();
+    }
+  }
+
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+
+  restartBtn.addEventListener("click", restartGame);
+
+  function restartGame() {
+    level = 1; score = 0;
+    generateLevel(level);
+    shotsLeft = shotsForLevel();
+    resetBallToCannon();
+    state = "aiming";
+    overlayEl.classList.add("hidden");
+    updateHUD();
+  }
+
+  // ---------- Physics ----------
+  function closestPointOnSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    return { x: x1 + t * dx, y: y1 + t * dy };
+  }
+
+  function mirrorEndpoints(m) {
+    const half = MIRROR_LENGTH / 2;
+    const dx = Math.cos(m.angle) * half, dy = Math.sin(m.angle) * half;
+    return [{ x: m.x - dx, y: m.y - dy }, { x: m.x + dx, y: m.y + dy }];
+  }
+
+  function collideMirror(m) {
+    const [p1, p2] = mirrorEndpoints(m);
+    const cp = closestPointOnSegment(ball.x, ball.y, p1.x, p1.y, p2.x, p2.y);
+    const d = dist(ball.x, ball.y, cp.x, cp.y);
+    const minDist = ball.r + MIRROR_THICKNESS / 2;
+    if (d < minDist) {
+      let nx = ball.x - cp.x, ny = ball.y - cp.y;
+      const len = Math.hypot(nx, ny) || 1;
+      nx /= len; ny /= len;
+      const vDotN = ball.vx * nx + ball.vy * ny;
+      if (vDotN < 0) {
+        ball.vx -= 2 * vDotN * nx;
+        ball.vy -= 2 * vDotN * ny;
+        score += MIRROR_BOUNCE_SCORE;
+        updateHUD();
+        spawnBurst(cp.x, cp.y, "#56d1e0", 8, 2.4);
+        addShake(2);
+      }
+      const overlap = minDist - d;
+      ball.x += nx * overlap;
+      ball.y += ny * overlap;
+    }
+  }
+
+  function circleRectOverlap(rect) {
+    const closestX = Math.max(rect.x, Math.min(ball.x, rect.x + rect.w));
+    const closestY = Math.max(rect.y, Math.min(ball.y, rect.y + rect.h));
+    return dist(ball.x, ball.y, closestX, closestY) < ball.r;
+  }
+
+  function handleMiss(reason) {
+    if (shotsLeft <= 0) {
+      triggerGameOver();
+    } else {
+      resetBallToCannon();
+      showMessage(reason);
+    }
+  }
+
+  function handleWin() {
+    spawnBurst(target.x, target.y, "#4ee89e", 34, 4.2);
+    addShake(7);
+    score += LEVEL_CLEAR_BASE_SCORE + shotsLeft * SHOT_BONUS_MULTIPLIER;
+    level++;
+    showMessage("Level Clear!");
+    generateLevel(level);
+    shotsLeft = shotsForLevel();
+    resetBallToCannon();
+    updateHUD();
+  }
+
+  function triggerGameOver() {
+    state = "gameover";
+    overlayStats.textContent = "Score: " + score + " — Reached Level " + level;
+    overlayEl.classList.remove("hidden");
+  }
+
+  function updateTargetPosition(now) {
+    if (target.moving) {
+      target.x = target.baseX + Math.sin((now / 1000) * target.speed) * target.amp;
+    }
+  }
+
+  function stepBall(dt) {
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+
+    if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = -ball.vx; }
+    if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx = -ball.vx; }
+    if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy = -ball.vy; }
+
+    for (const m of mirrors) collideMirror(m);
+
+    for (const o of obstacles) {
+      if (circleRectOverlap(o)) {
+        spawnBurst(ball.x, ball.y, "#ff6b6b", 14, 3);
+        addShake(6);
+        handleMiss("Blocked!");
+        return;
+      }
+    }
+
+    const now = performance.now();
+    updateTargetPosition(now);
+    if (dist(ball.x, ball.y, target.x, target.y) < ball.r + target.r) { handleWin(); return; }
+
+    if (ball.y - ball.r > H) { handleMiss("Missed!"); return; }
+    if (now - flightStartTime > FLIGHT_TIMEOUT_MS) { handleMiss("Too slow!"); return; }
+  }
+
+  function update(dt) {
+    if (state !== "flying") return;
+    pushTrail(ball.x, ball.y);
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const steps = Math.min(4, Math.max(1, Math.ceil((speed * dt) / 6)));
+    const subDt = dt / steps;
+    for (let s = 0; s < steps; s++) {
+      stepBall(subDt);
+      if (state !== "flying") break;
+    }
+  }
+
+  // ---------- Render ----------
+  function drawBackground() {
+    // deep radial base
+    const g = ctx.createRadialGradient(W / 2, H * 0.32, 40, W / 2, H * 0.5, H * 0.85);
+    g.addColorStop(0, "#141b31");
+    g.addColorStop(1, "#0a0e1a");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // faint grid
+    ctx.strokeStyle = "rgba(86,209,224,0.05)";
+    ctx.lineWidth = 1;
+    const gap = 40;
+    ctx.beginPath();
+    for (let x = gap; x < W; x += gap) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = gap; y < H; y += gap) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+  }
+
+  function render(now) {
+    // full-canvas clear + background BEFORE any shake translation
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+
+    ctx.save();
+    if (shake > 0.1) {
+      ctx.translate(rand(-shake, shake), rand(-shake, shake));
+    }
+
+    const t = now / 1000;
+
+    // target (pulsing glow halo is cosmetic; collision still uses target.r)
+    if (target) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3.2);
+      ctx.save();
+      ctx.shadowColor = "rgba(78,232,158,0.9)";
+      ctx.shadowBlur = 22 + pulse * 14;
+      // outer aura ring
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.r + 5 + pulse * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(78,232,158," + (0.35 + pulse * 0.35) + ")";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // core disc
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#4ee89e";
+      ctx.fill();
+      ctx.restore();
+      // inner cutout for ring look
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.r * 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = "#0d1424";
+      ctx.fill();
+      // bright center pip
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, Math.max(2, target.r * 0.16), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(220,255,238,0.95)";
+      ctx.fill();
+    }
+
+    // obstacles (coral with hazard stripes)
+    for (const o of obstacles) {
+      ctx.save();
+      ctx.shadowColor = "rgba(255,107,107,0.5)";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = "#ff6b6b";
+      const rr = 4;
+      roundRect(o.x, o.y, o.w, o.h, rr);
+      ctx.fill();
+      ctx.restore();
+      // stripes
+      ctx.save();
+      ctx.beginPath();
+      roundRect(o.x, o.y, o.w, o.h, 4);
+      ctx.clip();
+      ctx.strokeStyle = "rgba(10,14,26,0.35)";
+      ctx.lineWidth = 5;
+      for (let sx = o.x - o.h; sx < o.x + o.w + o.h; sx += 12) {
+        ctx.beginPath();
+        ctx.moveTo(sx, o.y);
+        ctx.lineTo(sx + o.h, o.y + o.h);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // mirrors (glowing cyan bars)
+    ctx.lineCap = "round";
+    for (const m of mirrors) {
+      const [p1, p2] = mirrorEndpoints(m);
+      ctx.save();
+      ctx.shadowColor = "rgba(86,209,224,0.85)";
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = "#56d1e0";
+      ctx.lineWidth = MIRROR_THICKNESS;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.restore();
+      // inner highlight
+      ctx.strokeStyle = "rgba(230,252,255,0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    // cannon (slingshot base)
+    ctx.beginPath();
+    ctx.arc(cannon.x, cannon.y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(124,134,163,0.18)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cannon.x, cannon.y, 15, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(124,134,163,0.55)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // aim line preview
+    if (aimPointerId !== null && aimCurrent && state === "aiming") {
+      const pull = { x: aimCurrent.x - ball.x, y: aimCurrent.y - ball.y };
+      const pullDist = Math.min(Math.hypot(pull.x, pull.y), MAX_PULL);
+      const angle = Math.atan2(pull.y, pull.x);
+      const lineLen = pullDist * 2.4;
+      const ex = ball.x - Math.cos(angle) * lineLen;
+      const ey = ball.y - Math.sin(angle) * lineLen;
+      // sling band from finger to ball
+      ctx.strokeStyle = "rgba(255,207,92,0.35)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ball.x, ball.y);
+      ctx.lineTo(aimCurrent.x, aimCurrent.y);
+      ctx.stroke();
+      // trajectory guide
+      ctx.save();
+      ctx.shadowColor = "rgba(255,207,92,0.7)";
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = "#ffcf5c";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 7]);
+      ctx.beginPath();
+      ctx.moveTo(ball.x, ball.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // aim tip
+      ctx.beginPath();
+      ctx.arc(ex, ey, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffcf5c";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ball trail (cosmetic)
+    for (let i = 0; i < trail.length; i++) {
+      const tp = trail[i];
+      const a = (i + 1) / trail.length;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, ball.r * a * 0.9, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,207,92," + (a * 0.28) + ")";
+      ctx.fill();
+    }
+
+    // particles (cosmetic)
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // ball (glowing core)
+    ctx.save();
+    ctx.shadowColor = "rgba(255,225,150,0.9)";
+    ctx.shadowBlur = state === "flying" ? 16 : 8;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff6e0";
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---------- Main loop ----------
+  let lastTime = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.033);
+    lastTime = now;
+    update(dt);
+    updateParticles(dt);
+    shake *= Math.pow(0.001, dt); // smooth decay toward 0
+    if (shake < 0.1) shake = 0;
+    render(now);
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Init ----------
+  generateLevel(level);
+  updateHUD();
+  resizeCanvas();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

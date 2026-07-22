@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pulse Relay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+  :root {
+    --bg: #05070a;
+    --panel: #0d1218;
+    --panel-line: #182029;
+    --ink: #d9e6ec;
+    --ink-dim: #61727d;
+    --tap: #4fd8ff;
+    --swipe: #ffb454;
+    --hold: #6be6a6;
+    --perfect: #8ff4de;
+    --good: #ffcf6b;
+    --miss: #ff5a72;
+    --font: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: var(--font);
+    color: var(--ink);
+  }
+  #game {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    height: 100%;
+    max-height: 800px;
+    margin: 0 auto;
+    background:
+      radial-gradient(ellipse at 50% -10%, #14202a 0%, var(--bg) 55%);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  #game.shake { animation: shake 260ms ease; }
+  @keyframes shake {
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(-6px, 2px); }
+    40% { transform: translate(5px, -3px); }
+    60% { transform: translate(-4px, 3px); }
+    80% { transform: translate(3px, -1px); }
+    100% { transform: translate(0, 0); }
+  }
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    background: transparent;
+  }
+  #hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 14px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    font-size: 13px;
+    letter-spacing: 1px;
+    box-sizing: border-box;
+    text-shadow: 0 0 10px rgba(79, 216, 255, 0.35);
+  }
+  #scoreText { color: var(--ink); font-weight: 600; }
+  #comboText {
+    color: var(--tap);
+    font-weight: 600;
+    transform-origin: right center;
+    transition: transform 120ms ease, color 120ms ease;
+  }
+  #comboText.pulse {
+    animation: comboPulse 260ms ease;
+  }
+  @keyframes comboPulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.45); color: var(--perfect); }
+    100% { transform: scale(1); }
+  }
+  #healthWrap {
+    position: absolute;
+    top: 38px;
+    left: 14px;
+    right: 14px;
+    height: 6px;
+    background: var(--panel-line);
+    border-radius: 3px;
+    pointer-events: none;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  }
+  #healthBar {
+    height: 100%;
+    width: 100%;
+    background: var(--hold);
+    border-radius: 3px;
+    transition: width 180ms ease, background 320ms ease, box-shadow 320ms ease;
+    box-shadow: 0 0 8px var(--hold);
+  }
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4, 6, 9, 0.92);
+    backdrop-filter: blur(2px);
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .hidden { display: none !important; }
+  .overlay h1 {
+    font-size: 26px;
+    margin: 0 0 14px 0;
+    letter-spacing: 5px;
+    color: var(--tap);
+    text-shadow: 0 0 18px rgba(79, 216, 255, 0.55);
+  }
+  #endTitle.lost {
+    color: var(--miss);
+    text-shadow: 0 0 18px rgba(255, 90, 114, 0.55);
+  }
+  .overlay p {
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 340px;
+    margin: 4px 0;
+    color: var(--ink-dim);
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .swatch {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .btn {
+    margin-top: 26px;
+    padding: 15px 34px;
+    background: transparent;
+    color: var(--tap);
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    border: 1px solid var(--tap);
+    border-radius: 3px;
+    box-shadow: 0 0 14px rgba(79, 216, 255, 0.35), inset 0 0 14px rgba(79, 216, 255, 0.08);
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .btn:active {
+    transform: scale(0.96);
+    box-shadow: 0 0 22px rgba(79, 216, 255, 0.6), inset 0 0 18px rgba(79, 216, 255, 0.18);
+  }
+  .stat-line {
+    font-size: 14px;
+    margin: 4px 0;
+    color: var(--ink);
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas"></canvas>
+
+  <div id="hud">
+    <div id="scoreText">SCORE 0</div>
+    <div id="comboText">x1</div>
+  </div>
+  <div id="healthWrap"><div id="healthBar"></div></div>
+
+  <div id="titleScreen" class="overlay">
+    <h1>PULSE RELAY</h1>
+    <p>You are the relay operator. Incoming signals scroll down the line toward the receiver ring. React with the right gesture the instant each signal crosses it.</p>
+    <div class="legend-row"><div class="swatch" style="background:#4fd8ff;border-radius:50%;box-shadow:0 0 8px #4fd8ff;"></div><div>Circle &rarr; quick TAP</div></div>
+    <div class="legend-row"><div class="swatch" style="background:#ffb454;clip-path:polygon(0% 0%,100% 50%,0% 100%);box-shadow:0 0 8px #ffb454;"></div><div>Arrow &rarr; SWIPE left/right that way</div></div>
+    <div class="legend-row"><div class="swatch" style="background:#6be6a6;border-radius:2px;box-shadow:0 0 8px #6be6a6;"></div><div>Bar &rarr; PRESS &amp; HOLD through the whole bar</div></div>
+    <p>Chain hits without missing to raise your multiplier. Run out of signal health and the relay goes dead.</p>
+    <div class="btn" id="startBtn">TAP TO START</div>
+  </div>
+
+  <div id="endScreen" class="overlay hidden">
+    <h1 id="endTitle">RELAY LOST</h1>
+    <div class="stat-line" id="statScore">Score: 0</div>
+    <div class="stat-line" id="statCombo">Best Combo: 0</div>
+    <div class="stat-line" id="statAcc">Accuracy: 0%</div>
+    <div class="stat-line" id="statBreak">Perfect 0 / Good 0 / Miss 0</div>
+    <div class="btn" id="restartBtn">TAP TO RETRY</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------
+  // CONFIG - tuning constants (candidates for later balance pass)
+  // ---------------------------------------------------------------
+  var CONFIG = {
+    LEAD_TIME_MS: 1300,       // time a note travels from spawn to the hit line
+    PERFECT_WINDOW_MS: 45,
+    GOOD_WINDOW_MS: 110,
+    SWIPE_MIN_DIST: 28,       // px, minimum horizontal travel to count as a swipe
+    SWIPE_MAX_TIME_MS: 380,   // gesture must finish within this to count as a swipe
+    TOTAL_NOTES: 130,         // full chart length; ramp plateaus well before the end so skilled players get a real ceiling-density stretch
+    TAP_INTRO_NOTES: 9,       // first N notes are tap-only, a gentle "learn the tap" onboarding beat
+    RAMP_NOTES: 78,           // notes over which difficulty ramps 0->1 (density + gesture mix); plateaus after this regardless of TOTAL_NOTES
+    START_DELAY_MS: 2400,     // delay before the first note reaches the line
+    BASE_INTERVAL_MS: 1050,   // gap between notes at the start of the run
+    MIN_INTERVAL_MS: 520,     // gap between notes at the hardest point
+    HOLD_MIN_DURATION_MS: 420,
+    HOLD_MAX_DURATION_MS: 780,
+    HOLD_GAP_AFTER_MS: 260,   // extra breathing room after a hold note resolves
+    HEALTH_MAX: 100,
+    HEALTH_LOSS_MISS: 12,
+    HEALTH_REGEN_PERFECT: 1,
+    COMBO_STEP: 10,           // combo needed per multiplier tier
+    COMBO_MAX_MULT: 4
+  };
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var scoreText = document.getElementById('scoreText');
+  var comboText = document.getElementById('comboText');
+  var healthBar = document.getElementById('healthBar');
+  var titleScreen = document.getElementById('titleScreen');
+  var endScreen = document.getElementById('endScreen');
+  var endTitle = document.getElementById('endTitle');
+  var statScore = document.getElementById('statScore');
+  var statCombo = document.getElementById('statCombo');
+  var statAcc = document.getElementById('statAcc');
+  var statBreak = document.getElementById('statBreak');
+  var startBtn = document.getElementById('startBtn');
+  var restartBtn = document.getElementById('restartBtn');
+
+  // ---------------------------------------------------------------
+  // Visual theme (presentation only - no effect on rules/timing)
+  // ---------------------------------------------------------------
+  var COLOR = {
+    tap: '#4fd8ff',
+    swipe: '#ffb454',
+    hold: '#6be6a6',
+    holdActive: '#b6f5d4',
+    perfect: '#8ff4de',
+    good: '#ffcf6b',
+    miss: '#ff5a72',
+    line: '#3a4a56',
+    laneEdge: 'rgba(79, 216, 255, 0.14)'
+  };
+  var gameEl = document.getElementById('game');
+
+  function triggerShake() {
+    gameEl.classList.remove('shake');
+    void gameEl.offsetWidth; // restart the CSS animation
+    gameEl.classList.add('shake');
+  }
+
+  function pulseCombo() {
+    comboText.classList.remove('pulse');
+    void comboText.offsetWidth;
+    comboText.classList.add('pulse');
+  }
+
+  // ---------------------------------------------------------------
+  // Minimal WebAudio feedback (cosmetic only, never gates gameplay)
+  // ---------------------------------------------------------------
+  var audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch (e) { /* audio unsupported - ignore silently */ }
+  }
+  function beep(freq, duration, gain, type) {
+    if (!audioCtx) return;
+    try {
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      var now = audioCtx.currentTime;
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(gain, now + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    } catch (e) { /* ignore */ }
+  }
+  function playResultSound(result) {
+    if (result === 'perfect') beep(880, 0.12, 0.05, 'triangle');
+    else if (result === 'good') beep(600, 0.11, 0.045, 'triangle');
+    else beep(160, 0.16, 0.05, 'sawtooth');
+  }
+
+  // hit-line burst flashes, purely decorative
+  var hitFlashes = [];
+
+  var W = 0, H = 0, DPR = 1;
+  var HIT_LINE_Y = 0;
+  var SPAWN_Y = 40;
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    DPR = window.devicePixelRatio || 1;
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    HIT_LINE_Y = H - 110;
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------------------------------------------------------------
+  // Game state
+  // ---------------------------------------------------------------
+  var state = 'title'; // 'title' | 'playing' | 'gameover' | 'complete'
+  var notes = [];
+  var startTime = 0;
+  var currentTime = 0;
+  var score = 0;
+  var combo = 0;
+  var maxCombo = 0;
+  var health = CONFIG.HEALTH_MAX;
+  var perfectCount = 0, goodCount = 0, missCount = 0;
+  var feedback = { text: '', time: -9999 };
+
+  var activeTouchId = null;
+  var touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+  var activeHoldNote = null;
+
+  function scrollSpeed() {
+    return (HIT_LINE_Y - SPAWN_Y) / CONFIG.LEAD_TIME_MS;
+  }
+
+  // ---------------------------------------------------------------
+  // Chart generation
+  // ---------------------------------------------------------------
+  function generateChart() {
+    var list = [];
+    var t = CONFIG.START_DELAY_MS;
+    for (var i = 0; i < CONFIG.TOTAL_NOTES; i++) {
+      // Ramp progress is decoupled from total chart length: it climbs 0->1 over
+      // RAMP_NOTES notes, then holds flat at 1 for the rest of the chart. This
+      // gives a smooth, continuous ramp to a "hard but fair" ceiling within the
+      // first minute or two, followed by a plateau instead of an ever-escalating
+      // (or abruptly-ending) curve for the remainder of the run.
+      var rampProgress = Math.min(1, i / CONFIG.RAMP_NOTES);
+      var type = pickType(i, rampProgress);
+      var duration = 0;
+      if (type === 'hold') {
+        duration = CONFIG.HOLD_MIN_DURATION_MS +
+          Math.random() * (CONFIG.HOLD_MAX_DURATION_MS - CONFIG.HOLD_MIN_DURATION_MS);
+      }
+      list.push({
+        time: t,
+        type: type,
+        duration: duration,
+        judged: false,
+        holdStarted: false,
+        holdActive: false,
+        result: null
+      });
+
+      var interval = CONFIG.BASE_INTERVAL_MS -
+        (CONFIG.BASE_INTERVAL_MS - CONFIG.MIN_INTERVAL_MS) * rampProgress;
+      t += interval + (type === 'hold' ? duration + CONFIG.HOLD_GAP_AFTER_MS : 0);
+    }
+    return list;
+  }
+
+  function pickType(index, rampProgress) {
+    if (index < CONFIG.TAP_INTRO_NOTES) return 'tap'; // gentle intro, taps only
+    var r = Math.random();
+    if (rampProgress < 0.5) {
+      // taps + swipes
+      if (r < 0.55) return 'tap';
+      if (r < 0.80) return 'swipeLeft';
+      return 'swipeRight';
+    }
+    // full variety once the ramp is far enough along
+    if (r < 0.40) return 'tap';
+    if (r < 0.60) return 'swipeLeft';
+    if (r < 0.80) return 'swipeRight';
+    return 'hold';
+  }
+
+  // ---------------------------------------------------------------
+  // Judging
+  // ---------------------------------------------------------------
+  function applyResult(note, result) {
+    note.judged = true;
+    note.result = result;
+    note.holdActive = false;
+    feedback.text = result.toUpperCase();
+    feedback.time = currentTime;
+
+    var prevMult = 1 + Math.min(CONFIG.COMBO_MAX_MULT - 1, Math.floor(combo / CONFIG.COMBO_STEP));
+    hitFlashes.push({ time: currentTime, result: result });
+    playResultSound(result);
+
+    if (result === 'miss') {
+      missCount++;
+      combo = 0;
+      health -= CONFIG.HEALTH_LOSS_MISS;
+      if (health < 0) health = 0;
+      triggerShake();
+      return;
+    }
+
+    var points = result === 'perfect' ? 100 : 50;
+    if (result === 'perfect') {
+      perfectCount++;
+      health = Math.min(CONFIG.HEALTH_MAX, health + CONFIG.HEALTH_REGEN_PERFECT);
+    } else {
+      goodCount++;
+    }
+    combo++;
+    if (combo > maxCombo) maxCombo = combo;
+    var mult = 1 + Math.min(CONFIG.COMBO_MAX_MULT - 1, Math.floor(combo / CONFIG.COMBO_STEP));
+    score += points * mult;
+    if (mult > prevMult) pulseCombo();
+  }
+
+  function judgeByTiming(note, actualTime, expectedTime) {
+    var delta = Math.abs(actualTime - expectedTime);
+    if (delta <= CONFIG.PERFECT_WINDOW_MS) applyResult(note, 'perfect');
+    else if (delta <= CONFIG.GOOD_WINDOW_MS) applyResult(note, 'good');
+    else applyResult(note, 'miss');
+  }
+
+  function findNoteInWindow(predicate) {
+    for (var i = 0; i < notes.length; i++) {
+      var n = notes[i];
+      if (n.judged) continue;
+      if (Math.abs(currentTime - n.time) <= CONFIG.GOOD_WINDOW_MS && predicate(n)) {
+        return n;
+      }
+    }
+    return null;
+  }
+
+  function findAnyActiveNote() {
+    // any unjudged note whose start window is currently open (used to detect
+    // "wrong gesture" cases and hold-note starts)
+    for (var i = 0; i < notes.length; i++) {
+      var n = notes[i];
+      if (n.judged) continue;
+      if (Math.abs(currentTime - n.time) <= CONFIG.GOOD_WINDOW_MS) return n;
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------
+  // Input handling (touch only)
+  // ---------------------------------------------------------------
+  function onCanvasTouchStart(e) {
+    if (state !== 'playing') return;
+    e.preventDefault();
+    ensureAudio();
+    if (activeTouchId !== null) return; // ignore extra fingers
+    var t = e.changedTouches[0];
+    activeTouchId = t.identifier;
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchStartTime = currentTime;
+    activeHoldNote = null;
+
+    var holdCandidate = findNoteInWindow(function (n) { return n.type === 'hold' && !n.holdStarted; });
+    if (holdCandidate) {
+      holdCandidate.holdStarted = true;
+      holdCandidate.holdActive = true;
+      activeHoldNote = holdCandidate;
+    }
+  }
+
+  function onCanvasTouchMove(e) {
+    if (state !== 'playing') return;
+    e.preventDefault();
+  }
+
+  function onCanvasTouchEnd(e) {
+    if (state !== 'playing') return;
+    e.preventDefault();
+    var t = null;
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchId) { t = e.changedTouches[i]; break; }
+    }
+    if (!t) return;
+    activeTouchId = null;
+
+    if (activeHoldNote && !activeHoldNote.judged) {
+      var expectedEnd = activeHoldNote.time + activeHoldNote.duration;
+      judgeByTiming(activeHoldNote, currentTime, expectedEnd);
+      activeHoldNote = null;
+      return;
+    }
+    activeHoldNote = null;
+
+    var dx = t.clientX - touchStartX;
+    var dy = t.clientY - touchStartY;
+    var dt = currentTime - touchStartTime;
+    var isSwipe = Math.abs(dx) >= CONFIG.SWIPE_MIN_DIST &&
+      Math.abs(dx) > Math.abs(dy) * 1.2 &&
+      dt <= CONFIG.SWIPE_MAX_TIME_MS;
+
+    if (isSwipe) {
+      var dir = dx > 0 ? 'swipeRight' : 'swipeLeft';
+      var swipeNote = findNoteInWindow(function (n) { return n.type === dir; });
+      if (swipeNote) { judgeByTiming(swipeNote, currentTime, swipeNote.time); return; }
+      var wrong = findAnyActiveNote();
+      if (wrong) applyResult(wrong, 'miss');
+      return;
+    }
+
+    // treat as tap
+    var tapNote = findNoteInWindow(function (n) { return n.type === 'tap'; });
+    if (tapNote) { judgeByTiming(tapNote, currentTime, tapNote.time); return; }
+    var wrongTap = findAnyActiveNote();
+    if (wrongTap) applyResult(wrongTap, 'miss');
+  }
+
+  canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onCanvasTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', onCanvasTouchEnd, { passive: false });
+
+  function bindButton(el, fn) {
+    el.addEventListener('touchend', function (e) {
+      e.preventDefault();
+      fn();
+    }, { passive: false });
+  }
+  bindButton(startBtn, startGame);
+  bindButton(restartBtn, startGame);
+
+  // ---------------------------------------------------------------
+  // Game flow
+  // ---------------------------------------------------------------
+  function startGame() {
+    ensureAudio();
+    hitFlashes = [];
+    notes = generateChart();
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    health = CONFIG.HEALTH_MAX;
+    perfectCount = 0; goodCount = 0; missCount = 0;
+    feedback.text = '';
+    feedback.time = -9999;
+    activeTouchId = null;
+    activeHoldNote = null;
+    startTime = performance.now();
+    currentTime = 0;
+    state = 'playing';
+    titleScreen.classList.add('hidden');
+    endScreen.classList.add('hidden');
+  }
+
+  function endGame(won) {
+    state = won ? 'complete' : 'gameover';
+    endTitle.textContent = won ? 'RELAY COMPLETE' : 'RELAY LOST';
+    endTitle.classList.toggle('lost', !won);
+    statScore.textContent = 'Score: ' + score;
+    statCombo.textContent = 'Best Combo: ' + maxCombo;
+    var total = perfectCount + goodCount + missCount;
+    var acc = total > 0 ? Math.round(((perfectCount + goodCount) / total) * 100) : 0;
+    statAcc.textContent = 'Accuracy: ' + acc + '%';
+    statBreak.textContent = 'Perfect ' + perfectCount + ' / Good ' + goodCount + ' / Miss ' + missCount;
+    endScreen.classList.remove('hidden');
+  }
+
+  // ---------------------------------------------------------------
+  // Update / render loop
+  // ---------------------------------------------------------------
+  function update() {
+    currentTime = performance.now() - startTime;
+
+    var allJudged = true;
+    var lastEnd = 0;
+    for (var i = 0; i < notes.length; i++) {
+      var n = notes[i];
+      var expiry = n.time + (n.type === 'hold' ? n.duration : 0) + CONFIG.GOOD_WINDOW_MS;
+      lastEnd = Math.max(lastEnd, expiry);
+      if (!n.judged) {
+        allJudged = false;
+        if (n.holdActive) {
+          // safety net: force-resolve a hold note that never got released
+          // (e.g. a lost touchend/touchcancel) so the run can never hang.
+          if (currentTime > expiry + 2000) {
+            applyResult(n, 'miss');
+            if (activeHoldNote === n) activeHoldNote = null;
+          }
+        } else if (currentTime > expiry) {
+          applyResult(n, 'miss');
+        }
+      }
+    }
+
+    if (health <= 0) {
+      endGame(false);
+      return;
+    }
+    if (allJudged && currentTime > lastEnd + 400) {
+      endGame(true);
+      return;
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    // lane background
+    var laneX = W * 0.5;
+    var laneWidth = Math.min(220, W * 0.6);
+    var laneGrad = ctx.createLinearGradient(0, 0, 0, H);
+    laneGrad.addColorStop(0, '#111a22');
+    laneGrad.addColorStop(1, '#0a0e13');
+    ctx.fillStyle = laneGrad;
+    ctx.fillRect(laneX - laneWidth / 2, 0, laneWidth, H);
+
+    // faint lane edge glow
+    ctx.strokeStyle = COLOR.laneEdge;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(laneX - laneWidth / 2 + 0.5, 0, laneWidth - 1, H);
+
+    // subtle horizontal scan ticks for a "signal line" feel
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    for (var ty = (currentTime * 0.02) % 40; ty < H; ty += 40) {
+      ctx.beginPath();
+      ctx.moveTo(laneX - laneWidth / 2, ty);
+      ctx.lineTo(laneX + laneWidth / 2, ty);
+      ctx.stroke();
+    }
+
+    // receiver ring / hit line
+    ctx.save();
+    ctx.shadowColor = 'rgba(79, 216, 255, 0.55)';
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#9fd8ea';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(laneX - laneWidth / 2 - 10, HIT_LINE_Y);
+    ctx.lineTo(laneX + laneWidth / 2 + 10, HIT_LINE_Y);
+    ctx.stroke();
+    ctx.restore();
+
+    if (state === 'playing') {
+      var speed = scrollSpeed();
+      for (var i = 0; i < notes.length; i++) {
+        var n = notes[i];
+        if (n.judged) continue;
+        drawNote(n, laneX, laneWidth, speed);
+      }
+
+      drawHitFlashes(laneX);
+
+      if (currentTime - feedback.time < 420 && feedback.text) {
+        var age = currentTime - feedback.time;
+        var alpha = 1 - age / 420;
+        var rise = age * 0.06;
+        var fColor = feedback.text === 'PERFECT' ? COLOR.perfect :
+          (feedback.text === 'GOOD' ? COLOR.good : COLOR.miss);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.shadowColor = fColor;
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = fColor;
+        ctx.font = "700 22px 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+        ctx.textAlign = 'center';
+        ctx.fillText(feedback.text, laneX, HIT_LINE_Y - 44 - rise);
+        ctx.restore();
+      }
+    }
+
+    scoreText.textContent = 'SCORE ' + score;
+    var mult = 1 + Math.min(CONFIG.COMBO_MAX_MULT - 1, Math.floor(combo / CONFIG.COMBO_STEP));
+    comboText.textContent = combo + ' COMBO · x' + mult;
+    healthBar.style.width = Math.max(0, health) + '%';
+    var hColor = health > 40 ? COLOR.hold : (health > 15 ? COLOR.good : COLOR.miss);
+    healthBar.style.background = hColor;
+    healthBar.style.boxShadow = '0 0 8px ' + hColor;
+  }
+
+  function drawHitFlashes(laneX) {
+    for (var i = hitFlashes.length - 1; i >= 0; i--) {
+      var f = hitFlashes[i];
+      var age = currentTime - f.time;
+      if (age > 300) { hitFlashes.splice(i, 1); continue; }
+      var p = age / 300;
+      var color = f.result === 'perfect' ? COLOR.perfect : (f.result === 'good' ? COLOR.good : COLOR.miss);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - p) * 0.8;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(laneX, HIT_LINE_Y, 14 + p * 26, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawNote(n, laneX, laneWidth, speed) {
+    // subtle glow + scale grows as the note nears the receiver ring
+    var proximity = Math.max(0, Math.min(1, 1 - Math.abs(n.time - currentTime) / 260));
+
+    if (n.type === 'hold') {
+      var headY = HIT_LINE_Y - (n.time - currentTime) * speed;
+      var tailY = headY - n.duration * speed;
+      if (headY < -40 || tailY > H + 40) return;
+      ctx.save();
+      var holdColor = n.holdActive ? COLOR.holdActive : COLOR.hold;
+      ctx.shadowColor = holdColor;
+      ctx.shadowBlur = n.holdActive ? 20 : 10;
+      ctx.fillStyle = holdColor;
+      var barH = Math.max(6, headY - tailY);
+      roundRect(laneX - 14, tailY, 28, barH, 6);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    var y = HIT_LINE_Y - (n.time - currentTime) * speed;
+    if (y < -40 || y > H + 40) return;
+    var scale = 1 + proximity * 0.18;
+
+    if (n.type === 'tap') {
+      ctx.save();
+      ctx.shadowColor = COLOR.tap;
+      ctx.shadowBlur = 8 + proximity * 12;
+      ctx.fillStyle = COLOR.tap;
+      ctx.beginPath();
+      ctx.arc(laneX, y, 15 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else if (n.type === 'swipeLeft' || n.type === 'swipeRight') {
+      ctx.save();
+      ctx.shadowColor = COLOR.swipe;
+      ctx.shadowBlur = 8 + proximity * 12;
+      ctx.fillStyle = COLOR.swipe;
+      var dir = n.type === 'swipeLeft' ? -1 : 1;
+      var s = 15 * scale;
+      ctx.beginPath();
+      ctx.moveTo(laneX + dir * s, y);
+      ctx.lineTo(laneX - dir * (s * 0.75), y - s * 0.9);
+      ctx.lineTo(laneX - dir * (s * 0.75), y + s * 0.9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function loop() {
+    if (state === 'playing') update();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  render();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

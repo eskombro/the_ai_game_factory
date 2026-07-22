@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Nightling</title>
+<style>
+  :root {
+    --ink: #c9cde6;
+    --ink-dim: #7b80a3;
+    --night-1: #070a16;
+    --night-2: #03040a;
+    --lumen: #a898ff;      /* the nightling */
+    --lumen-deep: #6f5cff;
+    --shard: #6fe0ff;      /* pickups */
+    --amber: #ffce7a;      /* spotlights */
+    --alarm: #ff5964;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--night-2);
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: var(--mono);
+  }
+
+  #game {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    background: #000;
+  }
+
+  #stage {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    height: 100%;
+    background: radial-gradient(120% 90% at 50% 30%, var(--night-1) 0%, var(--night-2) 70%);
+    overflow: hidden;
+  }
+
+  #stage.shake {
+    animation: shake 0.4s ease-out 1;
+  }
+
+  @keyframes shake {
+    0%   { transform: translate(0, 0); }
+    20%  { transform: translate(-5px, 3px); }
+    40%  { transform: translate(4px, -4px); }
+    60%  { transform: translate(-3px, 2px); }
+    80%  { transform: translate(2px, -1px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  /* soft edge-of-night vignette over the arena */
+  #vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 90px 30px rgba(0, 0, 5, 0.85);
+  }
+
+  /* red closing-in glow as exposure climbs (opacity driven from JS) */
+  #dangerVignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: inset 0 0 70px 18px rgba(255, 70, 84, 0.55);
+    transition: opacity 0.25s linear;
+  }
+
+  #hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 14px 16px 10px;
+    box-sizing: border-box;
+    color: var(--ink);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  }
+
+  #hudRow {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  #bestLabel { color: var(--ink-dim); }
+
+  #exposureBar {
+    width: 100%;
+    height: 8px;
+    background: rgba(180, 190, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(180, 190, 255, 0.16);
+  }
+
+  #exposureFill {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--lumen-deep), var(--amber) 60%, var(--alarm));
+    background-size: 100vw 100%;   /* gradient fixed to full width so fill reveals it */
+    box-shadow: 0 0 10px rgba(255, 89, 100, 0.0);
+    transition: box-shadow 0.3s;
+  }
+
+  #exposureBar.danger #exposureFill {
+    box-shadow: 0 0 10px rgba(255, 89, 100, 0.8);
+    animation: barPulse 0.6s infinite;
+  }
+
+  @keyframes barPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.5); }
+  }
+
+  #exposureLabel {
+    font-size: 9px;
+    letter-spacing: 0.35em;
+    color: var(--ink-dim);
+    margin-top: 4px;
+  }
+
+  #dashBtn {
+    position: absolute;
+    right: 18px;
+    bottom: 28px;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, rgba(111, 92, 255, 0.28), rgba(111, 92, 255, 0.10));
+    border: 1px solid rgba(168, 152, 255, 0.35);
+    color: #eae6ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.18em;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform 0.12s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    box-shadow: 0 0 0 rgba(111, 92, 255, 0);
+  }
+
+  #dashBtn.ready {
+    border-color: rgba(168, 152, 255, 0.8);
+    box-shadow: 0 0 22px rgba(111, 92, 255, 0.45), inset 0 0 14px rgba(168, 152, 255, 0.25);
+  }
+
+  #dashBtn:active {
+    transform: scale(0.9);
+  }
+
+  #dashBtn.hidden {
+    display: none;
+  }
+
+  /* dash charge pips */
+  #dashSub {
+    display: flex;
+    gap: 5px;
+  }
+
+  #dashSub i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(168, 152, 255, 0.18);
+    border: 1px solid rgba(168, 152, 255, 0.35);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  #dashSub i.on {
+    background: var(--lumen);
+    box-shadow: 0 0 6px var(--lumen);
+  }
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(110% 80% at 50% 35%, rgba(10, 12, 26, 0.92), rgba(2, 3, 8, 0.97));
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+
+  #overlay.hidden {
+    display: none;
+  }
+
+  /* small luminous creature above the title */
+  #overlayOrb {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    margin-bottom: 22px;
+    background: radial-gradient(circle at 40% 35%, #efeaff, var(--lumen) 55%, var(--lumen-deep));
+    box-shadow: 0 0 24px 6px rgba(111, 92, 255, 0.55), 0 0 60px 20px rgba(111, 92, 255, 0.18);
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 24px 6px rgba(111, 92, 255, 0.55), 0 0 60px 20px rgba(111, 92, 255, 0.18); }
+    50% { transform: scale(1.12); box-shadow: 0 0 32px 9px rgba(111, 92, 255, 0.7), 0 0 80px 28px rgba(111, 92, 255, 0.25); }
+  }
+
+  #overlayTitle {
+    font-size: 30px;
+    font-weight: bold;
+    margin-bottom: 18px;
+    letter-spacing: 0.45em;
+    text-indent: 0.45em; /* recenters letterspaced text */
+    color: #eef0ff;
+    text-shadow: 0 0 18px rgba(168, 152, 255, 0.6);
+  }
+
+  #overlay.caught #overlayTitle {
+    color: #ffd9dc;
+    text-shadow: 0 0 18px rgba(255, 89, 100, 0.7);
+  }
+
+  #overlay.caught #overlayOrb {
+    background: radial-gradient(circle at 40% 35%, #fff, var(--alarm) 55%, #a1232c);
+    box-shadow: 0 0 24px 6px rgba(255, 89, 100, 0.55), 0 0 60px 20px rgba(255, 89, 100, 0.2);
+    animation: none;
+  }
+
+  #overlayText {
+    font-size: 13px;
+    line-height: 1.9;
+    white-space: pre-line;
+    max-width: 320px;
+    color: var(--ink-dim);
+    letter-spacing: 0.04em;
+  }
+
+  #overlayHint {
+    margin-top: 30px;
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
+    color: var(--ink);
+    padding: 10px 22px;
+    border: 1px solid rgba(180, 190, 255, 0.25);
+    border-radius: 999px;
+    animation: pulse 1.4s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+  <div id="game">
+    <div id="stage">
+      <canvas id="canvas"></canvas>
+      <div id="vignette"></div>
+      <div id="dangerVignette"></div>
+
+      <div id="hud">
+        <div id="hudRow">
+          <span id="scoreLabel">Score: 0</span>
+          <span id="bestLabel">Best: 0</span>
+        </div>
+        <div id="exposureBar"><div id="exposureFill"></div></div>
+        <div id="exposureLabel">EXPOSURE</div>
+      </div>
+
+      <div id="dashBtn" class="hidden">
+        <span id="dashLabel">DASH</span>
+        <span id="dashSub"><i></i><i></i><i></i></span>
+      </div>
+
+      <div id="overlay">
+        <div id="overlayOrb"></div>
+        <div id="overlayTitle">NIGHTLING</div>
+        <div id="overlayText">You are a creature of shadow.
+Drag anywhere to move.
+Spotlights sweep the dark — staying lit fills your Exposure meter.
+If Exposure maxes out, you're spotted. Game over.
+Tap DASH to flash through light unharmed (charges recharge over time).
+Collect blue shards for score and a bit of exposure relief.</div>
+        <div id="overlayHint">Tap to Start</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  "use strict";
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var stage = document.getElementById('stage');
+  var overlay = document.getElementById('overlay');
+  var overlayTitle = document.getElementById('overlayTitle');
+  var overlayText = document.getElementById('overlayText');
+  var overlayHint = document.getElementById('overlayHint');
+  var dashBtn = document.getElementById('dashBtn');
+  var dashSub = document.getElementById('dashSub');
+  var dashPips = dashSub.getElementsByTagName('i');
+  var scoreLabel = document.getElementById('scoreLabel');
+  var bestLabel = document.getElementById('bestLabel');
+  var exposureBar = document.getElementById('exposureBar');
+  var exposureFill = document.getElementById('exposureFill');
+  var dangerVignette = document.getElementById('dangerVignette');
+
+  var arena = { w: 0, h: 0 };
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  /* ---------- purely cosmetic state (no effect on gameplay) ---------- */
+  var stars = [];
+  var fxParticles = [];
+  var trail = [];
+  var fxLast = null;
+
+  function makeStars() {
+    stars = [];
+    var count = Math.round((arena.w * arena.h) / 9000);
+    for (var i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * arena.w,
+        y: Math.random() * arena.h,
+        r: 0.5 + Math.random() * 1.1,
+        a: 0.05 + Math.random() * 0.25,
+        tw: 0.5 + Math.random() * 2.5,
+        ph: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function spawnBurst(x, y, color, count, speed) {
+    for (var i = 0; i < count; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var sp = speed * (0.4 + Math.random() * 0.8);
+      fxParticles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        life: 0.5 + Math.random() * 0.3,
+        maxLife: 0.8,
+        r: 1.5 + Math.random() * 2,
+        color: color
+      });
+    }
+  }
+
+  /* ---------- tiny WebAudio synth (cosmetic) ---------- */
+  var audioCtx = null;
+  function ensureAudio() {
+    try {
+      if (!audioCtx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { /* ignore */ }
+  }
+  function blip(type, f0, f1, dur, vol) {
+    if (!audioCtx) return;
+    try {
+      var t = audioCtx.currentTime;
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    } catch (e) { /* ignore */ }
+  }
+  function sfxDash()  { blip('sawtooth', 640, 180, 0.18, 0.06); }
+  function sfxShard() { blip('sine', 880, 1420, 0.13, 0.07); }
+  function sfxCaught(){ blip('square', 220, 90, 0.45, 0.08); blip('square', 330, 120, 0.45, 0.05); }
+  /* ------------------------------------------------------------------ */
+
+  function resize() {
+    var w = stage.clientWidth;
+    var h = stage.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    arena.w = w;
+    arena.h = h;
+    makeStars();
+    if (player) {
+      player.x = clamp(player.x, player.r, arena.w - player.r);
+      player.y = clamp(player.y, player.r, arena.h - player.r);
+      player.target.x = player.x;
+      player.target.y = player.y;
+    }
+  }
+
+  var HIGH_SCORE_KEY = 'nightling_highscore';
+  function loadHighScore() {
+    var v = 0;
+    try {
+      v = parseFloat(localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+    } catch (e) { v = 0; }
+    return v;
+  }
+  function saveHighScore(v) {
+    try { localStorage.setItem(HIGH_SCORE_KEY, String(v)); } catch (e) { /* ignore */ }
+  }
+
+  var player = {
+    x: 0, y: 0, r: 13,
+    target: { x: 0, y: 0 }
+  };
+
+  var state = {
+    mode: 'menu', // 'menu' | 'playing' | 'gameover'
+    dragging: false,
+    activePointerId: null,
+    dashCharges: 3,
+    maxDashCharges: 3,
+    dashRegenTime: 3.2, // base regen; slows toward 4.5s as the run ramps (see update())
+    dashRegenTimer: 0,
+    dashActive: false,
+    dashTimer: 0,
+    dashDuration: 0.35,
+    exposure: 0,
+    maxExposure: 100,
+    lights: [],
+    shards: [],
+    elapsed: 0,
+    score: 0,
+    highScore: loadHighScore(),
+    nextLightAt: 16,
+    lightAddInterval: 20,
+    maxLights: 6,
+    shardTimer: 1.2,
+    shardInterval: 2.8
+  };
+
+  function createLight() {
+    var radius = 42 + Math.random() * 18;
+    var amp = 28 + Math.random() * Math.min(90, arena.w * 0.28);
+    var baseX = clamp(Math.random() * arena.w, radius, arena.w - radius);
+    var baseY = arena.h * (0.10 + Math.random() * 0.45);
+    return {
+      baseX: baseX,
+      baseY: baseY,
+      x: baseX,
+      y: baseY,
+      radius: radius,
+      amp: amp,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.45 + Math.random() * 0.35
+    };
+  }
+
+  function currentRadiusBonus() {
+    // asymptotic growth: ~9px at 30s, ~15px at 60s, ~21px at 120s, approaching 24px
+    return 24 * (1 - Math.exp(-state.elapsed / 60));
+  }
+
+  function spawnShard() {
+    var pos = null;
+    for (var attempt = 0; attempt < 10; attempt++) {
+      var x = 20 + Math.random() * Math.max(1, arena.w - 40);
+      var y = 20 + Math.random() * Math.max(1, arena.h - 40);
+      var safe = true;
+      var bonus = currentRadiusBonus();
+      for (var i = 0; i < state.lights.length; i++) {
+        var l = state.lights[i];
+        var eff = l.radius + bonus;
+        if (Math.hypot(x - l.x, y - l.y) < eff + 16) { safe = false; break; }
+      }
+      if (safe) { pos = { x: x, y: y }; break; }
+    }
+    if (!pos) {
+      pos = { x: 20 + Math.random() * Math.max(1, arena.w - 40), y: 20 + Math.random() * Math.max(1, arena.h - 40) };
+    }
+    state.shards.push({ x: pos.x, y: pos.y, r: 8 });
+  }
+
+  function triggerDash() {
+    if (state.mode !== 'playing') return;
+    if (!state.dashActive && state.dashCharges >= 1) {
+      state.dashCharges -= 1;
+      state.dashActive = true;
+      state.dashTimer = state.dashDuration;
+      spawnBurst(player.x, player.y, 'rgba(238, 240, 255, ', 10, 90); // cosmetic
+      sfxDash(); // cosmetic
+    }
+  }
+
+  function startGame() {
+    state.mode = 'playing';
+    player.x = arena.w / 2;
+    player.y = arena.h * 0.75;
+    player.target.x = player.x;
+    player.target.y = player.y;
+    state.dragging = false;
+    state.activePointerId = null;
+    state.dashCharges = state.maxDashCharges;
+    state.dashRegenTimer = 0;
+    state.dashActive = false;
+    state.dashTimer = 0;
+    state.exposure = 0;
+    state.lights = [createLight(), createLight()];
+    state.shards = [];
+    state.elapsed = 0;
+    state.score = 0;
+    state.nextLightAt = 16;
+    state.shardTimer = 1.2;
+    state.shardInterval = 2.8;
+    fxParticles = []; // cosmetic
+    trail = []; // cosmetic
+    stage.classList.remove('shake'); // cosmetic
+    overlay.classList.remove('caught'); // cosmetic
+    overlay.classList.add('hidden');
+    dashBtn.classList.remove('hidden');
+  }
+
+  function triggerGameOver() {
+    state.mode = 'gameover';
+    state.dragging = false;
+    state.activePointerId = null;
+    var finalScore = Math.floor(state.score);
+    if (finalScore > state.highScore) {
+      state.highScore = finalScore;
+      saveHighScore(state.highScore);
+    }
+    overlayTitle.textContent = 'CAUGHT!';
+    overlayText.textContent = 'Score: ' + finalScore + '\nBest: ' + Math.floor(state.highScore) +
+      '\n\nDrag to move. Tap DASH to flash through light.\nCollect shards, avoid the light.';
+    overlayHint.textContent = 'Tap to Retry';
+    overlay.classList.add('caught'); // cosmetic
+    overlay.classList.remove('hidden');
+    dashBtn.classList.add('hidden');
+    stage.classList.add('shake'); // cosmetic
+    sfxCaught(); // cosmetic
+  }
+
+  function update(dt) {
+    state.elapsed += dt;
+
+    var followLerp = state.dashActive ? 0.5 : 0.22;
+    player.x += (player.target.x - player.x) * followLerp;
+    player.y += (player.target.y - player.y) * followLerp;
+    player.x = clamp(player.x, player.r, arena.w - player.r);
+    player.y = clamp(player.y, player.r, arena.h - player.r);
+
+    if (state.dashActive) {
+      state.dashTimer -= dt;
+      if (state.dashTimer <= 0) { state.dashActive = false; }
+    }
+
+    if (state.dashCharges < state.maxDashCharges) {
+      // regen is generous early (3.2s) and eases toward 4.5s by ~87s in
+      var regenTime = state.dashRegenTime + Math.min(1.3, state.elapsed * 0.015);
+      state.dashRegenTimer += dt;
+      if (state.dashRegenTimer >= regenTime) {
+        state.dashRegenTimer -= regenTime;
+        state.dashCharges = Math.min(state.maxDashCharges, state.dashCharges + 1);
+      }
+    }
+
+    // asymptotic patrol-speed ramp (no hard cap snap): ~1.36x at 30s,
+    // ~1.6x at 60s, ~1.85x at 120s, approaching 2.1x
+    var speedMul = 1 + 1.1 * (1 - Math.exp(-state.elapsed / 75));
+    var radiusBonus = currentRadiusBonus();
+
+    if (state.lights.length < state.maxLights && state.elapsed >= state.nextLightAt) {
+      state.lights.push(createLight());
+      state.nextLightAt += state.lightAddInterval;
+    }
+
+    var illuminated = false;
+    var closestFactor = 0;
+    for (var i = 0; i < state.lights.length; i++) {
+      var l = state.lights[i];
+      l.x = clamp(l.baseX + l.amp * Math.sin(state.elapsed * l.speed * speedMul + l.phase), l.radius, arena.w - l.radius);
+      var eff = l.radius + radiusBonus;
+      var dx = player.x - l.x;
+      var dy = player.y - l.y;
+      var dist = Math.hypot(dx, dy);
+      if (dist < eff + player.r * 0.3) {
+        illuminated = true;
+        var factor = 1 - Math.max(0, dist) / eff;
+        if (factor > closestFactor) closestFactor = factor;
+      }
+    }
+
+    if (illuminated && !state.dashActive) {
+      // newcomer grace: exposure fills at 65% strength at t=0,
+      // ramping linearly to full strength by 75s
+      var fillMul = 0.65 + 0.35 * Math.min(1, state.elapsed / 75);
+      state.exposure += (24 + 55 * closestFactor) * fillMul * dt;
+    } else {
+      state.exposure -= 30 * dt;
+    }
+    state.exposure = clamp(state.exposure, 0, state.maxExposure);
+
+    if (state.exposure >= state.maxExposure) {
+      triggerGameOver();
+      return;
+    }
+
+    state.shardTimer -= dt;
+    if (state.shardTimer <= 0) {
+      spawnShard();
+      state.shardInterval = Math.max(1.6, 2.8 - state.elapsed * 0.008);
+      state.shardTimer = state.shardInterval;
+    }
+
+    for (var s = state.shards.length - 1; s >= 0; s--) {
+      var shard = state.shards[s];
+      var d = Math.hypot(player.x - shard.x, player.y - shard.y);
+      if (d < player.r + shard.r) {
+        state.shards.splice(s, 1);
+        state.score += 10;
+        state.exposure = clamp(state.exposure - 10, 0, state.maxExposure);
+        spawnBurst(shard.x, shard.y, 'rgba(111, 224, 255, ', 12, 70); // cosmetic
+        sfxShard(); // cosmetic
+      }
+    }
+
+    state.score += dt * 1.5;
+  }
+
+  function draw() {
+    // cosmetic-only visual clock for particles/twinkle (independent of game logic)
+    var now = performance.now() / 1000;
+    if (fxLast === null) fxLast = now;
+    var fdt = Math.min(now - fxLast, 0.05);
+    fxLast = now;
+
+    ctx.clearRect(0, 0, arena.w, arena.h);
+    var bg = ctx.createRadialGradient(arena.w * 0.5, arena.h * 0.3, 0, arena.w * 0.5, arena.h * 0.3, Math.max(arena.w, arena.h));
+    bg.addColorStop(0, '#070a16');
+    bg.addColorStop(1, '#03040a');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, arena.w, arena.h);
+
+    // faint twinkling stars
+    for (var st = 0; st < stars.length; st++) {
+      var star = stars[st];
+      var a = star.a * (0.6 + 0.4 * Math.sin(now * star.tw + star.ph));
+      ctx.fillStyle = 'rgba(200, 208, 255, ' + a.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    var radiusBonus = currentRadiusBonus();
+    for (var i = 0; i < state.lights.length; i++) {
+      var l = state.lights[i];
+      var eff = l.radius + radiusBonus;
+      var flick = 0.86 + 0.08 * Math.sin(now * 9 + l.phase * 7); // brightness flicker only; radius = hitbox
+      var grad = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, eff);
+      grad.addColorStop(0, 'rgba(255, 248, 228, ' + (0.95 * flick).toFixed(3) + ')');
+      grad.addColorStop(0.35, 'rgba(255, 214, 140, ' + (0.55 * flick).toFixed(3) + ')');
+      grad.addColorStop(1, 'rgba(255, 200, 110, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, eff, 0, Math.PI * 2);
+      ctx.fill();
+      // thin rim marking the exact danger boundary
+      ctx.strokeStyle = 'rgba(255, 220, 160, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, eff, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // shards: glowing cyan motes with a soft pulse
+    for (var j = 0; j < state.shards.length; j++) {
+      var sh = state.shards[j];
+      var p = 0.75 + 0.25 * Math.sin(now * 3.2 + sh.x * 0.05 + sh.y * 0.05);
+      var sg = ctx.createRadialGradient(sh.x, sh.y, 0, sh.x, sh.y, sh.r * 2.6);
+      sg.addColorStop(0, 'rgba(111, 224, 255, ' + (0.5 * p).toFixed(3) + ')');
+      sg.addColorStop(1, 'rgba(111, 224, 255, 0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y, sh.r * 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#bdf0ff';
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y, sh.r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // cosmetic particles
+    for (var fp = fxParticles.length - 1; fp >= 0; fp--) {
+      var pt = fxParticles[fp];
+      pt.life -= fdt;
+      if (pt.life <= 0) { fxParticles.splice(fp, 1); continue; }
+      pt.x += pt.vx * fdt;
+      pt.y += pt.vy * fdt;
+      pt.vx *= 0.96;
+      pt.vy *= 0.96;
+      var la = Math.max(0, pt.life / pt.maxLife);
+      ctx.fillStyle = pt.color + la.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r * la, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // cosmetic motion trail for the nightling (stronger while dashing)
+    if (state.mode === 'playing') {
+      trail.push({ x: player.x, y: player.y, life: state.dashActive ? 0.35 : 0.18 });
+      if (trail.length > 40) trail.shift();
+    }
+    for (var tr = trail.length - 1; tr >= 0; tr--) {
+      var tp = trail[tr];
+      tp.life -= fdt;
+      if (tp.life <= 0) { trail.splice(tr, 1); continue; }
+      var ta = tp.life * 1.4;
+      ctx.fillStyle = 'rgba(140, 122, 255, ' + Math.min(0.35, ta).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, player.r * 0.6 * Math.min(1, tp.life * 5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // the nightling: soft bioluminescent halo + bright core
+    var halo = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.r * 2.8);
+    if (state.dashActive) {
+      halo.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+      halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    } else {
+      halo.addColorStop(0, 'rgba(111, 92, 255, 0.4)');
+      halo.addColorStop(1, 'rgba(111, 92, 255, 0)');
+    }
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r * 2.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    var body = ctx.createRadialGradient(player.x - player.r * 0.3, player.y - player.r * 0.35, 0, player.x, player.y, player.r);
+    if (state.dashActive) {
+      body.addColorStop(0, '#ffffff');
+      body.addColorStop(1, '#d8d2ff');
+    } else {
+      body.addColorStop(0, '#e6e0ff');
+      body.addColorStop(0.5, '#a898ff');
+      body.addColorStop(1, '#5a48d8');
+    }
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+    ctx.fill();
+    if (state.dashActive) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function updateHUD() {
+    scoreLabel.textContent = 'Score: ' + Math.floor(state.score);
+    bestLabel.textContent = 'Best: ' + Math.floor(state.highScore);
+    exposureFill.style.width = state.exposure + '%';
+    var charges = Math.floor(state.dashCharges);
+    for (var i = 0; i < dashPips.length; i++) {
+      if (i < charges) dashPips[i].classList.add('on');
+      else dashPips[i].classList.remove('on');
+    }
+    if (state.dashCharges >= 1) {
+      dashBtn.classList.add('ready');
+    } else {
+      dashBtn.classList.remove('ready');
+    }
+    // cosmetic danger feedback
+    if (state.exposure > 65 && state.mode === 'playing') {
+      exposureBar.classList.add('danger');
+    } else {
+      exposureBar.classList.remove('danger');
+    }
+    var danger = state.mode === 'playing' ? Math.max(0, (state.exposure - 55) / 45) : 0;
+    dangerVignette.style.opacity = (danger * 0.9).toFixed(2);
+  }
+
+  function setTargetFromClient(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    var x = clientX - rect.left;
+    var y = clientY - rect.top;
+    player.target.x = clamp(x, player.r, arena.w - player.r);
+    player.target.y = clamp(y, player.r, arena.h - player.r);
+  }
+
+  canvas.addEventListener('pointerdown', function(e) {
+    ensureAudio();
+    if (state.mode !== 'playing') return;
+    e.preventDefault();
+    state.dragging = true;
+    state.activePointerId = e.pointerId;
+    setTargetFromClient(e.clientX, e.clientY);
+    player.x = player.target.x;
+    player.y = player.target.y;
+  });
+
+  canvas.addEventListener('pointermove', function(e) {
+    if (state.dragging && e.pointerId === state.activePointerId) {
+      e.preventDefault();
+      setTargetFromClient(e.clientX, e.clientY);
+    }
+  }, { passive: false });
+
+  window.addEventListener('pointerup', function(e) {
+    if (e.pointerId === state.activePointerId) {
+      state.dragging = false;
+      state.activePointerId = null;
+    }
+  });
+
+  window.addEventListener('pointercancel', function(e) {
+    if (e.pointerId === state.activePointerId) {
+      state.dragging = false;
+      state.activePointerId = null;
+    }
+  });
+
+  dashBtn.addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    ensureAudio();
+    triggerDash();
+  });
+
+  overlay.addEventListener('pointerdown', function(e) {
+    e.preventDefault();
+    ensureAudio();
+    if (state.mode === 'menu' || state.mode === 'gameover') {
+      startGame();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  var lastTime = null;
+  function loop(ts) {
+    if (lastTime === null) lastTime = ts;
+    var dt = (ts - lastTime) / 1000;
+    lastTime = ts;
+    dt = Math.min(dt, 0.05);
+
+    if (state.mode === 'playing') {
+      update(dt);
+    }
+    draw();
+    updateHUD();
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

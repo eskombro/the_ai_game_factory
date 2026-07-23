@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ink Tide</title>
+<style>
+  :root {
+    --ink:      #0c0e13;   /* deep sumi ink ground */
+    --ink-2:    #15181f;   /* raised panels */
+    --paper:    #ece7da;   /* warm rice-paper text */
+    --paper-dim:#8f8a7e;   /* muted paper */
+    --player:   #52a7ff;   /* indigo-blue ink (you) */
+    --player-dk:#1f3a5c;
+    --enemy:    #ff5e54;    /* vermillion tide */
+    --enemy-dk: #5c2320;
+    --surge:    #ffbf5c;   /* amber surge tell */
+    --line:     rgba(236,231,218,0.10);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background:
+      radial-gradient(120% 90% at 50% -10%, #1a1e28 0%, var(--ink) 55%, #060709 100%);
+    background-attachment: fixed;
+    color: var(--paper);
+    font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100%;
+    padding: 14px 12px 20px;
+    box-sizing: border-box;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 6px 0 14px 0;
+    background: linear-gradient(180deg, var(--paper), var(--player) 260%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: var(--paper);
+    position: relative;
+  }
+  h1::after {
+    content: "";
+    position: absolute;
+    left: 12%; right: 12%;
+    bottom: -6px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--player), var(--enemy), transparent);
+    opacity: 0.55;
+    border-radius: 2px;
+  }
+  #hud {
+    width: 100%;
+    max-width: 340px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  #statsRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+  #playerPct, #enemyPct {
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+  }
+  #playerPct { color: var(--player); box-shadow: inset 0 0 0 1px rgba(82,167,255,0.18); }
+  #enemyPct  { color: var(--enemy);  box-shadow: inset 0 0 0 1px rgba(255,94,84,0.18); }
+  #timer {
+    font-family: Georgia, serif;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--paper);
+  }
+  .barLabel {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .barLabel span:last-child {
+    color: var(--paper);
+    font-variant-numeric: tabular-nums;
+  }
+  .barOuter {
+    width: 100%;
+    height: 12px;
+    background: var(--ink-2);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    border: 1px solid var(--line);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+  }
+  #inkFill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, var(--player-dk), var(--player));
+    box-shadow: 0 0 8px rgba(82,167,255,0.55);
+    transition: width 0.12s linear;
+  }
+  #enemyInkFill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--enemy-dk), var(--enemy));
+    transition: width 0.12s linear;
+  }
+  #enemyInkFill.surging {
+    background: linear-gradient(90deg, var(--enemy), var(--surge));
+    box-shadow: 0 0 12px rgba(255,191,92,0.85);
+    animation: surgePulse 0.5s ease-in-out infinite;
+  }
+  @keyframes surgePulse {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.4); }
+  }
+  #enemyStateLabel { text-transform: uppercase; }
+  #canvasHolder {
+    position: relative;
+    width: 100%;
+    max-width: 330px;
+    border-radius: 8px;
+    padding: 6px;
+    background: linear-gradient(160deg, #1c2029, #0a0c11);
+    border: 1px solid rgba(236,231,218,0.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(0,0,0,0.4);
+    transition: box-shadow 0.25s ease;
+  }
+  #canvasHolder.surging {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55), 0 0 26px rgba(255,120,70,0.5),
+                inset 0 0 0 1px rgba(255,120,70,0.35);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #0a0c11;
+    touch-action: none;
+    border-radius: 5px;
+  }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(8,9,13,0.86);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  #overlay.show { display: flex; animation: fadeIn 0.35s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #overlayTitle {
+    font-family: Georgia, serif;
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+    color: var(--paper);
+  }
+  #overlay.win  #overlayTitle { color: var(--player); text-shadow: 0 0 18px rgba(82,167,255,0.55); }
+  #overlay.lose #overlayTitle { color: var(--enemy);  text-shadow: 0 0 18px rgba(255,94,84,0.5); }
+  #overlayDetail {
+    font-size: 14px;
+    margin-bottom: 22px;
+    line-height: 1.6;
+    color: var(--paper-dim);
+    white-space: pre-line;
+    font-variant-numeric: tabular-nums;
+  }
+  button {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 14px 30px;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(180deg, var(--player), #2f7fd6);
+    color: #04121f;
+    touch-action: manipulation;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(82,167,255,0.35);
+    transition: transform 0.08s ease, box-shadow 0.2s ease;
+  }
+  button:active { transform: translateY(1px) scale(0.98); }
+  #controlsRow {
+    width: 100%;
+    max-width: 330px;
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
+  }
+  #restartBtn {
+    background: transparent;
+    color: var(--paper-dim);
+    border: 1px solid var(--line);
+    box-shadow: none;
+    font-weight: 600;
+  }
+  #instructions {
+    font-size: 12px;
+    color: var(--paper-dim);
+    max-width: 330px;
+    text-align: center;
+    margin-top: 12px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Ink Tide</h1>
+  <div id="hud">
+    <div id="statsRow">
+      <span id="playerPct">YOU: 0%</span>
+      <span id="timer">1:30</span>
+      <span id="enemyPct">ENEMY: 0%</span>
+    </div>
+    <div class="barLabel"><span>Your Ink</span><span id="inkLabel">100</span></div>
+    <div class="barOuter"><div id="inkFill"></div></div>
+    <div class="barLabel"><span>Enemy Tide</span><span id="enemyStateLabel">charging</span></div>
+    <div class="barOuter"><div id="enemyInkFill"></div></div>
+  </div>
+  <div id="canvasHolder">
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <div id="overlayTitle">You Win!</div>
+      <div id="overlayDetail">Territory: 0%</div>
+      <button id="playAgainBtn">Play Again</button>
+    </div>
+  </div>
+  <div id="controlsRow">
+    <button id="restartBtn">Restart</button>
+  </div>
+  <div id="instructions">Drag your finger across the grid to paint tiles blue. Enemy red tide pulses outward on its own rhythm. Claim 58% of the board (or wipe out the enemy) before time runs out.</div>
+</div>
+<script>
+(function(){
+  "use strict";
+
+  // ---- Grid / balance constants (mechanics-first values; tuned later by balancer) ----
+  const COLS = 11, ROWS = 16, CELL = 30;
+  const MATCH_TIME = 90;        // seconds
+  const WIN_THRESHOLD = 0.58;   // fraction of grid needed to win outright
+  const GRACE_TIME = 6;         // seconds before wipeout loss/win can trigger
+  const CAPTURE_THRESHOLD = 18; // value needed for a neutral cell to flip owner
+  const MAX_VALUE = 100;
+
+  const PAINT_PER_STEP = 9;        // value gained/lost per painted grid step
+  const INK_COST_PER_STEP = 3;     // player ink spent per painted grid step
+  const PLAYER_INK_MAX = 100;
+  const PLAYER_INK_REGEN_PER_SEC = 9;
+
+  const ENEMY_INK_MAX = 100;
+  const ENEMY_REGEN_PER_SEC = 16;      // while charging
+  const ENEMY_SURGE_DRAIN_PER_SEC = 40;
+  const ENEMY_SURGE_DURATION = 2.2;
+  const ENEMY_ATTACK_VALUE_PER_SEC = 70; // budget split across sampled frontier targets
+  const ENEMY_FRONTIER_SAMPLE = 6;
+  // Smooth asymptotic difficulty ramp. rampFactor scales BOTH the enemy's charge
+  // regen (how often it surges) and its per-surge attack power, so difficulty rises
+  // as roughly rampFactor^2. It eases up from RAMP_MIN toward RAMP_MAX so the opening
+  // is gentle and the enemy only reaches its full "hard but fair" strength late-game:
+  //   rampFactor = RAMP_MAX - (RAMP_MAX - RAMP_MIN) * exp(-elapsed / RAMP_TAU)
+  const RAMP_MIN = 0.35; // enemy at 35% strength at match start (first surge ~18s in)
+  const RAMP_MAX = 0.92; // asymptotic ceiling, approached in the tense final ~30s
+  const RAMP_TAU = 30;   // seconds; "hard" pressure builds in around the 45-60s mark
+
+  const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+
+  // ---- DOM ----
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  canvas.width = COLS * CELL;
+  canvas.height = ROWS * CELL;
+
+  const playerPctEl = document.getElementById('playerPct');
+  const enemyPctEl = document.getElementById('enemyPct');
+  const timerEl = document.getElementById('timer');
+  const inkFillEl = document.getElementById('inkFill');
+  const inkLabelEl = document.getElementById('inkLabel');
+  const enemyInkFillEl = document.getElementById('enemyInkFill');
+  const enemyStateLabelEl = document.getElementById('enemyStateLabel');
+  const canvasHolderEl = document.getElementById('canvasHolder');
+  const overlayEl = document.getElementById('overlay');
+  const overlayTitleEl = document.getElementById('overlayTitle');
+  const overlayDetailEl = document.getElementById('overlayDetail');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  // ---- Game state ----
+  let grid;           // grid[row][col] = { owner: 0|1|2, value: 0..100 }
+  let playerInk, enemyInk, enemyState, surgeTimer, elapsed, gameState;
+  let lastPlayerPct = 0, lastEnemyPct = 0;
+  const lastCell = new Map(); // touch identifier -> {r,c}
+
+  function inBounds(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
+
+  function newGrid() {
+    const g = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < COLS; c++) row.push({ owner: 0, value: 0 });
+      g.push(row);
+    }
+    // player foothold: bottom-left 2x2
+    for (let r = ROWS - 2; r < ROWS; r++)
+      for (let c = 0; c < 2; c++)
+        g[r][c] = { owner: 1, value: MAX_VALUE };
+    // enemy foothold: top-right 2x2
+    for (let r = 0; r < 2; r++)
+      for (let c = COLS - 2; c < COLS; c++)
+        g[r][c] = { owner: 2, value: MAX_VALUE };
+    return g;
+  }
+
+  function resetGame() {
+    grid = newGrid();
+    playerInk = PLAYER_INK_MAX;
+    enemyInk = 0;
+    enemyState = 'charging';
+    surgeTimer = 0;
+    elapsed = 0;
+    gameState = 'playing';
+    lastCell.clear();
+    overlayEl.classList.remove('show', 'win', 'lose');
+  }
+
+  // ---- Bresenham line between two grid cells (inclusive) ----
+  function linePoints(r0, c0, r1, c1) {
+    const pts = [];
+    let dr = Math.abs(r1 - r0), dc = Math.abs(c1 - c0);
+    let sr = r0 < r1 ? 1 : -1, sc = c0 < c1 ? 1 : -1;
+    let err = dr - dc;
+    let r = r0, c = c0;
+    while (true) {
+      pts.push([r, c]);
+      if (r === r1 && c === c1) break;
+      const e2 = 2 * err;
+      if (e2 > -dc) { err -= dc; r += sr; }
+      if (e2 < dr) { err += dr; c += sc; }
+    }
+    return pts;
+  }
+
+  function applyPlayerPaint(r, c) {
+    const cell = grid[r][c];
+    if (cell.owner === 2) {
+      cell.value -= PAINT_PER_STEP;
+      if (cell.value <= 0) { cell.owner = 0; cell.value = 0; }
+    } else if (cell.owner === 0) {
+      cell.value += PAINT_PER_STEP;
+      if (cell.value >= CAPTURE_THRESHOLD) cell.owner = 1;
+      if (cell.value > MAX_VALUE) cell.value = MAX_VALUE;
+    } else if (cell.owner === 1) {
+      cell.value = Math.min(MAX_VALUE, cell.value + PAINT_PER_STEP);
+    }
+  }
+
+  function paintPath(r0, c0, r1, c1) {
+    const pts = linePoints(r0, c0, r1, c1);
+    for (let i = 1; i < pts.length; i++) { // skip index 0, already painted previously
+      if (playerInk < INK_COST_PER_STEP) break;
+      applyPlayerPaint(pts[i][0], pts[i][1]);
+      playerInk -= INK_COST_PER_STEP;
+    }
+  }
+
+  function enemyAttack(dt, rampFactor) {
+    const targets = new Set();
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c].owner === 2) {
+          for (const [dr, dc] of DIRS) {
+            const nr = r + dr, nc = c + dc;
+            if (inBounds(nr, nc) && grid[nr][nc].owner !== 2) targets.add(nr * COLS + nc);
+          }
+        }
+      }
+    }
+    if (targets.size === 0) return;
+    const arr = Array.from(targets);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    const chosen = arr.slice(0, Math.min(ENEMY_FRONTIER_SAMPLE, arr.length));
+    const totalBudget = ENEMY_ATTACK_VALUE_PER_SEC * rampFactor * dt;
+    const perTarget = totalBudget / chosen.length;
+    for (const idx of chosen) {
+      const r = Math.floor(idx / COLS), c = idx % COLS;
+      const cell = grid[r][c];
+      if (cell.owner === 1) {
+        cell.value -= perTarget;
+        if (cell.value <= 0) { cell.owner = 0; cell.value = 0; }
+      } else if (cell.owner === 0) {
+        cell.value += perTarget;
+        if (cell.value >= CAPTURE_THRESHOLD) cell.owner = 2;
+        if (cell.value > MAX_VALUE) cell.value = MAX_VALUE;
+      }
+    }
+  }
+
+  function updateEnemy(dt) {
+    const rampFactor = RAMP_MAX - (RAMP_MAX - RAMP_MIN) * Math.exp(-elapsed / RAMP_TAU);
+    if (enemyState === 'charging') {
+      enemyInk = Math.min(ENEMY_INK_MAX, enemyInk + ENEMY_REGEN_PER_SEC * rampFactor * dt);
+      if (enemyInk >= ENEMY_INK_MAX) {
+        enemyState = 'surging';
+        surgeTimer = ENEMY_SURGE_DURATION;
+      }
+    } else {
+      surgeTimer -= dt;
+      enemyInk = Math.max(0, enemyInk - ENEMY_SURGE_DRAIN_PER_SEC * dt);
+      if (surgeTimer > 0 && enemyInk > 0) {
+        enemyAttack(dt, rampFactor);
+      } else {
+        enemyState = 'charging';
+      }
+    }
+  }
+
+  function countOwners() {
+    let p = 0, e = 0;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c].owner === 1) p++;
+        else if (grid[r][c].owner === 2) e++;
+      }
+    return { p, e };
+  }
+
+  function endGame(won, playerPct, enemyPct) {
+    gameState = won ? 'won' : 'lost';
+    const timeLeft = Math.max(0, MATCH_TIME - elapsed);
+    const score = Math.round(playerPct * 100) + (won ? Math.round(timeLeft * 2) : 0);
+    overlayTitleEl.textContent = won ? 'You Win!' : 'Tide Overwhelmed You';
+    overlayDetailEl.textContent =
+      'Your territory: ' + Math.round(playerPct * 100) + '%\n' +
+      'Enemy: ' + Math.round(enemyPct * 100) + '%\n' +
+      'Score: ' + score;
+    overlayEl.classList.toggle('win', won);
+    overlayEl.classList.toggle('lose', !won);
+    overlayEl.classList.add('show');
+  }
+
+  function checkWinLose() {
+    const total = COLS * ROWS;
+    const { p, e } = countOwners();
+    const playerPct = p / total, enemyPct = e / total;
+    lastPlayerPct = playerPct; lastEnemyPct = enemyPct;
+
+    if (elapsed > GRACE_TIME) {
+      if (p === 0) { endGame(false, playerPct, enemyPct); return; }
+      if (e === 0) { endGame(true, playerPct, enemyPct); return; }
+    }
+    if (playerPct >= WIN_THRESHOLD) { endGame(true, playerPct, enemyPct); return; }
+    if (enemyPct >= WIN_THRESHOLD) { endGame(false, playerPct, enemyPct); return; }
+    if (elapsed >= MATCH_TIME) { endGame(playerPct > enemyPct, playerPct, enemyPct); return; }
+  }
+
+  // ---- Rendering ----
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[r][c];
+        let base;
+        if (cell.owner === 1) base = [82, 167, 255];
+        else if (cell.owner === 2) base = [255, 94, 84];
+        else base = [40, 44, 54];
+        // alpha modulates by hold value (0.35-1.0) to keep the "washed out vs solid" readability cue
+        const alpha = cell.owner === 0 ? 1 : (0.35 + 0.65 * (cell.value / MAX_VALUE));
+        ctx.fillStyle = 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',' + alpha + ')';
+        ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+      }
+    }
+    ctx.strokeStyle = 'rgba(236,231,218,0.06)';
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0, r * CELL); ctx.lineTo(COLS * CELL, r * CELL); ctx.stroke();
+    }
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, ROWS * CELL); ctx.stroke();
+    }
+  }
+
+  function updateHud() {
+    playerPctEl.textContent = 'YOU: ' + Math.round(lastPlayerPct * 100) + '%';
+    enemyPctEl.textContent = 'ENEMY: ' + Math.round(lastEnemyPct * 100) + '%';
+    const timeLeft = Math.max(0, MATCH_TIME - elapsed);
+    const m = Math.floor(timeLeft / 60);
+    const s = Math.floor(timeLeft % 60);
+    timerEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    inkFillEl.style.width = Math.max(0, playerInk) + '%';
+    inkLabelEl.textContent = Math.round(playerInk);
+    enemyInkFillEl.style.width = Math.max(0, enemyInk) + '%';
+    enemyStateLabelEl.textContent = enemyState;
+    enemyInkFillEl.classList.toggle('surging', enemyState === 'surging');
+    canvasHolderEl.classList.toggle('surging', enemyState === 'surging'); // cosmetic glow tell
+  }
+
+  // ---- Main loop ----
+  let lastTime = performance.now();
+  function loop(now) {
+    let dt = (now - lastTime) / 1000;
+    lastTime = now;
+    dt = Math.min(dt, 0.05);
+
+    if (gameState === 'playing') {
+      elapsed += dt;
+      playerInk = Math.min(PLAYER_INK_MAX, playerInk + PLAYER_INK_REGEN_PER_SEC * dt);
+      updateEnemy(dt);
+      checkWinLose();
+    }
+    render();
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- Touch input (touch-only; no keyboard/mouse-only paths) ----
+  function cellFromTouch(t) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    let x = (t.clientX - rect.left) * scaleX;
+    let y = (t.clientY - rect.top) * scaleY;
+    let c = Math.floor(x / CELL);
+    let r = Math.floor(y / CELL);
+    r = Math.max(0, Math.min(ROWS - 1, r));
+    c = Math.max(0, Math.min(COLS - 1, c));
+    return { r, c };
+  }
+
+  canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    if (gameState !== 'playing') return;
+    for (const t of e.changedTouches) {
+      const { r, c } = cellFromTouch(t);
+      lastCell.set(t.identifier, { r, c });
+      if (playerInk >= INK_COST_PER_STEP) {
+        applyPlayerPaint(r, c);
+        playerInk -= INK_COST_PER_STEP;
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (gameState !== 'playing') return;
+    for (const t of e.changedTouches) {
+      const prev = lastCell.get(t.identifier);
+      const { r, c } = cellFromTouch(t);
+      if (prev && (prev.r !== r || prev.c !== c)) {
+        paintPath(prev.r, prev.c, r, c);
+        lastCell.set(t.identifier, { r, c });
+      } else if (!prev) {
+        lastCell.set(t.identifier, { r, c });
+      }
+    }
+  }, { passive: false });
+
+  function releaseTouch(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) lastCell.delete(t.identifier);
+  }
+  canvas.addEventListener('touchend', releaseTouch, { passive: false });
+  canvas.addEventListener('touchcancel', releaseTouch, { passive: false });
+
+  function bindRestart(btn) {
+    btn.addEventListener('touchend', function (e) {
+      e.preventDefault();
+      resetGame();
+    }, { passive: false });
+    // desktop-tester convenience only; touch path above is fully sufficient on its own
+    btn.addEventListener('click', function () { resetGame(); });
+  }
+  bindRestart(playAgainBtn);
+  bindRestart(restartBtn);
+
+  // ---- Start ----
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

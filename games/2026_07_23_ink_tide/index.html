@@ -165,7 +165,7 @@
     touch-action: none;
     border-radius: 5px;
   }
-  #overlay {
+  #overlay, #startOverlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(8,9,13,0.86);
@@ -179,9 +179,9 @@
     border-radius: 8px;
     padding: 20px;
   }
-  #overlay.show { display: flex; animation: fadeIn 0.35s ease; }
+  #overlay.show, #startOverlay.show { display: flex; animation: fadeIn 0.35s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  #overlayTitle {
+  #overlayTitle, #startTitle {
     font-family: Georgia, serif;
     font-size: 30px;
     font-weight: 600;
@@ -191,7 +191,7 @@
   }
   #overlay.win  #overlayTitle { color: var(--player); text-shadow: 0 0 18px rgba(82,167,255,0.55); }
   #overlay.lose #overlayTitle { color: var(--enemy);  text-shadow: 0 0 18px rgba(255,94,84,0.5); }
-  #overlayDetail {
+  #overlayDetail, #startDetail {
     font-size: 14px;
     margin-bottom: 22px;
     line-height: 1.6;
@@ -259,11 +259,16 @@
       <div id="overlayDetail">Territory: 0%</div>
       <button id="playAgainBtn">Play Again</button>
     </div>
+    <div id="startOverlay" class="show">
+      <div id="startTitle">Ink Tide</div>
+      <div id="startDetail">Drag your finger or mouse across the grid to paint tiles blue and claim territory. Red enemy tide surges on its own rhythm &mdash; claim 58% of the board (or wipe it out) before time runs out.</div>
+      <button id="startBtn">Start</button>
+    </div>
   </div>
   <div id="controlsRow">
     <button id="restartBtn">Restart</button>
   </div>
-  <div id="instructions">Drag your finger across the grid to paint tiles blue. Enemy red tide pulses outward on its own rhythm. Claim 58% of the board (or wipe out the enemy) before time runs out.</div>
+  <div id="instructions">Drag your finger or mouse across the grid to paint tiles blue. Enemy red tide pulses outward on its own rhythm. Claim 58% of the board (or wipe out the enemy) before time runs out.</div>
 </div>
 <script>
 (function(){
@@ -318,6 +323,8 @@
   const overlayDetailEl = document.getElementById('overlayDetail');
   const playAgainBtn = document.getElementById('playAgainBtn');
   const restartBtn = document.getElementById('restartBtn');
+  const startOverlayEl = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
 
   // ---- Game state ----
   let grid;           // grid[row][col] = { owner: 0|1|2, value: 0..100 }
@@ -549,7 +556,7 @@
     requestAnimationFrame(loop);
   }
 
-  // ---- Touch input (touch-only; no keyboard/mouse-only paths) ----
+  // ---- Touch input, plus mirrored mouse input for desktop ----
   function cellFromTouch(t) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -598,6 +605,33 @@
   canvas.addEventListener('touchend', releaseTouch, { passive: false });
   canvas.addEventListener('touchcancel', releaseTouch, { passive: false });
 
+  // Mouse equivalents (desktop click-and-drag), mirroring the touch logic above 1:1.
+  // Uses the same lastCell map with a fixed 'mouse' key standing in for a touch identifier.
+  canvas.addEventListener('mousedown', function (e) {
+    if (gameState !== 'playing') return;
+    const { r, c } = cellFromTouch(e);
+    lastCell.set('mouse', { r, c });
+    if (playerInk >= INK_COST_PER_STEP) {
+      applyPlayerPaint(r, c);
+      playerInk -= INK_COST_PER_STEP;
+    }
+  });
+
+  canvas.addEventListener('mousemove', function (e) {
+    if (gameState !== 'playing') return;
+    const prev = lastCell.get('mouse');
+    if (!prev) return; // only paint while the mouse button is held down (mirrors an active touch)
+    const { r, c } = cellFromTouch(e);
+    if (prev.r !== r || prev.c !== c) {
+      paintPath(prev.r, prev.c, r, c);
+      lastCell.set('mouse', { r, c });
+    }
+  });
+
+  function releaseMouse() { lastCell.delete('mouse'); }
+  canvas.addEventListener('mouseup', releaseMouse);
+  canvas.addEventListener('mouseleave', releaseMouse); // handles release if cursor leaves mid-drag
+
   function bindRestart(btn) {
     btn.addEventListener('touchend', function (e) {
       e.preventDefault();
@@ -609,8 +643,25 @@
   bindRestart(playAgainBtn);
   bindRestart(restartBtn);
 
+  // ---- Pre-game start screen: gates the match timer / enemy / win-lose logic ----
+  // (loop() below only advances elapsed/ink/enemy/checkWinLose while gameState === 'playing')
+  function beginPlay() {
+    startOverlayEl.classList.remove('show');
+    gameState = 'playing';
+  }
+  function bindStart(btn) {
+    btn.addEventListener('touchend', function (e) {
+      e.preventDefault();
+      beginPlay();
+    }, { passive: false });
+    // desktop-tester convenience only; touch path above is fully sufficient on its own
+    btn.addEventListener('click', function () { beginPlay(); });
+  }
+  bindStart(startBtn);
+
   // ---- Start ----
   resetGame();
+  gameState = 'start'; // hold here (nothing ticks/spawns/drains) until the player taps Start
   requestAnimationFrame(loop);
 })();
 </script>

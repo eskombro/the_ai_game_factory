@@ -9,13 +9,13 @@ Most territory-painting games (e.g. Splatoon-style ink games) have the rival spr
 A second layer: cells aren't captured instantly. Every tile has an owner (neutral/player/enemy) and a "hold value" (0-100). Painting an enemy tile first has to burn its hold value down to zero (turning it neutral) before it can be claimed; painting a neutral tile has to build player value up past a capture threshold. Reinforcing your own tiles (painting them again) raises their hold value, making them more resistant to the enemy's next surge. So the same drag gesture is used for three different jobs — attack, capture, and defend — depending on what's already on the tile underneath your finger.
 
 ## How to play / controls
-- **Drag your finger across the grid** to paint a stroke of tiles. This is the only control in the game.
+- **Drag your finger (or mouse, on desktop) across the grid** to paint a stroke of tiles. This is the only control in the game.
   - Dragging over a **gray (neutral)** tile paints it toward your color; two passes over the same tile are enough to fully claim it.
   - Dragging over a **red (enemy)** tile weakens/erodes it; enough painting turns it neutral, then a further pass claims it for you.
   - Dragging over your **own (blue)** tile reinforces it, raising its resistance to the enemy's next surge.
-  - Painting costs "ink" (a meter shown at the top). Ink drains as you paint and regenerates automatically whenever you lift your finger and let it rest — so play in bursts rather than one endless smear.
-  - Multiple simultaneous fingers are supported: each touch point paints its own path independently (useful for defending two fronts at once), at the cost of draining ink faster.
-- No keyboard or mouse-only interaction exists anywhere in the game; a big on-screen "Restart" button (and a "Play Again" button on the end overlay) are the only other touch targets.
+  - Painting costs "ink" (a meter shown at the top). Ink drains as you paint and regenerates automatically whenever you lift your finger (or release the mouse button) and let it rest — so play in bursts rather than one endless smear.
+  - Multiple simultaneous fingers are supported: each touch point paints its own path independently (useful for defending two fronts at once), at the cost of draining ink faster. Mouse input paints a single path, mirroring one finger.
+- No keyboard-only interaction exists anywhere in the game; touch and mouse are both fully supported and behave identically. A big on-screen "Restart" button (and a "Play Again" button on the end overlay) are the only other controls.
 
 ## Core mechanics
 - Grid: 11 columns x 16 rows of tiles. Player starts with a small 2x2 foothold in the bottom-left corner; the enemy starts with a 2x2 foothold in the top-right corner. Everything else starts neutral.
@@ -114,7 +114,10 @@ New ink budget = 100 + 9·90 = 910 ink at 3/step = ~303 steps ≈ 152 theoretica
 
 ## Edit Log
 
+- **2026-07-23 (game-editor):** Added mouse input (`mousedown`/`mousemove`/`mouseup`/`mouseleave`) mirroring the existing touch handlers exactly — same coordinate mapping (`cellFromTouch`), same paint/drag/release logic via the shared `lastCell` map (using a fixed `'mouse'` key), so desktop users can click-and-drag on the canvas identically to touch. No mechanics, balance, or visuals changed; touch behavior is unaffected.
+- **2026-07-23:** Updated stale touch-only wording (on-screen `#instructions`, "How to play" section) to reflect that mouse input is now equally supported.
 - **2026-07-23 (game-editor):** Post-QA winnability retune — balance constants only: `WIN_THRESHOLD 0.62→0.58`, `INK_COST_PER_STEP 4→3`, `PLAYER_INK_REGEN_PER_SEC 7→9`, `RAMP_MAX 1.05→0.92` (details above), plus updated the on-screen instruction "62 %→58 %" to stay accurate. Two QA-flagged cosmetic fixes: `resetGame` now clears the stale `win`/`lose` overlay class (not just `show`); the end-overlay stat line now puts "Your territory" and "Enemy" on separate lines so `white-space: pre-line` no longer collapses the spacing.
+- **2026-07-23 (game-editor):** Added a pre-game start screen (new `#startOverlay`, styled by extending the existing `#overlay`/`#overlayTitle`/`#overlayDetail` CSS rules to also match the new elements, so it looks like the same win/lose overlay family) shown immediately on load with a short instructions blurb and a "Start" button (touch + mouse, same binding pattern as Restart). `gameState` now starts at `'start'` instead of `'playing'`, so `loop()`'s match-timer/ink-regen/enemy-update/win-lose block — which only runs `if (gameState === 'playing')` — stays fully gated until the player taps Start; nothing ticks, spawns, or drains beforehand. The existing Restart/Play Again flow (`resetGame()`) is unchanged and still resumes play immediately rather than returning to the start screen. No mechanics, balance, or win/lose logic touched.
 
 ## Assets
 

@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Griddle Carousel</title>
+<style>
+  :root {
+    --ink: #241b16;
+    --cream: #f5ead6;
+    --cream-soft: #efe0c6;
+    --muted: #b39b86;
+    --accent: #f0a43a;
+    --accent-dark: #d0851f;
+    --line: #6a4f3a;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --display: "Georgia", "Iowan Old Style", "Palatino Linotype", serif;
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #241b16; font-family: var(--sans);
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+  #gameCanvas { display: block; touch-action: none; background: #241b16; }
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    color: var(--cream);
+    background:
+      radial-gradient(120% 90% at 50% 12%, rgba(240,164,58,0.16), rgba(36,27,22,0) 55%),
+      radial-gradient(140% 100% at 50% 120%, rgba(224,96,63,0.10), rgba(36,27,22,0) 60%),
+      #241b16;
+    padding: 24px; box-sizing: border-box;
+  }
+  .hidden { display: none; }
+  .badge {
+    font-family: var(--sans); font-size: 12px; letter-spacing: 3px;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 6px;
+  }
+  .overlay h1 {
+    font-family: var(--display); font-weight: 700; font-size: 40px;
+    margin: 0 0 4px; color: var(--cream); letter-spacing: 0.5px;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.35);
+  }
+  .tagline { font-size: 14px; color: var(--muted); margin: 0 0 22px; max-width: 320px; }
+  .card {
+    background: linear-gradient(#fbf3e3, var(--cream-soft));
+    color: #3a2c20; border-radius: 12px; padding: 18px 20px 20px;
+    max-width: 340px; box-sizing: border-box;
+    box-shadow: 0 14px 30px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.05);
+    position: relative;
+  }
+  .card::before {
+    content: "ORDER TICKET"; position: absolute; top: 10px; left: 0; right: 0;
+    text-align: center; font-size: 10px; letter-spacing: 3px; color: #b58a52;
+  }
+  .card ul { text-align: left; padding: 0; margin: 22px 0 0; list-style: none; }
+  .card li {
+    font-size: 14px; line-height: 1.35; max-width: 320px;
+    padding: 7px 0 7px 24px; position: relative;
+    border-top: 1px dashed rgba(120,90,60,0.35);
+  }
+  .card li:first-child { border-top: none; }
+  .card li::before {
+    content: ""; position: absolute; left: 4px; top: 12px;
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 2px rgba(240,164,58,0.25);
+  }
+  button.bigbtn {
+    margin-top: 26px; padding: 16px 40px; font-size: 19px; font-weight: 700;
+    letter-spacing: 1px; border: none; border-radius: 999px;
+    background: linear-gradient(var(--accent), var(--accent-dark));
+    color: #3a2410; cursor: pointer; touch-action: manipulation;
+    box-shadow: 0 8px 20px rgba(240,164,58,0.35), inset 0 1px 0 rgba(255,255,255,0.4);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  button.bigbtn:active {
+    transform: translateY(2px);
+    box-shadow: 0 3px 10px rgba(240,164,58,0.3), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  #finalScoreLine { font-family: var(--display); font-size: 30px; margin: 6px 0 2px; color: var(--accent); }
+  #highScoreLine { font-size: 15px; margin: 2px 0; color: var(--muted); letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<div id="startScreen" class="overlay">
+  <div class="badge">Short-order chaos</div>
+  <h1>Griddle Carousel</h1>
+  <p class="tagline">Spin the pantry wheel, stack the order, and serve before the ticket runs cold.</p>
+  <div class="card">
+    <ul>
+      <li>Drag or flick the wheel to spin it.</li>
+      <li>Tap the arrow above the wheel to grab whatever ingredient is lined up with it.</li>
+      <li>Grab ingredients in the exact order on the ticket &mdash; a wrong grab clears your stack.</li>
+      <li>When your stack matches, tap SERVE before time runs out. Don't lose all your lives!</li>
+    </ul>
+  </div>
+  <button class="bigbtn" id="startBtn">Start Shift</button>
+</div>
+
+<div id="gameOverScreen" class="overlay hidden">
+  <div class="badge">Kitchen closed</div>
+  <h1>Shift Over</h1>
+  <div id="finalScoreLine">Score: 0</div>
+  <div id="highScoreLine">Best: 0</div>
+  <button class="bigbtn" id="restartBtn">Try Again</button>
+</div>
+
+<script>
+(function(){
+  // ---------- Setup ----------
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const finalScoreLine = document.getElementById('finalScoreLine');
+  const highScoreLine = document.getElementById('highScoreLine');
+
+  let W = 0, H = 0;
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- Visual theme (presentation only) ----------
+  const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+  const FONT_DISPLAY = '"Georgia", "Iowan Old Style", "Palatino Linotype", serif';
+  const T = {
+    bgTop: '#2c2119', bgBot: '#1f1712',
+    panel: '#33271f', panelHi: 'rgba(255,255,255,0.05)', panelLine: 'rgba(0,0,0,0.35)',
+    cream: '#f5ead6', muted: '#b39b86', faint: '#8a745f',
+    accent: '#f0a43a', accentDark: '#d0851f',
+    good: '#8fce6d', warn: '#e8c14a', bad: '#e0603f',
+    wheelFace: '#3a2c22', wheelRim: '#5a4231', wheelHub: '#2a2019'
+  };
+
+  // ---------- Juice: particles, screen shake, audio (cosmetic) ----------
+  const particles = [];
+  function spawnBurst(x, y, color, n){
+    for (let i = 0; i < n; i++){
+      const a = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * 220;
+      particles.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+        life: 0.5 + Math.random() * 0.4, max: 0.9,
+        r: 2 + Math.random() * 3, color
+      });
+    }
+  }
+  function updateParticles(dt){
+    for (let i = particles.length - 1; i >= 0; i--){
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0){ particles.splice(i, 1); continue; }
+      p.vy += 520 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+  function drawParticles(){
+    for (const p of particles){
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 0.35));
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  let shake = 0;
+  function addShake(m){ shake = Math.min(14, shake + m); }
+
+  let audioCtx = null;
+  function initAudio(){
+    if (audioCtx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch(e){}
+  }
+  function beep(freq, dur, type, vol){
+    if (!audioCtx) return;
+    try {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type || 'sine';
+      o.frequency.value = freq;
+      const now = audioCtx.currentTime;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(vol || 0.12, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(now); o.stop(now + dur + 0.02);
+    } catch(e){}
+  }
+  function sfxGrab(){ beep(520, 0.1, 'triangle', 0.09); }
+  function sfxMistake(){ beep(150, 0.22, 'sawtooth', 0.1); beep(110, 0.24, 'sawtooth', 0.06); }
+  function sfxServe(){ beep(523, 0.12, 'triangle', 0.1); setTimeout(function(){ beep(784, 0.16, 'triangle', 0.1); }, 90); }
+  function sfxLife(){ beep(200, 0.3, 'square', 0.09); }
+
+  // ---------- Tunable constants (balancer target) ----------
+  const WHEEL_SEGMENTS = 10;
+  const QUEUE_MAX = 3;
+  const SPAWN_INTERVAL_BASE = 5.0;      // seconds between new customers joining the queue (level 1)
+  const SPAWN_INTERVAL_MIN = 2.6;       // fastest the queue can refill at high levels
+  const SPAWN_SHRINK_PER_LEVEL = 0.25;  // spawn interval shaved off each level
+  // Order timer is length-aware: each ingredient carries a shrinking per-item budget,
+  // plus a flat reaction buffer. This keeps a longer recipe from also feeling rushed
+  // (length and timer no longer spike together), so difficulty ramps smoothly.
+  const TIME_PER_INGREDIENT_BASE = 4.8; // seconds of budget per ingredient at level 1
+  const TIME_PER_INGREDIENT_MIN = 2.8;  // floor for per-ingredient budget at high levels
+  const TIME_SHRINK_PER_LEVEL = 0.30;   // per-ingredient budget lost per level
+  const TIME_BUFFER = 5;                // flat per-order budget (reaction / first spin)
+  const RECIPE_MIN_LEN = 2;
+  const RECIPE_MAX_LEN = 5;
+  const SERVES_PER_LEVEL = 3;        // successful serves needed to level up
+  const WHEEL_FRICTION = 0.985;      // inertia damping applied per ~frame at 60fps
+  const START_LIVES = 3;
+
+  const INGREDIENTS = [
+    { id: 'bunTop',    label: 'B', color: '#e0b878', shape: 'circle' },
+    { id: 'patty',     label: 'P', color: '#8b5a2b', shape: 'square' },
+    { id: 'cheese',    label: 'C', color: '#f4d03f', shape: 'diamond' },
+    { id: 'lettuce',   label: 'L', color: '#7cb342', shape: 'circle' },
+    { id: 'tomato',    label: 'T', color: '#e74c3c', shape: 'circle' },
+    { id: 'bunBottom', label: 'b', color: '#c8955c', shape: 'circle' },
+  ];
+  function ingredientById(id){ return INGREDIENTS.find(i => i.id === id); }
+  const FILLINGS = ['patty', 'cheese', 'lettuce', 'tomato'];
+
+  // ---------- Game state ----------
+  let state = 'start'; // 'start' | 'playing' | 'gameover'
+  let score = 0, lives = START_LIVES, servesCount = 0, level = 1;
+  let highScore = 0;
+  try { highScore = parseInt(localStorage.getItem('griddleCarouselHighScore') || '0', 10) || 0; } catch(e){}
+
+  let wheel = { rotation: 0, angVel: 0, segs: [] };
+  let current = null; // { id, recipe:[], timeMax, timeLeft, built:[] }
+  let queue = [];
+  let spawnTimer = 0;
+  let nextCustomerId = 1;
+
+  let flashDish = 0;
+  let flashMistake = 0;
+  let flashLifeLost = 0;
+  let grabPop = 0;
+  let comboCount = 0;
+
+  function normAngle(a){
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
+
+  function shuffleWheel(){
+    const segs = [];
+    for (let i = 0; i < WHEEL_SEGMENTS; i++){
+      segs.push(INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)].id);
+    }
+    // guarantee every ingredient type appears at least once
+    INGREDIENTS.forEach(ing => {
+      if (!segs.includes(ing.id)){
+        const slot = Math.floor(Math.random() * WHEEL_SEGMENTS);
+        segs[slot] = ing.id;
+      }
+    });
+    wheel.segs = segs;
+  }
+
+  function makeRecipe(len){
+    const r = ['bunTop'];
+    for (let i = 0; i < len - 2; i++){
+      r.push(FILLINGS[Math.floor(Math.random() * FILLINGS.length)]);
+    }
+    if (len >= 2) r.push('bunBottom');
+    return r;
+  }
+
+  function currentRecipeLen(){
+    return Math.min(RECIPE_MIN_LEN + Math.floor(level - 1), RECIPE_MAX_LEN);
+  }
+  function currentTimeMax(len){
+    const per = Math.max(TIME_PER_INGREDIENT_MIN, TIME_PER_INGREDIENT_BASE - (level - 1) * TIME_SHRINK_PER_LEVEL);
+    return per * len + TIME_BUFFER;
+  }
+
+  function spawnCustomer(){
+    const len = currentRecipeLen();
+    const tmax = currentTimeMax(len);
+    return {
+      id: nextCustomerId++,
+      recipe: makeRecipe(len),
+      timeMax: tmax,
+      timeLeft: tmax,
+      built: []
+    };
+  }
+
+  function promoteIfNeeded(){
+    if (!current && queue.length > 0){
+      current = queue.shift();
+    }
+  }
+
+  function loseLife(){
+    lives--;
+    flashLifeLost = 0.5;
+    addShake(10);
+    sfxLife();
+    if (lives <= 0){
+      endGame();
+    }
+  }
+
+  function levelUp(){
+    level++;
+    shuffleWheel();
+  }
+
+  function serveCurrent(){
+    if (!current) return;
+    if (current.built.length !== current.recipe.length) return;
+    const frac = Math.max(0, current.timeLeft / current.timeMax);
+    comboCount++;
+    const gained = Math.round(40 + current.recipe.length * 15 + frac * 60 + comboCount * 5);
+    score += gained;
+    flashDish = 0.4;
+    (function(){
+      const Lc = layout();
+      const cy = Lc.dishY + Lc.dishH * 0.48;
+      spawnBurst(W / 2, cy, T.accent, 14);
+      spawnBurst(W / 2, cy, T.good, 12);
+    })();
+    addShake(4);
+    sfxServe();
+    servesCount++;
+    if (servesCount % SERVES_PER_LEVEL === 0){
+      levelUp();
+    }
+    current = null;
+    promoteIfNeeded();
+  }
+
+  function grabIngredient(){
+    if (!current) return;
+    const segAngle = (Math.PI * 2) / WHEEL_SEGMENTS;
+    let best = 0, bestDiff = Infinity;
+    for (let i = 0; i < WHEEL_SEGMENTS; i++){
+      const raw = normAngle(wheel.rotation + i * segAngle);
+      const diff = Math.abs(raw);
+      if (diff < bestDiff){ bestDiff = diff; best = i; }
+    }
+    const grabbedId = wheel.segs[best];
+    const need = current.recipe[current.built.length];
+    if (grabbedId === need){
+      current.built.push(grabbedId);
+      flashDish = 0.25;
+      grabPop = 0.25;
+      sfxGrab();
+    } else {
+      current.built = [];
+      flashMistake = 0.35;
+      comboCount = 0;
+      addShake(8);
+      sfxMistake();
+    }
+  }
+
+  function resetGame(){
+    score = 0; lives = START_LIVES; servesCount = 0; level = 1;
+    comboCount = 0;
+    wheel.rotation = 0; wheel.angVel = 0;
+    shuffleWheel();
+    current = null; queue = [];
+    spawnTimer = 0.5;
+    nextCustomerId = 1;
+    flashDish = 0; flashMistake = 0; flashLifeLost = 0;
+    queue.push(spawnCustomer());
+    promoteIfNeeded();
+  }
+
+  function endGame(){
+    state = 'gameover';
+    if (score > highScore){
+      highScore = score;
+      try { localStorage.setItem('griddleCarouselHighScore', String(highScore)); } catch(e){}
+    }
+    finalScoreLine.textContent = 'Score: ' + score;
+    highScoreLine.textContent = 'Best: ' + highScore;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  // ---------- Layout ----------
+  function layout(){
+    const headerH = H * 0.08;
+    const ticketH = H * 0.15;
+    const dishH = H * 0.17;
+    const ticketY = headerH;
+    const dishY = ticketY + ticketH;
+    const wheelAreaY = dishY + dishH;
+    const wheelAreaH = H - wheelAreaY - H * 0.02;
+    const cx = W / 2;
+    const cy = wheelAreaY + wheelAreaH / 2 + Math.min(W, wheelAreaH) * 0.06;
+    const R = Math.min(W * 0.42, wheelAreaH * 0.34);
+    return { headerH, ticketY, ticketH, dishY, dishH, wheelAreaY, wheelAreaH, cx, cy, R };
+  }
+
+  // ---------- Input (Pointer Events: unifies touch + mouse) ----------
+  let dragging = false, activePointerId = null;
+  let lastAngle = 0, lastTime = 0;
+  let serveBtnRect = null;
+  let pickupHit = null;
+
+  function pointFromEvent(e){
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function onPointerDown(e){
+    if (state !== 'playing') return;
+    if (activePointerId !== null) return;
+    if (e.cancelable) e.preventDefault();
+    const p = pointFromEvent(e);
+
+    if (serveBtnRect && p.x >= serveBtnRect.x && p.x <= serveBtnRect.x + serveBtnRect.w &&
+        p.y >= serveBtnRect.y && p.y <= serveBtnRect.y + serveBtnRect.h){
+      serveCurrent();
+      return;
+    }
+    if (pickupHit){
+      const dx = p.x - pickupHit.x, dy = p.y - pickupHit.y;
+      if (Math.sqrt(dx*dx + dy*dy) <= pickupHit.r){
+        grabIngredient();
+        return;
+      }
+    }
+    const L = layout();
+    const dx = p.x - L.cx, dy = p.y - L.cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist <= L.R * 1.35){
+      dragging = true;
+      activePointerId = e.pointerId;
+      lastAngle = Math.atan2(dy, dx);
+      lastTime = performance.now();
+      wheel.angVel = 0;
+      if (canvas.setPointerCapture){
+        try { canvas.setPointerCapture(e.pointerId); } catch(err){}
+      }
+    }
+  }
+
+  function onPointerMove(e){
+    if (!dragging || e.pointerId !== activePointerId) return;
+    if (e.cancelable) e.preventDefault();
+    const p = pointFromEvent(e);
+    const L = layout();
+    const dx = p.x - L.cx, dy = p.y - L.cy;
+    const ang = Math.atan2(dy, dx);
+    const delta = normAngle(ang - lastAngle);
+    const now = performance.now();
+    const dt = Math.max(0.001, (now - lastTime) / 1000);
+    wheel.rotation += delta;
+    wheel.angVel = delta / dt;
+    lastAngle = ang;
+    lastTime = now;
+  }
+
+  function onPointerUp(e){
+    if (e.pointerId !== activePointerId) return;
+    dragging = false;
+    activePointerId = null;
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+
+  // ---------- Update ----------
+  function update(dt){
+    if (state !== 'playing') return;
+
+    if (!dragging){
+      if (Math.abs(wheel.angVel) > 0.001){
+        wheel.rotation += wheel.angVel * dt;
+        const damp = Math.pow(WHEEL_FRICTION, dt * 60);
+        wheel.angVel *= damp;
+        if (Math.abs(wheel.angVel) < 0.02) wheel.angVel = 0;
+      }
+    }
+    wheel.rotation = normAngle(wheel.rotation);
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0 && queue.length < QUEUE_MAX){
+      queue.push(spawnCustomer());
+      spawnTimer = Math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_BASE - (level - 1) * SPAWN_SHRINK_PER_LEVEL);
+    }
+    promoteIfNeeded();
+
+    if (current){
+      current.timeLeft -= dt;
+      if (current.timeLeft <= 0){
+        current.timeLeft = 0;
+        current = null;
+        loseLife();
+        if (state === 'playing') promoteIfNeeded();
+      }
+    }
+
+    if (flashDish > 0) flashDish = Math.max(0, flashDish - dt);
+    if (flashMistake > 0) flashMistake = Math.max(0, flashMistake - dt);
+    if (flashLifeLost > 0) flashLifeLost = Math.max(0, flashLifeLost - dt);
+    if (grabPop > 0) grabPop = Math.max(0, grabPop - dt);
+    if (shake > 0) shake = Math.max(0, shake - dt * 26);
+    updateParticles(dt);
+  }
+
+  // ---------- Draw ----------
+  function roundRect(x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function lighten(hex, amt){
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    r = Math.min(255, Math.round(r + (255 - r) * amt));
+    g = Math.min(255, Math.round(g + (255 - g) * amt));
+    b = Math.min(255, Math.round(b + (255 - b) * amt));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+  function drawIcon(x, y, r, ing, scale){
+    scale = scale || 1;
+    r = r * scale;
+    ctx.save();
+    // soft drop shadow for depth
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = r * 0.35;
+    ctx.shadowOffsetY = r * 0.18;
+    const grad = ctx.createRadialGradient(x - r*0.35, y - r*0.4, r*0.15, x, y, r*1.25);
+    grad.addColorStop(0, lighten(ing.color, 0.32));
+    grad.addColorStop(1, ing.color);
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    if (ing.shape === 'square'){
+      roundRect(x - r*0.82, y - r*0.82, r*1.64, r*1.64, r*0.32);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.stroke();
+    } else if (ing.shape === 'diamond'){
+      const rr = r * 0.16;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.arcTo(x + r, y, x, y + r, rr);
+      ctx.arcTo(x, y + r, x - r, y, rr);
+      ctx.arcTo(x - r, y, x, y - r, rr);
+      ctx.arcTo(x, y - r, x + r, y, rr);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.stroke();
+    }
+    // glossy rim highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.beginPath();
+    ctx.arc(x, y - r*0.05, r*0.7, Math.PI*1.15, Math.PI*1.85);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(40,26,16,0.85)';
+    ctx.font = '700 ' + Math.round(r) + 'px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ing.label, x, y + r*0.05);
+    ctx.restore();
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, W, H);
+    // warm background gradient + soft vignette
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, T.bgTop);
+    bg.addColorStop(1, T.bgBot);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    if (state !== 'playing') return;
+
+    const L = layout();
+
+    // warm glow behind the wheel
+    const glow = ctx.createRadialGradient(L.cx, L.cy, L.R*0.2, L.cx, L.cy, L.R*2.1);
+    glow.addColorStop(0, 'rgba(240,164,58,0.16)');
+    glow.addColorStop(1, 'rgba(240,164,58,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, L.wheelAreaY - L.R, W, H - (L.wheelAreaY - L.R));
+
+    // screen shake (world offset)
+    ctx.save();
+    if (shake > 0.2){
+      const s = shake;
+      ctx.translate((Math.random()*2-1)*s, (Math.random()*2-1)*s);
+    }
+
+    const pad = W * 0.04;
+
+    // header
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 ' + Math.round(L.headerH * 0.30) + 'px ' + FONT;
+    ctx.fillStyle = T.muted;
+    ctx.fillText('SCORE', W*0.04, L.headerH*0.36);
+    ctx.font = '700 ' + Math.round(L.headerH * 0.40) + 'px ' + FONT_DISPLAY;
+    ctx.fillStyle = T.accent;
+    ctx.fillText(String(score), W*0.04, L.headerH*0.68);
+    ctx.textAlign = 'right';
+    let livesStr = '';
+    for (let i = 0; i < START_LIVES; i++) livesStr += (i < lives ? '♥' : '♡') + ' ';
+    ctx.font = Math.round(L.headerH * 0.34) + 'px ' + FONT;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = flashLifeLost > 0 ? '#ff6b5a' : T.bad;
+    ctx.fillText(livesStr.trim(), W*0.96, L.headerH*0.5);
+    ctx.textAlign = 'center';
+    ctx.font = '700 ' + Math.round(L.headerH * 0.26) + 'px ' + FONT;
+    ctx.fillStyle = T.muted;
+    ctx.fillText('LEVEL ' + level, W*0.5, L.headerH*0.5);
+
+    // ticket panel
+    const tPanelH = L.ticketH*0.62;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = T.panel;
+    roundRect(pad, L.ticketY, W - 2*pad, tPanelH, 14); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = T.panelHi; ctx.lineWidth = 1;
+    roundRect(pad+0.5, L.ticketY+0.5, W - 2*pad - 1, tPanelH - 1, 14); ctx.stroke();
+    // ticket label tab
+    ctx.fillStyle = T.faint;
+    ctx.font = '700 ' + Math.round(L.ticketH*0.12) + 'px ' + FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('ORDER', pad + 12, L.ticketY + 8);
+
+    if (current){
+      const n = current.recipe.length;
+      const spacing = (W - 2*pad) / (n + 1);
+      const iconR = Math.min(spacing*0.32, L.ticketH*0.22);
+      for (let i = 0; i < n; i++){
+        const ix = pad + spacing*(i+1);
+        const iy = L.ticketY + tPanelH*0.56;
+        const done = i < current.built.length;
+        if (done){
+          ctx.save();
+          ctx.fillStyle = 'rgba(143,206,109,0.16)';
+          ctx.beginPath(); ctx.arc(ix, iy, iconR*1.4, 0, Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+        drawIcon(ix, iy, iconR, ingredientById(current.recipe[i]), done ? 1 : 0.94);
+        if (done){
+          ctx.save();
+          ctx.strokeStyle = T.good; ctx.lineWidth = Math.max(2, iconR*0.14);
+          ctx.beginPath(); ctx.arc(ix, iy, iconR*1.35, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      // timer bar
+      const barY = L.ticketY + tPanelH + 8;
+      const barH = L.ticketH*0.16;
+      const barW = W - 2*pad;
+      const frac = Math.max(0, current.timeLeft / current.timeMax);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      roundRect(pad, barY, barW, barH, barH/2); ctx.fill();
+      const col = frac > 0.5 ? T.good : (frac > 0.25 ? T.warn : T.bad);
+      if (frac > 0.001){
+        ctx.fillStyle = col;
+        roundRect(pad, barY, Math.max(barH, barW*frac), barH, barH/2); ctx.fill();
+        if (frac <= 0.25){
+          ctx.save();
+          ctx.globalAlpha = 0.4 + 0.3*Math.sin(performance.now()/120);
+          ctx.fillStyle = '#ff8a72';
+          roundRect(pad, barY, Math.max(barH, barW*frac), barH, barH/2); ctx.fill();
+          ctx.restore();
+        }
+      }
+    } else {
+      ctx.fillStyle = T.muted;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = Math.round(L.ticketH*0.18) + 'px ' + FONT;
+      ctx.fillText('Waiting for next order...', W/2, L.ticketY + tPanelH*0.56);
+    }
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = T.faint;
+    ctx.font = '700 ' + Math.round(L.ticketH*0.14) + 'px ' + FONT;
+    ctx.fillText('Next up: ' + queue.length, W - pad - 12, L.ticketY + 14);
+
+    // dish build area
+    const dPanelH = L.dishH*0.72;
+    let dishBg = T.panel;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+    ctx.fillStyle = dishBg;
+    roundRect(pad, L.dishY, W - 2*pad, dPanelH, 14); ctx.fill();
+    ctx.restore();
+    if (flashMistake > 0 || flashDish > 0){
+      ctx.fillStyle = flashMistake > 0
+        ? 'rgba(224,96,63,' + (0.35*flashMistake/0.35) + ')'
+        : 'rgba(143,206,109,' + (0.3*flashDish/0.4) + ')';
+      roundRect(pad, L.dishY, W - 2*pad, dPanelH, 14); ctx.fill();
+    }
+    ctx.strokeStyle = T.panelHi; ctx.lineWidth = 1;
+    roundRect(pad+0.5, L.dishY+0.5, W - 2*pad - 1, dPanelH - 1, 14); ctx.stroke();
+    ctx.fillStyle = T.muted;
+    ctx.font = '700 ' + Math.round(L.dishH*0.13) + 'px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('YOUR STACK', pad+14, L.dishY + L.dishH*0.13);
+
+    if (current){
+      const n = current.recipe.length;
+      const spacing = (W - 2*pad) / (n + 1);
+      const iconR = Math.min(spacing*0.32, L.dishH*0.24);
+      for (let i = 0; i < n; i++){
+        const ix = pad + spacing*(i+1);
+        const iy = L.dishY + L.dishH*0.48;
+        if (i < current.built.length){
+          const justPlaced = (i === current.built.length - 1) && grabPop > 0;
+          const sc = justPlaced ? 1 + 0.25*(grabPop/0.25) : 1;
+          drawIcon(ix, iy, iconR, ingredientById(current.built[i]), sc);
+        } else {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(245,234,214,0.22)';
+          ctx.setLineDash([4,5]);
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(ix, iy, iconR, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (current.built.length === current.recipe.length){
+        const btnW = W*0.44, btnH = L.dishH*0.36;
+        const bx = W/2 - btnW/2, by = L.dishY + L.dishH*0.64;
+        const pulse = 1 + 0.03*Math.sin(performance.now()/180);
+        ctx.save();
+        ctx.translate(W/2, by + btnH/2); ctx.scale(pulse, pulse); ctx.translate(-(W/2), -(by + btnH/2));
+        ctx.shadowColor = 'rgba(240,164,58,0.5)';
+        ctx.shadowBlur = 16; ctx.shadowOffsetY = 4;
+        const bgr = ctx.createLinearGradient(0, by, 0, by+btnH);
+        bgr.addColorStop(0, T.accent); bgr.addColorStop(1, T.accentDark);
+        ctx.fillStyle = bgr;
+        roundRect(bx, by, btnW, btnH, btnH/2); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = '#3a2410';
+        ctx.font = '700 ' + Math.round(btnH*0.44) + 'px ' + FONT;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('SERVE', W/2, by + btnH/2 + 1);
+        serveBtnRect = { x: bx, y: by, w: btnW, h: btnH };
+      } else {
+        serveBtnRect = null;
+      }
+    } else {
+      serveBtnRect = null;
+    }
+
+    // wheel base plate
+    const segAngle = (Math.PI*2) / WHEEL_SEGMENTS;
+    const iconR = L.R * 0.24;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = L.R*0.18; ctx.shadowOffsetY = L.R*0.06;
+    const plate = ctx.createRadialGradient(L.cx, L.cy - L.R*0.3, L.R*0.2, L.cx, L.cy, L.R*1.28);
+    plate.addColorStop(0, lighten(T.wheelFace, 0.12));
+    plate.addColorStop(1, T.wheelFace);
+    ctx.fillStyle = plate;
+    ctx.beginPath(); ctx.arc(L.cx, L.cy, L.R*1.28, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // rim
+    ctx.strokeStyle = T.wheelRim; ctx.lineWidth = Math.max(3, L.R*0.05);
+    ctx.beginPath(); ctx.arc(L.cx, L.cy, L.R*1.28, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(L.cx, L.cy, L.R*1.24, 0, Math.PI*2); ctx.stroke();
+
+    // segment tick marks + hub
+    ctx.save();
+    for (let i = 0; i < WHEEL_SEGMENTS; i++){
+      const a = normAngle(wheel.rotation + (i+0.5)*segAngle) - Math.PI/2;
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(L.cx + (L.R*0.55)*Math.cos(a), L.cy + (L.R*0.55)*Math.sin(a));
+      ctx.lineTo(L.cx + (L.R*1.24)*Math.cos(a), L.cy + (L.R*1.24)*Math.sin(a));
+      ctx.stroke();
+    }
+    ctx.restore();
+    // hub
+    const hub = ctx.createRadialGradient(L.cx, L.cy - L.R*0.1, L.R*0.05, L.cx, L.cy, L.R*0.5);
+    hub.addColorStop(0, lighten(T.wheelHub, 0.15));
+    hub.addColorStop(1, T.wheelHub);
+    ctx.fillStyle = hub;
+    ctx.beginPath(); ctx.arc(L.cx, L.cy, L.R*0.42, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(L.cx, L.cy, L.R*0.42, 0, Math.PI*2); ctx.stroke();
+
+    // aligned-segment highlight (nearest to arrow, i.e. top)
+    let alignBest = 0, alignDiff = Infinity;
+    for (let i = 0; i < WHEEL_SEGMENTS; i++){
+      const d = Math.abs(normAngle(wheel.rotation + i*segAngle));
+      if (d < alignDiff){ alignDiff = d; alignBest = i; }
+    }
+    // ingredients
+    for (let i = 0; i < WHEEL_SEGMENTS; i++){
+      const raw = normAngle(wheel.rotation + i*segAngle) - Math.PI/2;
+      const ix = L.cx + L.R * Math.cos(raw);
+      const iy = L.cy + L.R * Math.sin(raw);
+      if (i === alignBest){
+        ctx.save();
+        ctx.strokeStyle = 'rgba(240,164,58,0.85)';
+        ctx.lineWidth = Math.max(2, iconR*0.16);
+        ctx.shadowColor = 'rgba(240,164,58,0.6)'; ctx.shadowBlur = iconR*0.6;
+        ctx.beginPath(); ctx.arc(ix, iy, iconR*1.35, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+      drawIcon(ix, iy, iconR, ingredientById(wheel.segs[i]), i === alignBest ? 1.08 : 1);
+    }
+
+    // pickup marker (fixed above wheel) — clamp button
+    const markerY = L.cy - L.R*1.28 - iconR*1.0;
+    const markerR = Math.max(26, iconR*1.1);
+    pickupHit = { x: L.cx, y: markerY, r: markerR*1.3 };
+    // connector
+    ctx.strokeStyle = 'rgba(240,164,58,0.35)';
+    ctx.lineWidth = 3; ctx.setLineDash([5,5]);
+    ctx.beginPath();
+    ctx.moveTo(L.cx, markerY + markerR);
+    ctx.lineTo(L.cx, L.cy - L.R*1.28);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const squash = grabPop > 0 ? grabPop/0.25 : 0;
+    ctx.save();
+    ctx.translate(L.cx, markerY);
+    ctx.scale(1 + 0.15*squash, 1 - 0.12*squash);
+    ctx.shadowColor = 'rgba(240,164,58,0.5)';
+    ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
+    const mg = ctx.createRadialGradient(-markerR*0.3, -markerR*0.4, markerR*0.1, 0, 0, markerR*1.3);
+    mg.addColorStop(0, lighten(T.accent, 0.3));
+    mg.addColorStop(1, T.accentDark);
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.arc(0, 0, markerR, 0, Math.PI*2); ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#3a2410';
+    ctx.beginPath();
+    ctx.moveTo(0, markerR*0.78);
+    ctx.lineTo(-markerR*0.5, markerR*0.12);
+    ctx.lineTo(markerR*0.5, markerR*0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(-markerR*0.15, -markerR*0.2, markerR*0.55, Math.PI*1.1, Math.PI*1.8); ctx.stroke();
+    ctx.restore();
+
+    // combo indicator
+    if (comboCount > 1){
+      ctx.fillStyle = T.accent;
+      ctx.font = '700 ' + Math.round(L.headerH*0.32) + 'px ' + FONT_DISPLAY;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Combo x' + comboCount, W/2, L.wheelAreaY + 16);
+    }
+
+    drawParticles();
+    ctx.restore();
+  }
+
+  // ---------- Main loop ----------
+  let lastFrame = performance.now();
+  function frame(now){
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Screen flow ----------
+  function startGame(){
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended'){ try { audioCtx.resume(); } catch(e){} }
+    resetGame();
+    state = 'playing';
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+  }
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  requestAnimationFrame(function(now){
+    lastFrame = now;
+    requestAnimationFrame(frame);
+  });
+})();
+</script>
+</body>
+</html>

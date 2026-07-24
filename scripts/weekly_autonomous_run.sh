@@ -20,11 +20,22 @@ nvm use default > /dev/null
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
-echo "===== weekly_autonomous_run.sh starting at $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+# Fine-grained pipeline progress checkpoints, written directly to disk by
+# game-producer (and the top-level run) as each stage starts/finishes.
+# Deliberately kept OUTSIDE the repo (a sibling of REPO_DIR) so it can never
+# get picked up by the pipeline's own `git add`/commit step. This is separate
+# from stdout/weekly_run.log because nested Agent-tool calls (game-producer,
+# and its own subagents) don't stream their internal progress back to this
+# script's stdout in real time -- only their final result does, once they
+# return. If a run gets killed mid-pipeline (e.g. hitting a usage limit),
+# this file is what tells you how far it actually got.
+export PIPELINE_LOG="$(dirname "$REPO_DIR")/pipeline_checkpoints.log"
+
+echo "===== weekly_autonomous_run.sh starting at $(date -u +%Y-%m-%dT%H:%M:%SZ) =====" | tee -a "$PIPELINE_LOG"
 
 git checkout main
 git pull origin main
 
 claude -p "$(cat scripts/weekly_prompt.md)" --dangerously-skip-permissions --verbose
 
-echo "===== weekly_autonomous_run.sh finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+echo "===== weekly_autonomous_run.sh finished at $(date -u +%Y-%m-%dT%H:%M:%SZ) =====" | tee -a "$PIPELINE_LOG"

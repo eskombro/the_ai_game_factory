@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Cron entrypoint for the weekly autonomous game-generation run.
+# Cron entrypoint for the autonomous game-generation run.
 # Runs Claude Code headlessly against a *dedicated* checkout of this repo
 # (kept separate from the checkout the deploy workflow serves the live site
 # from, to avoid the two processes touching the same working tree).
 #
+# Fires DAILY, not weekly: scripts/weekly_prompt.md only actually builds a new
+# game roughly every 3 days (it self-gates on "was a game already added in the
+# last 3 days?") and otherwise exits almost immediately. The daily cadence
+# exists so that if a run gets killed mid-pipeline (e.g. a usage limit), the
+# very next day's firing detects the in-progress branch and resumes it from
+# its last checkpoint instead of leaving it stalled for days.
+#
 # Expected to be invoked from cron as:
-#   0 6 * * 0 /path/to/this-checkout/scripts/weekly_autonomous_run.sh >> /path/to/logs/weekly_run.log 2>&1
+#   0 6 * * * /path/to/this-checkout/scripts/weekly_autonomous_run.sh >> /path/to/logs/weekly_run.log 2>&1
 set -euo pipefail
 
 # cron runs with a minimal PATH and doesn't source ~/.bashrc, so neither

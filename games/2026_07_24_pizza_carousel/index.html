@@ -248,7 +248,7 @@
   let score = 0, lives = START_LIVES, servesCount = 0, level = 1;
   let servesSinceLevelUp = 0; // serves completed since the current level began (drives level-up timing)
   let highScore = 0;
-  try { highScore = parseInt(localStorage.getItem('griddleCarouselHighScore') || '0', 10) || 0; } catch(e){}
+  try { highScore = parseInt(localStorage.getItem('pizzaCarouselHighScore') || '0', 10) || 0; } catch(e){}
 
   let wheel = { rotation: 0, angVel: 0, segs: [] };
   let current = null; // { id, recipe:[], timeMax, timeLeft, built:[] }
@@ -412,7 +412,7 @@
     state = 'gameover';
     if (score > highScore){
       highScore = score;
-      try { localStorage.setItem('griddleCarouselHighScore', String(highScore)); } catch(e){}
+      try { localStorage.setItem('pizzaCarouselHighScore', String(highScore)); } catch(e){}
     }
     finalScoreLine.textContent = 'Score: ' + score;
     highScoreLine.textContent = 'Best: ' + highScore;

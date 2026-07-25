@@ -120,7 +120,7 @@ Promotional thumbnails live in `thumbnails/` as three fixed 16:9 PNG sizes deriv
 | `thumb-medium.png` | 640 × 360 px | Grid/card layout tiles on a games gallery page (the default "cover image")        |
 | `thumb-large.png`  | 1280 × 720 px| Hero banner on the game's own page; also works directly as an Open Graph / Twitter Card social-preview image |
 
-These are original poster-style illustrations inspired by the game's concept and palette (espresso-brown room with a soft mustard glow, a shaded lazy-Susan ingredient wheel with a glowing aligned segment, the mustard pickup "clamp" above it, and a cream paper order ticket, titled in the Georgia display face) — not screenshots of actual gameplay.
+These are original poster-style illustrations inspired by the game's current pizza-themed concept and palette (espresso-brown backdrop with a soft mustard glow, a shaded topping wheel showing crust, pepperoni, mushroom, olive, basil and jalapeno arranged around a fixed crust hub, the mustard pickup "clamp" arrow glowing above the aligned topping, a cream paper order ticket, and a dish-tray stack, titled "Pizza Carousel" in the Georgia display face) — not screenshots of actual gameplay. Regenerated 2026-07-25 to replace the original burger/griddle-themed artwork after the game's redesign and rename from "Griddle Carousel" to "Pizza Carousel."
 
 ## Edit Log
 

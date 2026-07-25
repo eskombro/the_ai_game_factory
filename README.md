@@ -1,6 +1,6 @@
 <h1 align="center">The AI Game Factory</h1>
 
-<p align="center">A collection of original, AI-generated, browser games prototypes.</p>
+<p align="center">A collection of original, AI-generated, browser-game prototypes.</p>
 
 <p align="center">
   <img src="docs/screenshot.png" alt="The AI Game Factory homepage" width="600">

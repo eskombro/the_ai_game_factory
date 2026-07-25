@@ -1,5 +1,7 @@
 # The AI Game Factory
 
+![The AI Game Factory homepage](docs/screenshot.png)
+
 A collection of original browser games, prototyped as self-contained HTML files and organized by creation date.
 
 # Main features and functionalities

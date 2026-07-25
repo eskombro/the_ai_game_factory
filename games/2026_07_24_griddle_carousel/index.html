@@ -222,22 +222,26 @@
   const RECIPE_MIN_LEN = 2;
   const RECIPE_MAX_LEN = 5;
   const SERVES_PER_LEVEL = 3;        // successful serves needed to level up (level 2 and beyond)
-  const SERVES_TO_LEAVE_LEVEL_1 = 2; // level 1's recipe (length 2) has no filling variety, so promote
-                                      // out of it faster than later levels to limit repeats of the one
-                                      // fixed combination; level 2+ pacing is unaffected
+  const SERVES_TO_LEAVE_LEVEL_1 = 2; // level 1 promotes to level 2 faster than later levels (kept
+                                      // unchanged by the topping-generation redesign below; recipe-
+                                      // length/level-up pacing is a separate concern from ingredient
+                                      // identities and is out of scope for that change)
   const WHEEL_FRICTION = 0.985;      // inertia damping applied per ~frame at 60fps
   const START_LIVES = 3;
 
+  // Pizza-themed roster: 'crust' is the single fixed anchor ingredient every recipe
+  // starts with (see makeRecipe below); everything else is a topping drawn freely.
+  const ANCHOR_INGREDIENT_ID = 'crust';
   const INGREDIENTS = [
-    { id: 'bunTop',    label: 'B', color: '#e0b878', shape: 'circle' },
-    { id: 'patty',     label: 'P', color: '#8b5a2b', shape: 'square' },
-    { id: 'cheese',    label: 'C', color: '#f4d03f', shape: 'diamond' },
-    { id: 'lettuce',   label: 'L', color: '#7cb342', shape: 'circle' },
-    { id: 'tomato',    label: 'T', color: '#e74c3c', shape: 'circle' },
-    { id: 'bunBottom', label: 'H', color: '#c8955c', shape: 'circle' },
+    { id: 'crust',      label: 'C', color: '#e0b878', shape: 'circle' },
+    { id: 'pepperoni',  label: 'P', color: '#b8322a', shape: 'circle' },
+    { id: 'mushroom',   label: 'M', color: '#8b5a2b', shape: 'square' },
+    { id: 'olive',      label: 'O', color: '#3a3a28', shape: 'diamond' },
+    { id: 'basil',      label: 'B', color: '#4f8f3f', shape: 'circle' },
+    { id: 'jalapeno',   label: 'J', color: '#8bc34a', shape: 'circle' },
   ];
   function ingredientById(id){ return INGREDIENTS.find(i => i.id === id); }
-  const FILLINGS = ['patty', 'cheese', 'lettuce', 'tomato'];
+  const TOPPINGS = INGREDIENTS.filter(ing => ing.id !== ANCHOR_INGREDIENT_ID).map(ing => ing.id);
 
   // ---------- Game state ----------
   let state = 'start'; // 'start' | 'playing' | 'gameover'
@@ -286,11 +290,14 @@
   }
 
   function makeRecipe(len){
-    const r = ['bunTop'];
-    for (let i = 0; i < len - 2; i++){
-      r.push(FILLINGS[Math.floor(Math.random() * FILLINGS.length)]);
+    // Exactly one fixed anchor ingredient (always first, "the base you always place
+    // down"), followed by len-1 slots drawn independently at random from the topping
+    // pool — both which toppings appear and the order they appear in are fully random,
+    // with no second fixed or positional rule anywhere else in the recipe.
+    const r = [ANCHOR_INGREDIENT_ID];
+    for (let i = 0; i < len - 1; i++){
+      r.push(TOPPINGS[Math.floor(Math.random() * TOPPINGS.length)]);
     }
-    if (len >= 2) r.push('bunBottom');
     return r;
   }
 

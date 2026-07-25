@@ -18,3 +18,24 @@ jobs:
             set -e
             cd /home/${{ secrets.VPS_USERNAME }}/the_ai_game_factory
             git pull origin main
+
+  sync-games-kv:
+    # Independent of the VPS deploy above: rebuilds the game list from
+    # games/*/ and pushes it into the Cloudflare Worker's KV store that
+    # backs index.html's GET /games fetch (see cloudflare/worker.js and
+    # scripts/build_games_json.mjs). A failure here shouldn't block the
+    # static-file deploy, and vice versa, so this runs as its own job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build games.json from games/*/
+        run: node scripts/build_games_json.mjs > games.json
+      - name: Push to Workers KV
+        working-directory: cloudflare
+        run: npx wrangler kv key put --binding=GAMES_KV games_list --path=../games.json --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

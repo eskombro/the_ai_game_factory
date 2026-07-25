@@ -1,0 +1,9 @@
+name = "ai-game-factory-api"
+main = "worker.js"
+compatibility_date = "2026-07-25"
+
+# Created via `npx wrangler kv namespace create GAMES_KV` -- paste the real
+# "id" it prints here before the first `wrangler deploy`.
+kv_namespaces = [
+  { binding = "GAMES_KV", id = "aa3f2a18ecd04196a8afda6b0ad030c7" }
+]

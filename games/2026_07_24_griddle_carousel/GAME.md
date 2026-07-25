@@ -22,7 +22,7 @@ All controls are pointer-based (`pointerdown`/`pointermove`/`pointerup`), so tou
 - The current order has a countdown timer (shown as a shrinking, color-shifting bar: green → yellow → red). If it hits zero, you **lose a life**, the order is discarded, and the next customer from the queue (if any) becomes current.
 - While one order is current, up to `QUEUE_MAX` additional customers can be waiting in a FIFO queue (shown as a simple count, "Next up: N"); their timers only start once they become the current order.
 - New customers join the queue periodically as long as there's room.
-- Successful serves add to your score (based on recipe length, remaining time fraction, and a combo counter that resets on any mistake), increment a serve counter, and every `SERVES_PER_LEVEL` serves the difficulty **levels up**: recipes get longer (up to a cap), the timer budget shrinks (down to a floor), spawn rate quickens slightly, and the wheel is reshuffled into a new random arrangement.
+- Successful serves add to your score (based on recipe length, remaining time fraction, and a combo counter that resets on any mistake), increment a serve counter, and every `SERVES_PER_LEVEL` serves the difficulty **levels up**: recipes get longer (up to a cap), the timer budget shrinks (down to a floor), spawn rate quickens slightly, and the wheel is reshuffled into a new random arrangement. Level 1 is a special case: it promotes to level 2 after just `SERVES_TO_LEAVE_LEVEL_1` serves (2, instead of the usual 3) — its recipe length (2, bun-top + bun-bottom, no fillings) has only one possible combination, so leaving it faster avoids the player seeing that same fixed combination too many times before real filling variety kicks in at level 2. Every level from 2 onward still uses the normal `SERVES_PER_LEVEL` cadence.
 - The wheel always guarantees at least one of each ingredient type is present after every shuffle, so no required ingredient is ever unreachable.
 
 ## Win/lose conditions
@@ -83,7 +83,7 @@ timeMax  = per · recipeLength + TIME_BUFFER
 
 A longer recipe therefore gets proportionally *more* total time, and the only pressure knob that actually escalates is the smooth per-ingredient budget. That converts the difficulty measure players feel — **seconds available per ingredient** — into a clean monotonic descent instead of a saw-tooth.
 
-**Resulting curve** (recipe length still `min(2 + (level−1), 5)`; level-up every 3 serves):
+**Resulting curve** (recipe length still `min(2 + (level−1), 5)`; level-up every 3 serves from level 2 onward, but only 2 serves to leave level 1 — see Core Mechanics):
 
 | Level | Recipe len | Order timer | Sec / ingredient | Spawn interval |
 |-------|-----------|-------------|------------------|----------------|
@@ -121,6 +121,14 @@ Promotional thumbnails live in `thumbnails/` as three fixed 16:9 PNG sizes deriv
 | `thumb-large.png`  | 1280 × 720 px| Hero banner on the game's own page; also works directly as an Open Graph / Twitter Card social-preview image |
 
 These are original poster-style illustrations inspired by the game's concept and palette (espresso-brown room with a soft mustard glow, a shaded lazy-Susan ingredient wheel with a glowing aligned segment, the mustard pickup "clamp" above it, and a cream paper order ticket, titled in the Georgia display face) — not screenshots of actual gameplay.
+
+## Edit Log
+
+- **2026-07-25** — Bug fixes (game-editor, standalone request, three independent items):
+  1. Fixed overlapping UI: the "Combo xN" streak indicator was drawn centered in the wheel area at a y-position that landed directly on/inside the pickup clamp marker on every screen size tested, making both unreadable when a combo was active. Moved it into the dish-tray header row (right-aligned, opposite "YOUR STACK", mirroring the existing ORDER/"Next up: N" pattern in the ticket panel) so it no longer overlaps the marker.
+  2. Investigated the "same order ticket repeats within level 1" report. Confirmed via static analysis and a runtime simulation that `spawnCustomer()`/`makeRecipe()` already generate a brand-new, independently-randomized customer object for every single serve (not gated on level-up in any way — verified distinct object identities across consecutive serves). The visually-identical ticket at level 1 is a deterministic side effect of the balance-tuned `RECIPE_MIN_LEN = 2` constant (a length-2 recipe has zero filling slots, so "top bun, bottom bun" is the only mathematically possible sequence at that length) — not a ticket-generation defect. No code change made; see report for details and options if visual variety at level 1 is still wanted.
+  3. Fixed case-sensitive ingredient symbol: `bunBottom`'s single-letter label was lowercase `'b'`, while every other ingredient (including `bunTop`'s `'B'`) used uppercase — the only place in the game where case distinguished two otherwise-similar-looking symbols. Changed `bunBottom`'s label to uppercase `'H'` (bottom bun / "heel"), removing the only case-sensitive label in the game while keeping it visually distinct from `bunTop`'s `'B'`.
+- **2026-07-25** — Follow-up to item 2 above: rather than touching recipe generation or `RECIPE_MIN_LEN`, made level 1 promote to level 2 faster so its single fixed combination is seen fewer times. Added `SERVES_TO_LEAVE_LEVEL_1 = 2` and a `servesSinceLevelUp` counter (reset on each level-up); the level-up check now uses `SERVES_TO_LEAVE_LEVEL_1` while `level === 1` and falls back to the unchanged `SERVES_PER_LEVEL = 3` for every level after that, so level 1 now takes 2 serves and every level from 2 onward still takes exactly 3, unaffected. Updated the Core Mechanics bullet and the Difficulty Tuning curve caption to describe the level-1 exception.
 
 ## Pipeline Token Usage
 

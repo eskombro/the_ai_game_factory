@@ -221,7 +221,10 @@
   const TIME_BUFFER = 5;                // flat per-order budget (reaction / first spin)
   const RECIPE_MIN_LEN = 2;
   const RECIPE_MAX_LEN = 5;
-  const SERVES_PER_LEVEL = 3;        // successful serves needed to level up
+  const SERVES_PER_LEVEL = 3;        // successful serves needed to level up (level 2 and beyond)
+  const SERVES_TO_LEAVE_LEVEL_1 = 2; // level 1's recipe (length 2) has no filling variety, so promote
+                                      // out of it faster than later levels to limit repeats of the one
+                                      // fixed combination; level 2+ pacing is unaffected
   const WHEEL_FRICTION = 0.985;      // inertia damping applied per ~frame at 60fps
   const START_LIVES = 3;
 
@@ -231,7 +234,7 @@
     { id: 'cheese',    label: 'C', color: '#f4d03f', shape: 'diamond' },
     { id: 'lettuce',   label: 'L', color: '#7cb342', shape: 'circle' },
     { id: 'tomato',    label: 'T', color: '#e74c3c', shape: 'circle' },
-    { id: 'bunBottom', label: 'b', color: '#c8955c', shape: 'circle' },
+    { id: 'bunBottom', label: 'H', color: '#c8955c', shape: 'circle' },
   ];
   function ingredientById(id){ return INGREDIENTS.find(i => i.id === id); }
   const FILLINGS = ['patty', 'cheese', 'lettuce', 'tomato'];
@@ -239,6 +242,7 @@
   // ---------- Game state ----------
   let state = 'start'; // 'start' | 'playing' | 'gameover'
   let score = 0, lives = START_LIVES, servesCount = 0, level = 1;
+  let servesSinceLevelUp = 0; // serves completed since the current level began (drives level-up timing)
   let highScore = 0;
   try { highScore = parseInt(localStorage.getItem('griddleCarouselHighScore') || '0', 10) || 0; } catch(e){}
 
@@ -322,6 +326,7 @@
 
   function levelUp(){
     level++;
+    servesSinceLevelUp = 0;
     shuffleWheel();
   }
 
@@ -342,7 +347,9 @@
     addShake(4);
     sfxServe();
     servesCount++;
-    if (servesCount % SERVES_PER_LEVEL === 0){
+    servesSinceLevelUp++;
+    const levelUpAt = (level === 1) ? SERVES_TO_LEAVE_LEVEL_1 : SERVES_PER_LEVEL;
+    if (servesSinceLevelUp >= levelUpAt){
       levelUp();
     }
     current = null;
@@ -376,6 +383,7 @@
 
   function resetGame(){
     score = 0; lives = START_LIVES; servesCount = 0; level = 1;
+    servesSinceLevelUp = 0;
     comboCount = 0;
     wheel.rotation = 0; wheel.angVel = 0;
     shuffleWheel();
@@ -737,6 +745,13 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText('YOUR STACK', pad+14, L.dishY + L.dishH*0.13);
+    if (comboCount > 1){
+      ctx.fillStyle = T.accent;
+      ctx.font = '700 ' + Math.round(L.dishH*0.16) + 'px ' + FONT_DISPLAY;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Combo x' + comboCount, W - pad - 14, L.dishY + L.dishH*0.13);
+    }
 
     if (current){
       const n = current.recipe.length;
@@ -877,15 +892,6 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(-markerR*0.15, -markerR*0.2, markerR*0.55, Math.PI*1.1, Math.PI*1.8); ctx.stroke();
     ctx.restore();
-
-    // combo indicator
-    if (comboCount > 1){
-      ctx.fillStyle = T.accent;
-      ctx.font = '700 ' + Math.round(L.headerH*0.32) + 'px ' + FONT_DISPLAY;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText('Combo x' + comboCount, W/2, L.wheelAreaY + 16);
-    }
 
     drawParticles();
     ctx.restore();

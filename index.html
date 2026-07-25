@@ -70,7 +70,8 @@
     flex-shrink: 0;
     margin-top: 0.3rem;
   }
-  #langSelect {
+  #langSelect,
+  #sortSelect {
     font: inherit;
     font-size: 0.82rem;
     color: var(--text);
@@ -81,13 +82,35 @@
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
-  #langSelect:hover {
+  #langSelect:hover,
+  #sortSelect:hover {
     border-color: var(--border-hover);
     background: var(--panel-hover);
   }
-  #langSelect:focus-visible {
+  #langSelect:focus-visible,
+  #sortSelect:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  .list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
+  }
+  .list-header .section-heading {
+    margin: 0;
+  }
+  #sortPicker {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  #sortPicker label {
+    font-size: 0.78rem;
+    color: var(--muted);
   }
   ul {
     list-style: none;
@@ -183,9 +206,6 @@
     letter-spacing: 0.06em;
     color: var(--muted-dim);
     margin: 0 0 0.85rem;
-  }
-  #bestRatedSection {
-    margin-bottom: 2.5rem;
   }
   @media (max-width: 520px) {
     li {
@@ -283,12 +303,16 @@
     </div>
   </header>
 
-  <section id="bestRatedSection" hidden>
-    <h2 class="section-heading" data-i18n="best_rated_heading">Best Rated</h2>
-    <ul id="bestRatedList"></ul>
-  </section>
-
-  <h2 class="section-heading" data-i18n="all_games_heading">All Games</h2>
+  <div class="list-header">
+    <h2 class="section-heading" data-i18n="games_heading">Games</h2>
+    <div id="sortPicker">
+      <label for="sortSelect" data-i18n="sort_label">Sort by</label>
+      <select id="sortSelect" aria-label="Sort games">
+        <option value="newest" data-i18n="sort_newest">Newest</option>
+        <option value="rating" data-i18n="sort_rating">Best Rated</option>
+      </select>
+    </div>
+  </div>
   <ul id="gameList" aria-live="polite">
     <li class="status-row" data-role="loading">Loading games…</li>
   </ul>
@@ -314,17 +338,21 @@
       footer_repo_link: "Source on GitHub",
       loading: "Loading games…",
       load_error: "Couldn't load the game list right now — please try refreshing.",
-      best_rated_heading: "Best Rated",
-      all_games_heading: "All Games"
+      games_heading: "Games",
+      sort_label: "Sort by",
+      sort_newest: "Newest",
+      sort_rating: "Best Rated"
     },
     fr: {
       subtitle: "Une collection de jeux de navigateur originaux, générés automatiquement par IA à intervalles réguliers.",
       footer_note: "Chaque jeu de ce site est généré par IA — conçu, codé et peaufiné de bout en bout par une chaîne d'agents de codage spécialisés, sans code de jeu écrit à la main. De nouveaux jeux sont ajoutés automatiquement à intervalles réguliers, sans relecture humaine avant publication.",
       footer_repo_link: "Code source sur GitHub",
       loading: "Chargement des jeux…",
-      best_rated_heading: "Les mieux notés",
-      all_games_heading: "Tous les jeux",
-      load_error: "Impossible de charger la liste des jeux pour le moment — merci de rafraîchir la page."
+      load_error: "Impossible de charger la liste des jeux pour le moment — merci de rafraîchir la page.",
+      games_heading: "Jeux",
+      sort_label: "Trier par",
+      sort_newest: "Plus récents",
+      sort_rating: "Les mieux notés"
     },
     es: {
       subtitle: "Una colección de juegos de navegador originales, generados automáticamente por IA de forma periódica.",
@@ -332,8 +360,10 @@
       footer_repo_link: "Código fuente en GitHub",
       loading: "Cargando juegos…",
       load_error: "No se pudo cargar la lista de juegos ahora mismo — prueba a recargar la página.",
-      best_rated_heading: "Los mejor valorados",
-      all_games_heading: "Todos los juegos"
+      games_heading: "Juegos",
+      sort_label: "Ordenar por",
+      sort_newest: "Más recientes",
+      sort_rating: "Los mejor valorados"
     }
   };
 
@@ -347,19 +377,25 @@
     return MONTH_NAMES[month] + " " + day + ", " + year;
   }
 
-  var MIN_VOTES_FOR_BEST = 3;
-  var BEST_RATED_LIMIT = 5;
+  var SORT_STORAGE_KEY = "gameSpringSort";
+  var SUPPORTED_SORTS = ["newest", "rating"];
 
   var STORAGE_KEY = "gameSpringLang";
   var SUPPORTED = ["en", "fr", "es"];
   var langSelect = document.getElementById("langSelect");
+  var sortSelect = document.getElementById("sortSelect");
   var gameListEl = document.getElementById("gameList");
-  var bestRatedSectionEl = document.getElementById("bestRatedSection");
-  var bestRatedListEl = document.getElementById("bestRatedList");
   var games = [];
   var ratings = {};
   var currentLang = "en";
+  var currentSort = "newest";
   var loadFailed = false;
+
+  function detectDefaultSort() {
+    var stored = null;
+    try { stored = localStorage.getItem(SORT_STORAGE_KEY); } catch (e) {}
+    return SUPPORTED_SORTS.indexOf(stored) !== -1 ? stored : "newest";
+  }
 
   function detectDefaultLang() {
     var stored = null;
@@ -425,25 +461,23 @@
     return li;
   }
 
-  function renderBestRated() {
-    var bySlug = {};
-    games.forEach(function (g) { bySlug[g.slug] = g; });
+  function ratingValue(slug) {
+    var stats = ratings[slug];
+    return stats && stats.count > 0 ? stats.avg : -1;
+  }
 
-    var qualifying = Object.keys(ratings)
-      .filter(function (slug) { return ratings[slug].count >= MIN_VOTES_FOR_BEST && bySlug[slug]; })
-      .sort(function (a, b) { return ratings[b].avg - ratings[a].avg; })
-      .slice(0, BEST_RATED_LIMIT);
-
-    if (!qualifying.length) {
-      bestRatedSectionEl.hidden = true;
-      return;
+  function sortedGames() {
+    var list = games.slice();
+    if (currentSort === "rating") {
+      list.sort(function (a, b) {
+        var diff = ratingValue(b.slug) - ratingValue(a.slug);
+        if (diff !== 0) return diff;
+        return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+      });
     }
-
-    bestRatedListEl.innerHTML = "";
-    qualifying.forEach(function (slug) {
-      bestRatedListEl.appendChild(buildCard(bySlug[slug]));
-    });
-    bestRatedSectionEl.hidden = false;
+    // "newest" is already the order /games returns (build_games_json.mjs
+    // sorts newest-first), so no re-sort needed for that mode.
+    return list;
   }
 
   function renderGames() {
@@ -456,10 +490,9 @@
       return;
     }
     gameListEl.innerHTML = "";
-    games.forEach(function (game) {
+    sortedGames().forEach(function (game) {
       gameListEl.appendChild(buildCard(game));
     });
-    renderBestRated();
   }
 
   function loadGames() {
@@ -502,6 +535,15 @@
   langSelect.addEventListener("change", function () {
     applyLang(langSelect.value);
   });
+
+  sortSelect.addEventListener("change", function () {
+    currentSort = sortSelect.value;
+    try { localStorage.setItem(SORT_STORAGE_KEY, currentSort); } catch (e) {}
+    renderGames();
+  });
+
+  currentSort = detectDefaultSort();
+  sortSelect.value = currentSort;
 
   currentLang = detectDefaultLang();
   applyLang(currentLang);

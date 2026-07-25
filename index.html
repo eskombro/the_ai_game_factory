@@ -437,13 +437,13 @@
   var games = [];
   var ratings = {};
   var currentLang = "en";
-  var currentSort = "newest";
+  var currentSort = "rating";
   var loadFailed = false;
 
   function detectDefaultSort() {
     var stored = null;
     try { stored = localStorage.getItem(SORT_STORAGE_KEY); } catch (e) {}
-    return SUPPORTED_SORTS.indexOf(stored) !== -1 ? stored : "newest";
+    return SUPPORTED_SORTS.indexOf(stored) !== -1 ? stored : "rating";
   }
 
   function detectDefaultLang() {

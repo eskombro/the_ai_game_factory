@@ -1,8 +1,15 @@
 # The AI Game Factory
 
-![The AI Game Factory homepage](docs/screenshot.png)
+<img src="docs/screenshot.png" alt="The AI Game Factory homepage" width="600">
 
 A collection of original browser games, prototyped as self-contained HTML files and organized by creation date.
+
+## Contents
+
+- [Main features and functionalities](#main-features-and-functionalities)
+- [Main parts of the project](#main-parts-of-the-project)
+- [Purpose](#purpose)
+- [Potential Future Directions (currently out of scope)](#potential-future-directions-currently-out-of-scope)
 
 # Main features and functionalities
 

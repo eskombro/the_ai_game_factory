@@ -68,7 +68,6 @@
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    margin-top: 0.3rem;
   }
   #langSelect,
   #sortSelect {
@@ -96,11 +95,18 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
     margin-bottom: 0.85rem;
   }
   .list-header .section-heading {
     margin: 0;
+  }
+  .list-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
   }
   #sortPicker {
     display: flex;
@@ -184,6 +190,22 @@
     font-size: 0.88rem;
     line-height: 1.5;
   }
+  li p .read-more {
+    display: inline;
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 0.2rem;
+    font: inherit;
+    font-size: inherit;
+    color: var(--accent-2);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  li p .read-more:hover {
+    color: var(--accent);
+  }
   li.status-row {
     justify-content: center;
     color: var(--muted);
@@ -208,6 +230,28 @@
     margin: 0 0 0.85rem;
   }
   @media (max-width: 520px) {
+    body {
+      padding: 1.5rem 1rem 3rem;
+    }
+    header {
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      gap: 0.6rem;
+    }
+    .logo {
+      width: 30px;
+      height: 30px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin: 0;
+    }
+    p.subtitle {
+      font-size: 0.8rem;
+    }
+    #sortPicker label {
+      display: none;
+    }
     li {
       flex-direction: column;
       align-items: stretch;
@@ -294,23 +338,25 @@
         <p class="subtitle" data-i18n="subtitle">A collection of original browser games, generated automatically by AI on a regular basis.</p>
       </div>
     </div>
-    <div id="langPicker">
-      <select id="langSelect" aria-label="Language">
-        <option value="en">🇬🇧 English</option>
-        <option value="fr">🇫🇷 Français</option>
-        <option value="es">🇪🇸 Español</option>
-      </select>
-    </div>
   </header>
 
   <div class="list-header">
     <h2 class="section-heading" data-i18n="games_heading">Games</h2>
-    <div id="sortPicker">
-      <label for="sortSelect" data-i18n="sort_label">Sort by</label>
-      <select id="sortSelect" aria-label="Sort games">
-        <option value="newest" data-i18n="sort_newest">Newest</option>
-        <option value="rating" data-i18n="sort_rating">Best Rated</option>
-      </select>
+    <div class="list-controls">
+      <div id="langPicker">
+        <select id="langSelect" aria-label="Language">
+          <option value="en">🇬🇧 English</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </div>
+      <div id="sortPicker">
+        <label for="sortSelect" data-i18n="sort_label">Sort by</label>
+        <select id="sortSelect" aria-label="Sort games">
+          <option value="newest" data-i18n="sort_newest">Newest</option>
+          <option value="rating" data-i18n="sort_rating">Best Rated</option>
+        </select>
+      </div>
     </div>
   </div>
   <ul id="gameList" aria-live="polite">
@@ -341,7 +387,8 @@
       games_heading: "Games",
       sort_label: "Sort by",
       sort_newest: "Newest",
-      sort_rating: "Best Rated"
+      sort_rating: "Best Rated",
+      read_more: "read more…"
     },
     fr: {
       subtitle: "Une collection de jeux de navigateur originaux, générés automatiquement par IA à intervalles réguliers.",
@@ -352,7 +399,8 @@
       games_heading: "Jeux",
       sort_label: "Trier par",
       sort_newest: "Plus récents",
-      sort_rating: "Les mieux notés"
+      sort_rating: "Les mieux notés",
+      read_more: "lire la suite…"
     },
     es: {
       subtitle: "Una colección de juegos de navegador originales, generados automáticamente por IA de forma periódica.",
@@ -363,7 +411,8 @@
       games_heading: "Juegos",
       sort_label: "Ordenar por",
       sort_newest: "Más recientes",
-      sort_rating: "Los mejor valorados"
+      sort_rating: "Los mejor valorados",
+      read_more: "leer más…"
     }
   };
 
@@ -419,6 +468,18 @@
     return "play.html?slug=" + encodeURIComponent(game.slug);
   }
 
+  var DESC_WORD_LIMIT = 20;
+  // Matches the existing @media (max-width: 520px) breakpoint the card layout
+  // itself switches on -- descriptions only truncate on the same small screens
+  // where the card layout already goes vertical; larger screens show them in full.
+  var SMALL_SCREEN_QUERY = window.matchMedia("(max-width: 520px)");
+
+  function truncateWords(text, maxWords) {
+    var words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length <= maxWords) return { text: text, truncated: false };
+    return { text: words.slice(0, maxWords).join(" ") + "…", truncated: true };
+  }
+
   function buildCard(game) {
     var li = document.createElement("li");
     var href = playUrl(game);
@@ -450,8 +511,25 @@
       dateSpan.appendChild(badge);
     }
 
+    var fullDescText = (game.description && game.description[currentLang]) || (game.description && game.description.en) || "";
     var desc = document.createElement("p");
-    desc.textContent = (game.description && game.description[currentLang]) || (game.description && game.description.en) || "";
+    var descTextSpan = document.createElement("span");
+    var clipped = SMALL_SCREEN_QUERY.matches
+      ? truncateWords(fullDescText, DESC_WORD_LIMIT)
+      : { text: fullDescText, truncated: false };
+    descTextSpan.textContent = clipped.text;
+    desc.appendChild(descTextSpan);
+    if (clipped.truncated) {
+      var readMoreBtn = document.createElement("button");
+      readMoreBtn.type = "button";
+      readMoreBtn.className = "read-more";
+      readMoreBtn.textContent = (translations[currentLang] || translations.en).read_more;
+      readMoreBtn.addEventListener("click", function () {
+        descTextSpan.textContent = fullDescText;
+        readMoreBtn.remove();
+      });
+      desc.appendChild(readMoreBtn);
+    }
 
     info.appendChild(titleLink);
     info.appendChild(dateSpan);
@@ -539,6 +617,13 @@
   sortSelect.addEventListener("change", function () {
     currentSort = sortSelect.value;
     try { localStorage.setItem(SORT_STORAGE_KEY, currentSort); } catch (e) {}
+    renderGames();
+  });
+
+  // Re-render if the viewport crosses the small-screen breakpoint (e.g. the
+  // browser window is resized, or a tablet rotates), so descriptions switch
+  // between truncated and full without needing a page reload.
+  SMALL_SCREEN_QUERY.addEventListener("change", function () {
     renderGames();
   });
 

@@ -1,8 +1,10 @@
 # The AI Game Factory
 
-<img src="docs/screenshot.png" alt="The AI Game Factory homepage" width="600">
+A collection of original, AI-generated, browser games prototypes.
 
-A collection of original browser games, prototyped as self-contained HTML files and organized by creation date.
+<p align="center">
+  <img src="docs/screenshot.png" alt="The AI Game Factory homepage" width="600">
+</p>
 
 ## Contents
 
@@ -54,6 +56,6 @@ Concretely, the project showcases a simple generative AI workflow — game conce
 
 The following are ideas for extending this experiment further, kept here as notes rather than commitments — they're deliberately not being worked on right now, but they'd be the natural next steps if this project continues:
 
-- **Runtime AI, not just build-time AI.** So far the games are *built* by AI but contain none at runtime. A future game could call an LLM live (a generated-dialogue NPC, a dynamic narrator) to explore prompting under real constraints like latency and cost.
+- **Runtime AI, not just build-time AI.** So far the games are _built_ by AI but contain none at runtime. A future game could call an LLM live (a generated-dialogue NPC, a dynamic narrator) to explore prompting under real constraints like latency and cost.
 - **An MCP server alongside the plain REST API.** The landing page now reads its game list from a small Cloudflare Worker (`GET /games`) instead of hand-edited HTML, but that's a plain REST endpoint. Exposing the same data as `list_games` / `get_game` MCP tools would be a natural way to learn the MCP protocol on top of infrastructure that already exists.
 - **A feedback loop from live usage back into the agents.** The site now collects real signal (1-5 star ratings per game, via the Cloudflare Worker), but nothing reads it yet — the pipeline still runs once per game and stops. An "analyst" agent that watches ratings trends and proposes tuning changes to `game-balancer` (or flags a poorly-rated game for a `game-editor` pass) would turn this into an actual closed loop instead of a one-shot generation.

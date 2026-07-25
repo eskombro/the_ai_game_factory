@@ -265,17 +265,23 @@
   }
 
   function shuffleWheel(){
-    const segs = [];
-    for (let i = 0; i < WHEEL_SEGMENTS; i++){
-      segs.push(INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)].id);
+    // Shuffle the slot indices first, then place one guaranteed copy of every
+    // ingredient into its own distinct slot, and only fill the remaining slots
+    // with free random picks. Because a guaranteed ingredient is never written
+    // into a slot that's already been assigned (by another guaranteed ingredient
+    // or by anything else), no forced placement can ever collide with, or
+    // silently overwrite, another ingredient's only occurrence on the wheel.
+    const slots = [];
+    for (let i = 0; i < WHEEL_SEGMENTS; i++) slots.push(i);
+    for (let i = slots.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = slots[i]; slots[i] = slots[j]; slots[j] = tmp;
     }
-    // guarantee every ingredient type appears at least once
-    INGREDIENTS.forEach(ing => {
-      if (!segs.includes(ing.id)){
-        const slot = Math.floor(Math.random() * WHEEL_SEGMENTS);
-        segs[slot] = ing.id;
-      }
-    });
+    const segs = new Array(WHEEL_SEGMENTS);
+    INGREDIENTS.forEach((ing, i) => { segs[slots[i]] = ing.id; });
+    for (let i = INGREDIENTS.length; i < WHEEL_SEGMENTS; i++){
+      segs[slots[i]] = INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)].id;
+    }
     wheel.segs = segs;
   }
 

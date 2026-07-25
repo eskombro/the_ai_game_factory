@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>The AI Game Factory</title>
+<style>
+  :root {
+    --bg: #0a0a0d;
+    --panel: #17171d;
+    --border: #2a2a33;
+    --border-hover: #3d3d4a;
+    --text: #eaeaef;
+    --muted: #93939f;
+    --accent: #8b7cff;
+    --accent-2: #5ee6d8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  #bar {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  #bar a.back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  #bar a.back:hover {
+    color: var(--text);
+    border-color: var(--border-hover);
+  }
+  #bar h1 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #rating {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  #stars {
+    display: flex;
+    gap: 0.15rem;
+  }
+  #stars button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--border-hover);
+    padding: 0.15rem;
+    transition: color 0.1s ease, transform 0.1s ease;
+  }
+  #stars button:hover,
+  #stars button.hover {
+    color: var(--accent-2);
+    transform: scale(1.15);
+  }
+  #stars button.filled {
+    color: var(--accent);
+  }
+  #stars[data-locked="true"] button {
+    cursor: default;
+  }
+  #ratingStats {
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #frameWrap {
+    flex: 1;
+    min-height: 0;
+  }
+  iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  #status {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <a class="back" href="index.html">← All games</a>
+    <h1 id="gameTitle">Loading…</h1>
+    <div id="rating">
+      <div id="stars" role="radiogroup" aria-label="Rate this game" data-locked="true"></div>
+      <span id="ratingStats"></span>
+    </div>
+  </div>
+  <div id="frameWrap">
+    <div id="status">Loading game…</div>
+    <iframe id="gameFrame" title="" style="display:none"></iframe>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var GAMES_API_URL = "https://ai-game-factory-api.sjimenezre.workers.dev";
+  var STORAGE_PREFIX = "gameSpringRated_";
+
+  var params = new URLSearchParams(location.search);
+  var slug = params.get("slug");
+
+  var titleEl = document.getElementById("gameTitle");
+  var statusEl = document.getElementById("status");
+  var frameEl = document.getElementById("gameFrame");
+  var starsEl = document.getElementById("stars");
+  var statsEl = document.getElementById("ratingStats");
+
+  var STAR_COUNT = 5;
+  for (var i = 1; i <= STAR_COUNT; i++) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.value = String(i);
+    btn.setAttribute("aria-label", i + " star" + (i > 1 ? "s" : ""));
+    btn.textContent = "★";
+    starsEl.appendChild(btn);
+  }
+
+  function paintStars(filled) {
+    Array.prototype.forEach.call(starsEl.children, function (btn) {
+      var v = parseInt(btn.dataset.value, 10);
+      btn.classList.toggle("filled", v <= filled);
+    });
+  }
+
+  function renderStats(stats) {
+    if (!stats || stats.count === 0) {
+      statsEl.textContent = "No ratings yet";
+    } else {
+      statsEl.textContent = "★ " + stats.avg.toFixed(1) + " (" + stats.count + ")";
+    }
+  }
+
+  function lockStars(locked) {
+    starsEl.dataset.locked = locked ? "true" : "false";
+  }
+
+  function alreadyRatedValue() {
+    try { return localStorage.getItem(STORAGE_PREFIX + slug); } catch (e) { return null; }
+  }
+
+  function markRated(value) {
+    try { localStorage.setItem(STORAGE_PREFIX + slug, String(value)); } catch (e) {}
+  }
+
+  function submitRating(value) {
+    fetch(GAMES_API_URL + "/ratings/" + encodeURIComponent(slug), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: value })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        renderStats(data);
+        if (data.accepted) {
+          markRated(value);
+          paintStars(value);
+          lockStars(true);
+        }
+      })
+      .catch(function () {});
+  }
+
+  Array.prototype.forEach.call(starsEl.children, function (btn) {
+    btn.addEventListener("mouseenter", function () {
+      if (starsEl.dataset.locked === "true") return;
+      paintStars(parseInt(btn.dataset.value, 10));
+    });
+    btn.addEventListener("mouseleave", function () {
+      if (starsEl.dataset.locked === "true") return;
+      paintStars(parseInt(alreadyRatedValue() || "0", 10));
+    });
+    btn.addEventListener("click", function () {
+      if (starsEl.dataset.locked === "true") return;
+      submitRating(parseInt(btn.dataset.value, 10));
+    });
+  });
+
+  if (!slug) {
+    titleEl.textContent = "Game not found";
+    statusEl.textContent = "No game specified.";
+    return;
+  }
+
+  var priorRating = alreadyRatedValue();
+  if (priorRating) {
+    paintStars(parseInt(priorRating, 10));
+    lockStars(true);
+  } else {
+    lockStars(false);
+  }
+
+  fetch(GAMES_API_URL + "/games")
+    .then(function (res) { return res.json(); })
+    .then(function (games) {
+      var game = (games || []).filter(function (g) { return g.slug === slug; })[0];
+      if (!game) {
+        titleEl.textContent = "Game not found";
+        statusEl.textContent = "Couldn't find that game.";
+        return;
+      }
+      titleEl.textContent = game.title;
+      document.title = game.title + " — The AI Game Factory";
+      frameEl.title = game.title;
+      frameEl.src = game.path;
+      frameEl.style.display = "block";
+      statusEl.style.display = "none";
+    })
+    .catch(function () {
+      titleEl.textContent = "Game not found";
+      statusEl.textContent = "Couldn't load the game list right now — please try refreshing.";
+    });
+
+  fetch(GAMES_API_URL + "/ratings")
+    .then(function (res) { return res.json(); })
+    .then(function (ratings) {
+      renderStats((ratings && ratings[slug]) || { avg: null, count: 0 });
+    })
+    .catch(function () {
+      statsEl.textContent = "";
+    });
+})();
+</script>
+</body>
+</html>

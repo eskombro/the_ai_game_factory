@@ -170,6 +170,23 @@
   li.status-row[data-role="error"] {
     color: var(--muted-dim);
   }
+  li .rating-badge {
+    font-size: 0.78rem;
+    color: var(--accent-2);
+    margin-left: 0.55rem;
+    white-space: nowrap;
+  }
+  h2.section-heading {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-dim);
+    margin: 0 0 0.85rem;
+  }
+  #bestRatedSection {
+    margin-bottom: 2.5rem;
+  }
   @media (max-width: 520px) {
     li {
       flex-direction: column;
@@ -266,6 +283,12 @@
     </div>
   </header>
 
+  <section id="bestRatedSection" hidden>
+    <h2 class="section-heading" data-i18n="best_rated_heading">Best Rated</h2>
+    <ul id="bestRatedList"></ul>
+  </section>
+
+  <h2 class="section-heading" data-i18n="all_games_heading">All Games</h2>
   <ul id="gameList" aria-live="polite">
     <li class="status-row" data-role="loading">Loading games…</li>
   </ul>
@@ -290,13 +313,17 @@
       footer_note: "Every game on this site is AI-generated — designed, coded, and polished end-to-end by a pipeline of specialized coding agents, with no hand-written game code. New games are added automatically on a recurring basis, with no human review before publishing.",
       footer_repo_link: "Source on GitHub",
       loading: "Loading games…",
-      load_error: "Couldn't load the game list right now — please try refreshing."
+      load_error: "Couldn't load the game list right now — please try refreshing.",
+      best_rated_heading: "Best Rated",
+      all_games_heading: "All Games"
     },
     fr: {
       subtitle: "Une collection de jeux de navigateur originaux, générés automatiquement par IA à intervalles réguliers.",
       footer_note: "Chaque jeu de ce site est généré par IA — conçu, codé et peaufiné de bout en bout par une chaîne d'agents de codage spécialisés, sans code de jeu écrit à la main. De nouveaux jeux sont ajoutés automatiquement à intervalles réguliers, sans relecture humaine avant publication.",
       footer_repo_link: "Code source sur GitHub",
       loading: "Chargement des jeux…",
+      best_rated_heading: "Les mieux notés",
+      all_games_heading: "Tous les jeux",
       load_error: "Impossible de charger la liste des jeux pour le moment — merci de rafraîchir la page."
     },
     es: {
@@ -304,7 +331,9 @@
       footer_note: "Todos los juegos de este sitio están generados por IA — diseñados, programados y pulidos de principio a fin por una cadena de agentes de código especializados, sin código de juego escrito a mano. Se añaden nuevos juegos automáticamente de forma periódica, sin revisión humana antes de su publicación.",
       footer_repo_link: "Código fuente en GitHub",
       loading: "Cargando juegos…",
-      load_error: "No se pudo cargar la lista de juegos ahora mismo — prueba a recargar la página."
+      load_error: "No se pudo cargar la lista de juegos ahora mismo — prueba a recargar la página.",
+      best_rated_heading: "Los mejor valorados",
+      all_games_heading: "Todos los juegos"
     }
   };
 
@@ -318,11 +347,17 @@
     return MONTH_NAMES[month] + " " + day + ", " + year;
   }
 
+  var MIN_VOTES_FOR_BEST = 3;
+  var BEST_RATED_LIMIT = 5;
+
   var STORAGE_KEY = "gameSpringLang";
   var SUPPORTED = ["en", "fr", "es"];
   var langSelect = document.getElementById("langSelect");
   var gameListEl = document.getElementById("gameList");
+  var bestRatedSectionEl = document.getElementById("bestRatedSection");
+  var bestRatedListEl = document.getElementById("bestRatedList");
   var games = [];
+  var ratings = {};
   var currentLang = "en";
   var loadFailed = false;
 
@@ -344,6 +379,73 @@
     gameListEl.appendChild(li);
   }
 
+  function playUrl(game) {
+    return "play.html?slug=" + encodeURIComponent(game.slug);
+  }
+
+  function buildCard(game) {
+    var li = document.createElement("li");
+    var href = playUrl(game);
+
+    var thumbLink = document.createElement("a");
+    thumbLink.className = "thumb-link";
+    thumbLink.href = href;
+    thumbLink.tabIndex = -1;
+    var img = document.createElement("img");
+    img.src = game.thumbnail;
+    img.alt = game.title + " thumbnail";
+    thumbLink.appendChild(img);
+
+    var info = document.createElement("div");
+    info.className = "info";
+    var titleLink = document.createElement("a");
+    titleLink.className = "title";
+    titleLink.href = href;
+    titleLink.textContent = game.title;
+    var dateSpan = document.createElement("span");
+    dateSpan.className = "date";
+    dateSpan.textContent = formatDate(game.date);
+
+    var stats = ratings[game.slug];
+    if (stats && stats.count > 0) {
+      var badge = document.createElement("span");
+      badge.className = "rating-badge";
+      badge.textContent = "★ " + stats.avg.toFixed(1) + " (" + stats.count + ")";
+      dateSpan.appendChild(badge);
+    }
+
+    var desc = document.createElement("p");
+    desc.textContent = (game.description && game.description[currentLang]) || (game.description && game.description.en) || "";
+
+    info.appendChild(titleLink);
+    info.appendChild(dateSpan);
+    info.appendChild(desc);
+    li.appendChild(thumbLink);
+    li.appendChild(info);
+    return li;
+  }
+
+  function renderBestRated() {
+    var bySlug = {};
+    games.forEach(function (g) { bySlug[g.slug] = g; });
+
+    var qualifying = Object.keys(ratings)
+      .filter(function (slug) { return ratings[slug].count >= MIN_VOTES_FOR_BEST && bySlug[slug]; })
+      .sort(function (a, b) { return ratings[b].avg - ratings[a].avg; })
+      .slice(0, BEST_RATED_LIMIT);
+
+    if (!qualifying.length) {
+      bestRatedSectionEl.hidden = true;
+      return;
+    }
+
+    bestRatedListEl.innerHTML = "";
+    qualifying.forEach(function (slug) {
+      bestRatedListEl.appendChild(buildCard(bySlug[slug]));
+    });
+    bestRatedSectionEl.hidden = false;
+  }
+
   function renderGames() {
     if (loadFailed) {
       setStatusRow("load_error");
@@ -353,49 +455,27 @@
       setStatusRow("loading");
       return;
     }
-    var dict = translations[currentLang] || translations.en;
     gameListEl.innerHTML = "";
     games.forEach(function (game) {
-      var li = document.createElement("li");
-
-      var thumbLink = document.createElement("a");
-      thumbLink.className = "thumb-link";
-      thumbLink.href = game.path;
-      thumbLink.tabIndex = -1;
-      var img = document.createElement("img");
-      img.src = game.thumbnail;
-      img.alt = game.title + " thumbnail";
-      thumbLink.appendChild(img);
-
-      var info = document.createElement("div");
-      info.className = "info";
-      var titleLink = document.createElement("a");
-      titleLink.className = "title";
-      titleLink.href = game.path;
-      titleLink.textContent = game.title;
-      var dateSpan = document.createElement("span");
-      dateSpan.className = "date";
-      dateSpan.textContent = formatDate(game.date);
-      var desc = document.createElement("p");
-      desc.textContent = (game.description && game.description[currentLang]) || (game.description && game.description.en) || "";
-
-      info.appendChild(titleLink);
-      info.appendChild(dateSpan);
-      info.appendChild(desc);
-      li.appendChild(thumbLink);
-      li.appendChild(info);
-      gameListEl.appendChild(li);
+      gameListEl.appendChild(buildCard(game));
     });
+    renderBestRated();
   }
 
   function loadGames() {
-    fetch(GAMES_API_URL + "/games")
-      .then(function (res) {
+    Promise.all([
+      fetch(GAMES_API_URL + "/games").then(function (res) {
         if (!res.ok) throw new Error("bad response");
         return res.json();
-      })
-      .then(function (data) {
-        games = Array.isArray(data) ? data : [];
+      }),
+      fetch(GAMES_API_URL + "/ratings").then(function (res) {
+        if (!res.ok) throw new Error("bad response");
+        return res.json();
+      }).catch(function () { return {}; })
+    ])
+      .then(function (results) {
+        games = Array.isArray(results[0]) ? results[0] : [];
+        ratings = results[1] || {};
         loadFailed = games.length === 0;
         renderGames();
       })

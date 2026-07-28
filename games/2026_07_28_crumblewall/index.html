@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Crumblewall</title>
+<style>
+  :root {
+    --bg-0: #0a0c11;
+    --bg-1: #10131a;
+    --panel: #161a24;
+    --panel-2: #1c212e;
+    --border: #2b3142;
+    --text: #e9ebf2;
+    --text-dim: #8d93a8;
+    --accent: #ffcb57;
+    --accent-dim: #4a3f22;
+    --gun: #ff9d4d;
+    --wall: #8a92ac;
+    --gate: #46e0a4;
+    --keep: #ff4f6d;
+    --danger: #ff5470;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg-0); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #app {
+    position: relative;
+    display: flex; flex-direction: column;
+    height: 100%; width: 100%;
+    max-width: 520px; margin: 0 auto;
+    background:
+      radial-gradient(ellipse 140% 60% at 50% 0%, rgba(255,203,87,.06), transparent 55%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0) 70%);
+  }
+  #hud {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 4px; padding: 8px 10px; font-size: 11px; line-height: 1.2;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  #hud div { text-align: center; flex: 1; letter-spacing: .09em; color: var(--text-dim); text-transform: uppercase; }
+  #hud b {
+    display: block; font-size: 17px; margin-top: 2px; letter-spacing: 0;
+    color: var(--text); font-variant-numeric: tabular-nums;
+  }
+  #hWave { color: var(--accent); }
+  #hLives { color: var(--keep); }
+  #hScrap { color: var(--gate); }
+  #hScore { color: var(--text); }
+  #hud b.bump { animation: bumpKf .3s ease-out; }
+  @keyframes bumpKf { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  #tools {
+    display: flex; gap: 7px; padding: 8px 8px; background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .tool {
+    flex: 1; min-height: 56px; border-radius: 10px;
+    border: 2px solid var(--border); background: var(--panel-2); color: var(--text);
+    font-family: inherit; font-size: 13px; line-height: 1.25; padding: 4px 2px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    touch-action: none;
+    transition: border-color .12s, background .12s, transform .08s, opacity .15s;
+  }
+  .tool:active { transform: scale(.96); }
+  .tool b { font-size: 15px; letter-spacing: .02em; }
+  .tool small { opacity: .7; font-size: 10.5px; margin-top: 1px; }
+  #tGun.sel { border-color: var(--gun); background: linear-gradient(180deg, rgba(255,157,77,.22), rgba(255,157,77,.07)); box-shadow: 0 0 0 1px rgba(255,157,77,.25), 0 4px 14px rgba(255,157,77,.15); }
+  #tWall.sel { border-color: var(--wall); background: linear-gradient(180deg, rgba(138,146,172,.22), rgba(138,146,172,.07)); box-shadow: 0 0 0 1px rgba(138,146,172,.25), 0 4px 14px rgba(138,146,172,.12); }
+  #tClear.sel { border-color: var(--accent); background: linear-gradient(180deg, rgba(255,203,87,.22), rgba(255,203,87,.07)); box-shadow: 0 0 0 1px rgba(255,203,87,.25), 0 4px 14px rgba(255,203,87,.15); }
+  .tool.poor { opacity: .4; }
+  #stage { flex: 1; min-height: 0; position: relative; }
+  canvas { display: block; margin: 0 auto; touch-action: none; }
+  #footer {
+    height: 96px; flex: none; padding: 8px 130px 8px 10px;
+    font-size: 13px; color: var(--text-dim);
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+  }
+  #msg {
+    min-height: 18px; color: var(--accent); font-weight: 600;
+    opacity: 0; transform: translateY(-3px);
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  #msg.show { opacity: 1; transform: translateY(0); }
+  #hint { color: var(--text-dim); }
+  .overlay {
+    position: absolute; inset: 0; z-index: 10;
+    background: rgba(8,9,13,.92);
+    backdrop-filter: blur(3px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 22px 20px 120px 20px;
+  }
+  .overlay h1 {
+    font-size: 34px; margin: 0 0 10px; letter-spacing: .01em; font-weight: 800;
+    background: linear-gradient(180deg, #fff, var(--accent));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 30px rgba(255,203,87,.25);
+  }
+  .overlay p { font-size: 15px; line-height: 1.45; margin: 0 0 14px; max-width: 340px; color: #ccd0da; }
+  .overlay ul { text-align: left; font-size: 14px; line-height: 1.6; margin: 0 0 18px; padding-left: 20px; max-width: 340px; color: #ccd0da; }
+  .overlay ul li::marker { color: var(--accent); }
+  .bigbtn {
+    min-width: 220px; min-height: 62px; font-size: 19px; font-weight: 700;
+    font-family: inherit; letter-spacing: .02em;
+    border-radius: 12px; border: 2px solid var(--accent);
+    background: linear-gradient(180deg, #4a3f22, #2a2312); color: #ffe9a8;
+    box-shadow: 0 6px 18px rgba(255,203,87,.16), inset 0 1px 0 rgba(255,255,255,.08);
+    touch-action: none;
+    transition: transform .08s;
+  }
+  .bigbtn:active { transform: scale(.97); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div>WAVE<b id="hWave">-</b></div>
+    <div>LIVES<b id="hLives">-</b></div>
+    <div>SCRAP<b id="hScrap">-</b></div>
+    <div>SCORE<b id="hScore">-</b></div>
+  </div>
+  <div id="tools">
+    <button class="tool sel" id="tGun" data-tool="gun"><b>Gun</b><small>12 scrap &middot; 13s</small></button>
+    <button class="tool" id="tWall" data-tool="wall"><b>Wall</b><small>4 scrap &middot; 26s</small></button>
+    <button class="tool" id="tClear" data-tool="clear"><b>Scrap It</b><small>remove &middot; refund</small></button>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="footer">
+    <div id="msg"></div>
+    <div id="hint">Tap or drag on the board to build. Everything you build rots away.</div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <h1>Crumblewall</h1>
+    <p>Creeps march from the top gate down to your keep. Build a maze to stall them and guns to kill them &mdash; but every piece rots away after a few seconds, so the maze is never finished.</p>
+    <ul>
+      <li>Pick <b>Gun</b> or <b>Wall</b>, then tap or drag across the board to build.</li>
+      <li><b>Scrap It</b> removes one of your pieces for a partial refund.</li>
+      <li>You can never fully seal the path &mdash; such a build is refused.</li>
+      <li>5 creeps reaching the keep ends the run.</li>
+    </ul>
+    <button class="bigbtn" id="btnStart">Start Defense</button>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <h1>Keep Overrun</h1>
+    <p id="overText"></p>
+    <button class="bigbtn" id="btnAgain">Play Again</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- config ----------
+  var COLS = 7, ROWS = 11;
+  var ENT_C = 3, ENT_R = 0;          // gate the creeps walk in from
+  var KEEP_C = 3, KEEP_R = ROWS - 1; // the keep they are trying to reach
+
+  var TOOL = {
+    gun:  { cost: 12, life: 13000, range: 1.8, cd: 620, dmg: 9 },
+    wall: { cost: 4,  life: 26000 }
+  };
+  var REFUND = 0.4;
+
+  var START_SCRAP = 34;
+  var SCRAP_PER_SEC = 1.5;
+  var SCRAP_PER_KILL = 3;
+  var START_LIVES = 5;
+
+  var FIRST_BREATHER = 6000;
+  var BREATHER = 4500;
+  var CHEW_TIME = 1500; // ms a fully entombed creep needs to eat through a wall (safety valve)
+
+  // HP ramp: waves 1-4 match the original 1.28^(w-1) curve almost exactly (easy,
+  // well-tested opening kept intact); beyond that the exponent is fed through an
+  // asymptotic "effective wave" (HP_TAU) so growth smoothly decelerates instead of
+  // compounding forever, plus a small flat HP_LIN trickle so long endless runs keep
+  // getting slowly harder rather than fully flatlining. See GAME.md "Difficulty Tuning".
+  var HP_BASE = 16, HP_GROW = 1.28, HP_TAU = 9, HP_LIN = 0.9;
+
+  // ---------- state ----------
+  var grid = new Array(COLS * ROWS).fill(null);
+  var field = new Int16Array(COLS * ROWS); // BFS distance to keep, -1 = unreachable
+  var testField = new Int16Array(COLS * ROWS);
+  var queueBuf = new Int16Array(COLS * ROWS);
+  var creeps = [];
+  var beams = [];
+  // ---- purely cosmetic fx state (never read by game logic) ----
+  var particles = [];      // death pops / rot puffs
+  var refusalFlashes = []; // {c,r,t} red pulse on a build refusal
+  var shakeT = 0, shakeMag = 0; // screen-shake timer/magnitude
+  var flashT = 0;          // full-board red flash timer (life lost)
+  var banner = { text: "", sub: "", t: 0, dur: 1, color: "#ffcb57" }; // big center wave banner
+  var state = "menu"; // menu | playing | over
+  var scrap = 0, lives = 0, score = 0, best = 0, wave = 0;
+  var toBeSpawned = 0, spawnTimer = 0, breather = 0, waveActive = false;
+  var waveLeaked = false; // did any creep from the current wave reach the keep unopposed?
+  var tool = "gun";
+  var msgTimer = 0;
+  var now = 0, lastT = 0;
+
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var stage = document.getElementById("stage");
+  var cell = 40, cssW = 280, cssH = 440;
+
+  var el = {
+    wave: document.getElementById("hWave"),
+    lives: document.getElementById("hLives"),
+    scrap: document.getElementById("hScrap"),
+    score: document.getElementById("hScore"),
+    msg: document.getElementById("msg"),
+    startScreen: document.getElementById("startScreen"),
+    overScreen: document.getElementById("overScreen"),
+    overText: document.getElementById("overText"),
+    tools: [document.getElementById("tGun"), document.getElementById("tWall"), document.getElementById("tClear")]
+  };
+
+  function idx(c, r) { return r * COLS + c; }
+  function inBounds(c, r) { return c >= 0 && c < COLS && r >= 0 && r < ROWS; }
+
+  try { best = parseInt(localStorage.getItem("crumblewall_best") || "0", 10) || 0; }
+  catch (e) { best = 0; }
+
+  // ---------- layout ----------
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    cell = Math.max(18, Math.floor(Math.min((w - 8) / COLS, (h - 8) / ROWS)));
+    cssW = cell * COLS;
+    cssH = cell * ROWS;
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    cv.style.width = cssW + "px";
+    cv.style.height = cssH + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 150); });
+
+  // ---------- pathfinding ----------
+  function computeField(target, blockExtra) {
+    // BFS outward from the keep across cells with no tower; `blockExtra` is treated as blocked.
+    target.fill(-1);
+    var ki = idx(KEEP_C, KEEP_R);
+    target[ki] = 0;
+    queueBuf[0] = ki;
+    var head = 0, tail = 1;
+    while (head < tail) {
+      var cur = queueBuf[head++];
+      var c = cur % COLS, r = (cur - c) / COLS;
+      var d = target[cur] + 1;
+      for (var k = 0; k < 4; k++) {
+        var nc = c + (k === 0 ? 1 : k === 1 ? -1 : 0);
+        var nr = r + (k === 2 ? 1 : k === 3 ? -1 : 0);
+        if (!inBounds(nc, nr)) continue;
+        var ni = idx(nc, nr);
+        if (target[ni] !== -1) continue;
+        if (grid[ni]) continue;
+        if (ni === blockExtra) continue;
+        target[ni] = d;
+        queueBuf[tail++] = ni;
+      }
+    }
+    return target;
+  }
+
+  function refreshField() { computeField(field, -1); }
+
+  function placementAllowed(c, r) {
+    // Would a blocker at (c,r) cut off the gate, or any live creep's next step?
+    var bi = idx(c, r);
+    computeField(testField, bi);
+    if (testField[idx(ENT_C, ENT_R)] === -1) return false;
+    for (var i = 0; i < creeps.length; i++) {
+      if (testField[idx(creeps[i].tc, creeps[i].tr)] === -1) return false;
+    }
+    return true;
+  }
+
+  // ---------- game flow ----------
+  function setMessage(t, ms) {
+    el.msg.textContent = t;
+    el.msg.classList.add("show");
+    msgTimer = ms || 1800;
+  }
+
+  function resetGame() {
+    grid = new Array(COLS * ROWS).fill(null);
+    creeps.length = 0;
+    beams.length = 0;
+    particles.length = 0;
+    refusalFlashes.length = 0;
+    shakeT = 0; flashT = 0;
+    banner = { text: "", sub: "", t: 0, dur: 1, color: "#ffcb57" };
+    scrap = START_SCRAP;
+    lives = START_LIVES;
+    score = 0;
+    wave = 0;
+    waveActive = false;
+    waveLeaked = false;
+    toBeSpawned = 0;
+    spawnTimer = 0;
+    breather = FIRST_BREATHER;
+    tool = "gun";
+    setMessage("Build before the first wave arrives.", 3500);
+    refreshField();
+    syncTools();
+    updateHud();
+  }
+
+  function startGame() {
+    resetGame();
+    state = "playing";
+    el.startScreen.classList.add("hidden");
+    el.overScreen.classList.add("hidden");
+    resize();
+  }
+
+  function gameOver() {
+    state = "over";
+    activeId = null;
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem("crumblewall_best", String(best)); } catch (e) {}
+    }
+    var held = waveActive ? wave - 1 : wave;
+    el.overText.textContent =
+      "You held " + Math.max(0, held) + " full wave(s). Score " + score + " · Best " + best;
+    el.overScreen.classList.remove("hidden");
+  }
+
+  function waveCount(w) { return 3 + Math.floor(w * 1.6); }
+  function waveHp(w) {
+    var effW = HP_TAU * (1 - Math.exp(-(w - 1) / HP_TAU)); // eases toward a plateau instead of compounding forever
+    return Math.round(HP_BASE * Math.pow(HP_GROW, effW) + HP_LIN * w);
+  }
+  function waveSpeed(w) { return Math.min(1.25, 0.62 + 0.03 * w); }   // cells per second
+  function waveGap(w) { return Math.max(430, 1300 - 55 * w); }        // ms between spawns
+
+  function startWave() {
+    wave++;
+    waveActive = true;
+    waveLeaked = false;
+    toBeSpawned = waveCount(wave);
+    spawnTimer = 0;
+    setMessage("Wave " + wave + " incoming!", 2200);
+    showBanner("WAVE " + wave, "incoming", 1500);
+    updateHud();
+  }
+
+  function spawnCreep() {
+    var hp = waveHp(wave);
+    creeps.push({
+      x: ENT_C + 0.5,
+      y: ENT_R - 0.5,
+      tc: ENT_C, tr: ENT_R,
+      hp: hp, max: hp,
+      spd: waveSpeed(wave),
+      chew: 0
+    });
+  }
+
+  // ---------- cosmetic fx helpers (visual only; no gameplay effect) ----------
+  function spawnBurst(px, py, color, count) {
+    for (var i = 0; i < count; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var spd = 30 + Math.random() * 70;
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 260 + Math.random() * 180, max: 440,
+        r: 1.5 + Math.random() * 2, color: color
+      });
+    }
+  }
+  function spawnPuff(px, py, color) {
+    for (var i = 0; i < 6; i++) {
+      var ang = Math.random() * Math.PI * 2;
+      var spd = 10 + Math.random() * 24;
+      particles.push({
+        x: px, y: py,
+        vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 380 + Math.random() * 160, max: 540,
+        r: 2 + Math.random() * 2.5, color: color
+      });
+    }
+  }
+  function flagRefusal(c, r) { refusalFlashes.push({ c: c, r: r, t: 260, max: 260 }); }
+  function triggerShake(mag, ms) { shakeMag = mag; shakeT = ms; }
+  function showBanner(text, sub, ms, color) { banner = { text: text, sub: sub || "", t: ms, dur: ms, color: color || "#ffcb57" }; }
+  function updateFx(dt) {
+    var dtMs = dt * 1000;
+    for (var i = particles.length - 1; i >= 0; i--) {
+      var p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= (1 - Math.min(1, 3 * dt));
+      p.vy *= (1 - Math.min(1, 3 * dt));
+      p.life -= dtMs;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (var j = refusalFlashes.length - 1; j >= 0; j--) {
+      refusalFlashes[j].t -= dtMs;
+      if (refusalFlashes[j].t <= 0) refusalFlashes.splice(j, 1);
+    }
+    if (shakeT > 0) { shakeT -= dtMs; if (shakeT < 0) shakeT = 0; }
+    if (flashT > 0) { flashT -= dtMs; if (flashT < 0) flashT = 0; }
+    if (banner.t > 0) { banner.t -= dtMs; if (banner.t < 0) banner.t = 0; }
+  }
+
+  // ---------- building ----------
+  function cellBusyWithCreep(c, r) {
+    for (var i = 0; i < creeps.length; i++) {
+      var cr = creeps[i];
+      var cc = Math.floor(cr.x), rr = Math.floor(cr.y);
+      if ((cc === c && rr === r) || (cr.tc === c && cr.tr === r)) return true;
+    }
+    return false;
+  }
+
+  function tryBuild(c, r) {
+    if (state !== "playing" || !inBounds(c, r)) return;
+    var i = idx(c, r);
+
+    if (tool === "clear") {
+      if (!grid[i]) return;
+      var back = Math.floor(TOOL[grid[i].type].cost * REFUND);
+      scrap += back;
+      grid[i] = null;
+      refreshField();
+      updateHud();
+      setMessage("Scrapped for +" + back + " scrap.", 1200);
+      return;
+    }
+
+    var spec = TOOL[tool];
+    if (!spec) return;
+    if (grid[i]) { setMessage("Already built on that tile.", 1200); return; }
+    if ((c === ENT_C && r === ENT_R) || (c === KEEP_C && r === KEEP_R)) {
+      flagRefusal(c, r);
+      setMessage("Can't build on the gate or the keep.", 1400); return;
+    }
+    if (scrap < spec.cost) { flagRefusal(c, r); setMessage("Not enough scrap.", 1200); return; }
+    if (cellBusyWithCreep(c, r)) { flagRefusal(c, r); setMessage("A creep is in the way.", 1200); return; }
+    if (!placementAllowed(c, r)) { flagRefusal(c, r); setMessage("That would seal the path — refused.", 1600); return; }
+
+    scrap -= spec.cost;
+    grid[i] = { type: tool, born: now, life: spec.life, c: c, r: r, cd: 0 };
+    refreshField();
+    updateHud();
+    syncTools();
+  }
+
+  // ---------- input (pointer events = touch + mouse) ----------
+  var activeId = null, lastCell = -1;
+
+  function cellFromEvent(e) {
+    var rect = cv.getBoundingClientRect();
+    var px = e.clientX - rect.left;
+    var py = e.clientY - rect.top;
+    var c = Math.floor(px / cell), r = Math.floor(py / cell);
+    if (!inBounds(c, r)) return null;
+    return { c: c, r: r };
+  }
+
+  cv.addEventListener("pointerdown", function (e) {
+    if (state !== "playing" || activeId !== null) return;
+    activeId = e.pointerId;
+    if (cv.setPointerCapture) { try { cv.setPointerCapture(e.pointerId); } catch (err) {} }
+    lastCell = -1;
+    var p = cellFromEvent(e);
+    if (p) { lastCell = idx(p.c, p.r); tryBuild(p.c, p.r); }
+    e.preventDefault();
+  });
+
+  cv.addEventListener("pointermove", function (e) {
+    if (state !== "playing" || e.pointerId !== activeId) return;
+    var p = cellFromEvent(e);
+    if (!p) return;
+    var i = idx(p.c, p.r);
+    if (i === lastCell) return;
+    lastCell = i;
+    tryBuild(p.c, p.r);
+    e.preventDefault();
+  });
+
+  function endPointer(e) {
+    if (e.pointerId === activeId) { activeId = null; lastCell = -1; }
+  }
+  cv.addEventListener("pointerup", endPointer);
+  cv.addEventListener("pointercancel", endPointer);
+  cv.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  el.tools.forEach(function (btn) {
+    btn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      tool = btn.getAttribute("data-tool");
+      syncTools();
+    });
+  });
+
+  function syncTools() {
+    for (var i = 0; i < el.tools.length; i++) {
+      var btn = el.tools[i];
+      var t = btn.getAttribute("data-tool");
+      btn.classList.toggle("sel", t === tool);
+      var spec = TOOL[t];
+      btn.classList.toggle("poor", !!spec && scrap < spec.cost);
+    }
+  }
+
+  document.getElementById("btnStart").addEventListener("pointerdown", function (e) {
+    e.preventDefault(); startGame();
+  });
+  document.getElementById("btnAgain").addEventListener("pointerdown", function (e) {
+    e.preventDefault(); startGame();
+  });
+
+  // ---------- update ----------
+  function stepCreepTarget(cr, dt) {
+    // Called when a creep has arrived at the centre of its target cell.
+    var here = field[idx(cr.tc, cr.tr)];
+    if (here > 0) {
+      for (var q = 0; q < 4; q++) {
+        var nc = cr.tc + (q === 2 ? 1 : q === 3 ? -1 : 0);
+        var nr = cr.tr + (q === 0 ? 1 : q === 1 ? -1 : 0);
+        if (!inBounds(nc, nr)) continue;
+        var nf = field[idx(nc, nr)];
+        if (nf !== -1 && nf === here - 1) { cr.tc = nc; cr.tr = nr; cr.chew = 0; return; }
+      }
+    }
+    // Safety valve: creep has no downhill step (should be impossible thanks to the
+    // placement checks). Rather than freeze the wave, it eats the adjacent piece
+    // with the least remaining life.
+    cr.chew += dt * 1000;
+    if (cr.chew >= CHEW_TIME) {
+      cr.chew = 0;
+      var bestIdx = -1, bestLeft = Infinity;
+      for (var k = 0; k < 4; k++) {
+        var ac = cr.tc + (k === 2 ? 1 : k === 3 ? -1 : 0);
+        var ar = cr.tr + (k === 0 ? 1 : k === 1 ? -1 : 0);
+        if (!inBounds(ac, ar)) continue;
+        var ai = idx(ac, ar), tw = grid[ai];
+        if (!tw) continue;
+        var left = tw.life - (now - tw.born);
+        if (left < bestLeft) { bestLeft = left; bestIdx = ai; }
+      }
+      if (bestIdx >= 0) {
+        grid[bestIdx] = null;
+        refreshField();
+        setMessage("A creep chewed through a wall!", 1400);
+      }
+    }
+  }
+
+  function update(dt) {
+    if (state !== "playing") return;
+
+    scrap += SCRAP_PER_SEC * dt;
+
+    // wave scheduling
+    if (!waveActive) {
+      breather -= dt * 1000;
+      if (breather <= 0) startWave();
+    } else if (toBeSpawned > 0) {
+      spawnTimer -= dt * 1000;
+      if (spawnTimer <= 0) {
+        spawnCreep();
+        toBeSpawned--;
+        spawnTimer = waveGap(wave);
+      }
+    } else if (creeps.length === 0) {
+      waveActive = false;
+      breather = BREATHER;
+      score += 25 * wave;
+      if (waveLeaked) {
+        setMessage("Wave " + wave + " survived. +" + (25 * wave) + " score", 2500);
+        showBanner("WAVE " + wave + " OVER", "+" + (25 * wave) + " score", 1300, "#8d93a8");
+      } else {
+        setMessage("Wave " + wave + " cleared! +" + (25 * wave) + " score", 2500);
+        showBanner("WAVE CLEAR", "+" + (25 * wave) + " score", 1300);
+      }
+    }
+
+    // rot
+    var changed = false;
+    for (var i = 0; i < grid.length; i++) {
+      var t = grid[i];
+      if (t && now - t.born >= t.life) {
+        spawnPuff((t.c + 0.5) * cell, (t.r + 0.5) * cell, t.type === "gun" ? "#ff9d4d" : "#8a92ac");
+        grid[i] = null; changed = true;
+      }
+    }
+    if (changed) refreshField();
+
+    // creep movement
+    for (var k = creeps.length - 1; k >= 0; k--) {
+      var cr = creeps[k];
+      var tx = cr.tc + 0.5, ty = cr.tr + 0.5;
+      var dx = tx - cr.x, dy = ty - cr.y;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      var step = cr.spd * dt;
+      if (d <= step || d < 1e-6) {
+        cr.x = tx; cr.y = ty;
+        if (cr.tc === KEEP_C && cr.tr === KEEP_R) {
+          creeps.splice(k, 1);
+          lives--;
+          waveLeaked = true;
+          setMessage("A creep reached the keep!", 1800);
+          triggerShake(6, 220);
+          flashT = 260;
+          spawnBurst((KEEP_C + 0.5) * cell, (KEEP_R + 0.5) * cell, "#ff4f6d", 10);
+          if (lives <= 0) { updateHud(); gameOver(); return; }
+          continue;
+        }
+        stepCreepTarget(cr, dt);
+      } else {
+        cr.x += (dx / d) * step;
+        cr.y += (dy / d) * step;
+      }
+    }
+
+    // guns
+    for (var g = 0; g < grid.length; g++) {
+      var tw = grid[g];
+      if (!tw || tw.type !== "gun") continue;
+      tw.cd -= dt * 1000;
+      if (tw.cd > 0) continue;
+      var gx = tw.c + 0.5, gy = tw.r + 0.5;
+      var bestI = -1, bestD = 1e9;
+      for (var m = 0; m < creeps.length; m++) {
+        var cc = creeps[m];
+        var ddx = cc.x - gx, ddy = cc.y - gy;
+        var dd = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dd <= TOOL.gun.range && dd < bestD) { bestD = dd; bestI = m; }
+      }
+      if (bestI >= 0) {
+        var target = creeps[bestI];
+        target.hp -= TOOL.gun.dmg;
+        tw.cd = TOOL.gun.cd;
+        beams.push({ x1: gx, y1: gy, x2: target.x, y2: target.y, t: 110 });
+        if (target.hp <= 0) {
+          spawnBurst(target.x * cell, target.y * cell, "#d94f6a", 12);
+          creeps.splice(bestI, 1);
+          scrap += SCRAP_PER_KILL;
+          score += 10;
+        }
+      }
+    }
+
+    for (var b = beams.length - 1; b >= 0; b--) {
+      beams[b].t -= dt * 1000;
+      if (beams[b].t <= 0) beams.splice(b, 1);
+    }
+
+    if (msgTimer > 0) {
+      msgTimer -= dt * 1000;
+      if (msgTimer <= 0) { el.msg.textContent = ""; el.msg.classList.remove("show"); }
+    }
+
+    updateFx(dt);
+
+    updateHud();
+    syncTools();
+  }
+
+  var hudPrev = { wave: "", lives: "", scrap: "", score: "" };
+  function bumpIfChanged(field, node, str) {
+    if (hudPrev[field] !== str) {
+      hudPrev[field] = str;
+      node.classList.remove("bump");
+      void node.offsetWidth; // restart animation
+      node.classList.add("bump");
+    }
+  }
+  function updateHud() {
+    var waveStr = waveActive
+      ? String(wave)
+      : (wave + 1) + " in " + Math.max(0, Math.ceil(breather / 1000)) + "s";
+    var livesStr = String(Math.max(0, lives));
+    var scrapStr = String(Math.floor(scrap));
+    var scoreStr = String(score);
+    el.wave.textContent = waveStr;
+    el.lives.textContent = livesStr;
+    el.scrap.textContent = scrapStr;
+    el.score.textContent = scoreStr;
+    bumpIfChanged("lives", el.lives, livesStr);
+    bumpIfChanged("score", el.score, scoreStr);
+  }
+
+  // ---------- draw ----------
+  function draw() {
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    ctx.save();
+    if (shakeT > 0) {
+      var sf = shakeT / 220;
+      ctx.translate((Math.random() - 0.5) * shakeMag * sf, (Math.random() - 0.5) * shakeMag * sf);
+    }
+
+    // board background, subtle vertical gradient
+    var bgGrad = ctx.createLinearGradient(0, 0, 0, cssH);
+    bgGrad.addColorStop(0, "#171b25");
+    bgGrad.addColorStop(1, "#12151d");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    // walkable tiles, shaded by distance to the keep (brighter = closer to keep)
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        var f = field[idx(c, r)];
+        if (f === -1) continue;
+        var a = 0.05 + 0.30 * (1 - Math.min(1, f / (COLS + ROWS)));
+        ctx.fillStyle = "rgba(72,196,224," + a.toFixed(3) + ")";
+        ctx.fillRect(c * cell, r * cell, cell, cell);
+      }
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,.06)";
+    ctx.lineWidth = 1;
+    for (var i = 0; i <= COLS; i++) {
+      ctx.beginPath(); ctx.moveTo(i * cell + .5, 0); ctx.lineTo(i * cell + .5, cssH); ctx.stroke();
+    }
+    for (var j = 0; j <= ROWS; j++) {
+      ctx.beginPath(); ctx.moveTo(0, j * cell + .5); ctx.lineTo(cssW, j * cell + .5); ctx.stroke();
+    }
+
+    // refusal flashes (build refused feedback)
+    for (var rf = 0; rf < refusalFlashes.length; rf++) {
+      var flash = refusalFlashes[rf];
+      var fa = flash.t / flash.max;
+      ctx.fillStyle = "rgba(255,84,112," + (0.45 * fa).toFixed(3) + ")";
+      ctx.fillRect(flash.c * cell, flash.r * cell, cell, cell);
+      ctx.strokeStyle = "rgba(255,84,112," + (0.9 * fa).toFixed(3) + ")";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(flash.c * cell + 1, flash.r * cell + 1, cell - 2, cell - 2);
+    }
+
+    // gate + keep, softly pulsing
+    var pulse = 0.5 + 0.5 * Math.sin(now / 420);
+    drawLandmark(ENT_C, ENT_R, "#2f8f66", "#46e0a4", "GATE", 0.25 + 0.1 * pulse);
+    drawLandmark(KEEP_C, KEEP_R, "#9c2f45", "#ff4f6d", "KEEP", 0.3 + 0.18 * pulse);
+
+    // towers / walls
+    for (var t = 0; t < grid.length; t++) {
+      var tw = grid[t];
+      if (!tw) continue;
+      var frac = 1 - (now - tw.born) / tw.life;
+      if (frac < 0) frac = 0;
+      var x = tw.c * cell, y = tw.r * cell;
+      var isGun = tw.type === "gun";
+      var baseCol = isGun ? "#ff9d4d" : "#8a92ac";
+      var deepCol = isGun ? "#8a4c1e" : "#484e5f";
+
+      ctx.globalAlpha = 0.4 + 0.6 * frac;
+      var pieceGrad = ctx.createLinearGradient(x, y, x, y + cell);
+      pieceGrad.addColorStop(0, baseCol);
+      pieceGrad.addColorStop(1, deepCol);
+      ctx.fillStyle = pieceGrad;
+      var rrSize = Math.max(3, cell * 0.14);
+      roundRect(x + 2, y + 2, cell - 4, cell - 4, rrSize);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // rot meter
+      ctx.fillStyle = "rgba(0,0,0,.4)";
+      ctx.fillRect(x + 3, y + cell - 7, cell - 6, 4);
+      ctx.fillStyle = frac < 0.3 ? "#ff6b6b" : "#9fe08a";
+      ctx.fillRect(x + 3, y + cell - 7, (cell - 6) * frac, 4);
+
+      if (isGun) {
+        ctx.fillStyle = "#2a1508";
+        ctx.beginPath();
+        ctx.arc(x + cell / 2, y + cell / 2 - 2, cell * 0.13, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // shots
+    ctx.strokeStyle = "#ffe08a";
+    ctx.lineCap = "round";
+    for (var b = 0; b < beams.length; b++) {
+      var bm = beams[b];
+      var bmFrac = Math.max(0, bm.t / 110);
+      ctx.globalAlpha = bmFrac;
+      ctx.lineWidth = 1 + 2 * bmFrac;
+      ctx.beginPath();
+      ctx.moveTo(bm.x1 * cell, bm.y1 * cell);
+      ctx.lineTo(bm.x2 * cell, bm.y2 * cell);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = "butt";
+
+    // creeps
+    for (var k = 0; k < creeps.length; k++) {
+      var cr = creeps[k];
+      var px = cr.x * cell, py = cr.y * cell;
+      var rad = cell * 0.28;
+      ctx.fillStyle = "rgba(217,79,106,.28)";
+      ctx.beginPath(); ctx.arc(px, py, rad * 1.55, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#d94f6a";
+      ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.35)";
+      ctx.beginPath(); ctx.arc(px - rad * 0.3, py - rad * 0.3, rad * 0.32, 0, Math.PI * 2); ctx.fill();
+      var hpf = Math.max(0, cr.hp / cr.max);
+      ctx.fillStyle = "rgba(0,0,0,.5)";
+      ctx.fillRect(px - rad, py - rad - 6, rad * 2, 3);
+      ctx.fillStyle = "#9fe08a";
+      ctx.fillRect(px - rad, py - rad - 6, rad * 2 * hpf, 3);
+    }
+
+    // particles (death pops / rot puffs / keep-hit burst)
+    for (var pIdx = 0; pIdx < particles.length; pIdx++) {
+      var pt = particles[pIdx];
+      var pa = Math.max(0, pt.life / pt.max);
+      ctx.globalAlpha = pa;
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r * (0.6 + 0.4 * pa), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // full-board red flash when a life is lost (drawn outside the shake transform)
+    if (flashT > 0) {
+      ctx.fillStyle = "rgba(255,79,109," + (0.22 * (flashT / 260)).toFixed(3) + ")";
+      ctx.fillRect(0, 0, cssW, cssH);
+    }
+
+    // big center banner (wave incoming / wave clear)
+    if (banner.t > 0) {
+      var bp = banner.t / banner.dur; // 1 -> 0
+      var bIn = Math.min(1, (1 - bp) * 6);
+      var bOut = Math.min(1, bp * 4);
+      var bAlpha = Math.min(bIn, bOut);
+      var scale = 0.85 + 0.15 * bIn;
+      ctx.save();
+      ctx.globalAlpha = bAlpha;
+      ctx.translate(cssW / 2, cssH * 0.4);
+      ctx.scale(scale, scale);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "800 " + Math.max(16, Math.floor(cell * 0.62)) + "px system-ui, sans-serif";
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillText(banner.text, 2, 2);
+      ctx.fillStyle = banner.color || "#ffcb57";
+      ctx.fillText(banner.text, 0, 0);
+      if (banner.sub) {
+        ctx.font = "600 " + Math.max(10, Math.floor(cell * 0.22)) + "px system-ui, sans-serif";
+        ctx.fillStyle = "rgba(233,235,242,.85)";
+        ctx.fillText(banner.sub, 0, Math.floor(cell * 0.42));
+      }
+      ctx.restore();
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawLandmark(c, r, deep, glow, label, glowAlpha) {
+    var x = c * cell, y = r * cell;
+    ctx.save();
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = cell * glowAlpha * 1.4;
+    var lg = ctx.createLinearGradient(x, y, x, y + cell);
+    lg.addColorStop(0, glow);
+    lg.addColorStop(1, deep);
+    ctx.fillStyle = lg;
+    roundRect(x + 3, y + 3, cell - 6, cell - 6, Math.max(3, cell * 0.16));
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.font = "700 " + Math.max(9, Math.floor(cell * 0.22)) + "px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, (c + 0.5) * cell, (r + 0.5) * cell);
+  }
+
+  // ---------- loop ----------
+  function frame(ts) {
+    if (!lastT) lastT = ts;
+    var dt = (ts - lastT) / 1000;
+    lastT = ts;
+    if (dt > 0.05) dt = 0.05;
+    if (dt < 0) dt = 0;
+    now += dt * 1000;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resetGame();
+  resize();
+  requestAnimationFrame(frame);
+  setTimeout(resize, 80);
+})();
+</script>
+</body>
+</html>

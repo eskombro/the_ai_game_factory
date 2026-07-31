@@ -1,0 +1,5 @@
+{
+  "en": "Hangwire is a real-time balance puzzle: drag falling weights onto a swaying two-beam mobile. Get a beam's torque close enough to zero and it chimes and empties itself for points, but the two beams also share a root wire, so clearing one throws the whole thing off balance again. Juggle local and global balance before the wire strain maxes out or too many weights pile up.",
+  "es": "Hangwire es un puzzle de equilibrio en tiempo real: arrastras pesos que caen sobre un móvil de dos brazos. Si el torque de un brazo casi llega a cero, suena una campana y se vacía dándote puntos, pero ambos brazos cuelgan del mismo cable, así que vaciar uno descompensa todo. Equilibra lo local y lo global antes de que el cable se rompa o se acumulen demasiados pesos.",
+  "fr": "Hangwire est un puzzle d'équilibre en temps réel : on fait glisser des poids qui tombent sur un mobile à deux bras. Quand le couple d'un bras approche de zéro, il tinte et se vide, rapportant des points, mais les deux bras partagent le même fil, donc vider l'un déséquilibre l'ensemble. Jonglez entre équilibre local et global avant que le fil casse ou que trop de poids s'accumulent."
+}

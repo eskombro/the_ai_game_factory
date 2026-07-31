@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Hangwire</title>
+<style>
+  :root {
+    --bg: #0d1015;
+    --good: #6fe3ab;
+    --bad: #e2795a;
+    --amber: #e0a63c;
+    --gold: #e8a94f;
+    --wire: #4a5566;
+    --panel: rgba(10,12,17,.86);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; color: #eef1f6;
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    overscroll-behavior: none;
+    background:
+      radial-gradient(ellipse 60% 45% at 28% -8%, rgba(224,166,60,.09), transparent 60%),
+      radial-gradient(ellipse 55% 45% at 100% 112%, rgba(111,227,171,.07), transparent 58%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0px, rgba(255,255,255,.035) 1px, transparent 1px, transparent 34px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0px, rgba(255,255,255,.035) 1px, transparent 1px, transparent 34px),
+      var(--bg);
+  }
+  #wrap { position: fixed; inset: 0; }
+  #wrap.shake { animation: shakeSm .32s linear; }
+  #wrap.shake-big { animation: shakeBig .5s ease; }
+  @keyframes shakeSm {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-3px, 1px, 0); }
+    40%, 60% { transform: translate3d(3px, -1px, 0); }
+  }
+  @keyframes shakeBig {
+    0% { transform: translate3d(0,0,0); }
+    15% { transform: translate3d(-6px, 2px, 0) rotate(-.4deg); }
+    30% { transform: translate3d(5px, -2px, 0) rotate(.4deg); }
+    45% { transform: translate3d(-4px, 2px, 0) rotate(-.25deg); }
+    60% { transform: translate3d(3px, -1px, 0) rotate(.2deg); }
+    75% { transform: translate3d(-2px, 1px, 0); }
+    100% { transform: translate3d(0,0,0); }
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  #hud {
+    position: absolute; left: 0; right: 0; top: 0; padding: 10px 14px 16px;
+    pointer-events: none; font-size: 14px; line-height: 1.25;
+    background: linear-gradient(to bottom, rgba(9,11,15,.82), rgba(9,11,15,0));
+  }
+  #hudRow { display: flex; justify-content: space-between; align-items: baseline; }
+  #score { font-size: 21px; font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+  #lvl { font-size: 13px; opacity: .78; font-variant-numeric: tabular-nums; }
+  #strainWrap {
+    margin-top: 7px; height: 12px; border: 1px solid #414c5c; border-radius: 6px;
+    background: #171b23; overflow: hidden; transition: box-shadow .3s ease;
+  }
+  #strainWrap.danger { box-shadow: 0 0 10px 1px rgba(226,84,63,.55); animation: pulseDanger 1s ease-in-out infinite; }
+  @keyframes pulseDanger {
+    0%, 100% { box-shadow: 0 0 6px 0 rgba(226,84,63,.45); }
+    50% { box-shadow: 0 0 14px 2px rgba(226,84,63,.85); }
+  }
+  #strainBar { height: 100%; width: 0%; background: #5b8dd6; transition: background .2s linear, width .12s linear; }
+  #strainLabel { font-size: 10.5px; letter-spacing: .05em; opacity: .7; margin-top: 4px; display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+  #dropCount.warn { color: var(--bad); opacity: 1; font-weight: 700; }
+
+  .screen {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 24px 22px 70px; background: rgba(11,13,18,.95); z-index: 5;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    opacity: 1; transition: opacity .28s ease;
+  }
+  .screen.hidden { opacity: 0; pointer-events: none; }
+  .screen h1 {
+    font-size: 32px; margin: 0 0 8px; letter-spacing: .14em; font-weight: 800;
+    color: var(--gold); text-shadow: 0 0 22px rgba(232,169,79,.35);
+  }
+  .screen h2 { font-size: 22px; margin: 0 0 10px; letter-spacing: .03em; color: var(--bad); }
+  .screen p { font-size: 15px; line-height: 1.55; margin: 0 0 12px; max-width: 340px; opacity: .92; }
+  .screen p.small { font-size: 13px; opacity: .68; }
+  .btn {
+    margin-top: 10px; min-height: 58px; min-width: 200px; padding: 0 28px;
+    font-size: 19px; font-weight: 700; font-family: inherit; letter-spacing: .04em; color: #0c1410;
+    background: var(--good); border: 0; border-radius: 12px; cursor: pointer;
+    touch-action: manipulation; transition: transform .12s ease, background .12s ease;
+    box-shadow: 0 6px 18px -6px rgba(111,227,171,.55);
+  }
+  .btn:active { background: #58c491; transform: scale(.96); }
+  .stats { font-size: 15px; margin: 4px 0 8px; opacity: .9; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div id="hudRow"><div id="score">0</div><div id="lvl">Level 1</div></div>
+    <div id="strainWrap"><div id="strainBar"></div></div>
+    <div id="strainLabel"><span>WIRE STRAIN</span><span id="dropCount">DROPS 0/4</span></div>
+  </div>
+
+  <div class="screen" id="startScreen">
+    <h1>HANGWIRE</h1>
+    <p>Drag each incoming weight onto a hook of the hanging mobile. A beam holding 2+ weights that balances (equal turning force on both sides) chimes and clears for points.</p>
+    <p>Lopsided beams build <b>wire strain</b> &mdash; and so does letting the two halves of the mobile drift apart in total weight. Fill the strain bar and the wire snaps.</p>
+    <p class="small">Drag a hung weight to move it to another hook, or drag it off the mobile to jettison it. Let 4 weights time out in the holder and you lose too.</p>
+    <button class="btn" id="startBtn">START</button>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <h2 id="overTitle">THE WIRE SNAPPED</h2>
+    <div class="stats" id="overStats"></div>
+    <p class="small" id="overTip"></p>
+    <button class="btn" id="againBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------- constants
+  var OFFSETS = [-3, -1, 1, 3];   // hook positions along a beam, in units
+  var TOL = 1;                    // torque units still counted as "balanced"
+  var ROOT_DEAD = 3;              // mass difference between halves that is free
+  var BEAM_STRAIN = 0.12;         // strain/sec at full beam imbalance
+  var ROOT_STRAIN = 0.12;         // strain/sec at full root imbalance
+  var BEAM_STRAIN_SPAN = 20;      // torque-over-tolerance needed to reach full BEAM_STRAIN rate
+  var ROOT_STRAIN_SPAN = 20;      // mass-diff-over-deadzone needed to reach full ROOT_STRAIN rate
+  var STRAIN_RECOVER = 0.12;      // strain/sec drained while everything is calm
+  var DROP_PENALTY = 0.12;        // strain for letting a weight expire
+  var MAX_DROPS = 4;              // dropped weights allowed before the wire snaps
+  var REFUND_EVERY = 5;           // beams cleared that earn one dropped weight back
+  var JETTISON_PENALTY = 0.06;    // strain for throwing a hung weight away
+  var SPAWN_GAP = 0.45;           // seconds between weights
+  var CLEARS_PER_LEVEL = 3;
+
+  // ---------------------------------------------------------------- palette (visual only)
+  var PAL = {
+    wire: '#4a5566', hookLine: '#525c6b', dim: '#5c6674',
+    beam: '#8791a1', beamHot: '#e2703f', beamClear: '#6fe3ab',
+    torqueDim: '#7e8a99', torqueHot: '#e2795a',
+    podCool: [124, 147, 184], podWarm: [201, 138, 82], podCarry: [232, 169, 79],
+    podStroke: '#161a22', podText: '#12151c',
+    good: '#6fe3ab', bad: '#e2795a',
+    strainLow: '#5b8dd6', strainMid: '#e0a63c', strainHigh: '#e2543f'
+  };
+  function mixC(c1, c2, t) { return [Math.round(c1[0] + (c2[0] - c1[0]) * t), Math.round(c1[1] + (c2[1] - c1[1]) * t), Math.round(c1[2] + (c2[2] - c1[2]) * t)]; }
+  function liteC(c, amt) { return [Math.min(255, c[0] + amt), Math.min(255, c[1] + amt), Math.min(255, c[2] + amt)]; }
+  function rgbS(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a == null ? 1 : a) + ')'; }
+
+  // ---------------------------------------------------------------- elements
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var wrapEl = document.getElementById('wrap');
+  var elScore = document.getElementById('score');
+  var elLvl = document.getElementById('lvl');
+  var elStrain = document.getElementById('strainBar');
+  var elStrainWrap = document.getElementById('strainWrap');
+  var elDrops = document.getElementById('dropCount');
+  var startScreen = document.getElementById('startScreen');
+  var overScreen = document.getElementById('overScreen');
+  var overStats = document.getElementById('overStats');
+  var overTip = document.getElementById('overTip');
+
+  var W = 0, H = 0, dpr = 1;
+  var L = {};   // layout numbers
+
+  // ---------------------------------------------------------------- helpers
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function rnd(n) { return Math.floor(Math.random() * n); }
+  function dist2(ax, ay, bx, by) { var dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+
+  var shakeTimer = null;
+  function shakeWrap(cls, ms) {
+    wrapEl.classList.remove('shake', 'shake-big');
+    void wrapEl.offsetWidth;
+    wrapEl.classList.add(cls);
+    if (shakeTimer) clearTimeout(shakeTimer);
+    shakeTimer = setTimeout(function () { wrapEl.classList.remove(cls); }, ms);
+  }
+
+  // ---------------------------------------------------------------- state
+  var G = {
+    state: 'start',
+    score: 0, clears: 0, level: 1, strain: 0, best: 0, drops: 0, refundAt: 5, overMsg: '',
+    beams: [], pod: null, nextW: 1, spawnTimer: 0,
+    rootAngle: 0, popups: [], carry: null, pointerId: null,
+    elapsed: 0, snapFx: 0
+  };
+
+  function makeBeams() {
+    var out = [];
+    for (var s = 0; s < 2; s++) {
+      var hooks = [];
+      for (var i = 0; i < OFFSETS.length; i++) hooks.push({ off: OFFSETS[i], pod: null, x: 0, y: 0 });
+      out.push({ side: s === 0 ? -1 : 1, angle: 0, flash: 0, hooks: hooks, px: 0, py: 0 });
+    }
+    return out;
+  }
+
+  function podLife() { return Math.max(3.4, 7.6 - (G.level - 1) * 0.35); }
+  function weightMax() { return Math.min(8, 2 + G.level); }
+  function rollWeight() { return 1 + rnd(weightMax()); }
+
+  function torqueOf(b) {
+    var t = 0;
+    for (var i = 0; i < b.hooks.length; i++) if (b.hooks[i].pod) t += b.hooks[i].pod.w * b.hooks[i].off;
+    return t;
+  }
+  function massOf(b) {
+    var m = 0;
+    for (var i = 0; i < b.hooks.length; i++) if (b.hooks[i].pod) m += b.hooks[i].pod.w;
+    return m;
+  }
+  function countOf(b) {
+    var c = 0;
+    for (var i = 0; i < b.hooks.length; i++) if (b.hooks[i].pod) c++;
+    return c;
+  }
+  function freeHookCount() {
+    var n = 0;
+    for (var i = 0; i < G.beams.length; i++) {
+      var hs = G.beams[i].hooks;
+      for (var j = 0; j < hs.length; j++) if (!hs[j].pod) n++;
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- layout
+  function computeLayout() {
+    L.u = clamp(W / 17, 15, 22);
+    L.podR = clamp(L.u * 0.85, 13, 19);
+    L.rootX = W / 2;
+    L.rootY = clamp(H * 0.21, 100, 172);
+    L.anchorY = Math.max(64, L.rootY - 36);
+    L.rootArm = clamp(W * 0.24, 68, 100);
+    L.string = clamp(H * 0.145, 68, 112);
+    L.podDrop = L.podR + 13;
+    L.holdX = W * 0.38;
+    L.holdY = H - clamp(H * 0.16, 92, 132);
+    L.nextX = Math.max(46, L.holdX - 78);
+    L.nextY = L.holdY;
+    L.snap = Math.max(40, L.u * 2.2);
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth || window.innerWidth;
+    H = cv.clientHeight || window.innerHeight;
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    computeLayout();
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+
+  // ---------------------------------------------------------------- positions
+  function updatePositions(dt) {
+    var rootDiff = massOf(G.beams[1]) - massOf(G.beams[0]);   // + means right heavy
+    var rootTarget = clamp(rootDiff * 0.028, -0.26, 0.26);
+    G.rootAngle += (rootTarget - G.rootAngle) * Math.min(1, dt * 7);
+
+    var ca = Math.cos(G.rootAngle), sa = Math.sin(G.rootAngle);
+    for (var i = 0; i < G.beams.length; i++) {
+      var b = G.beams[i];
+      var ax = b.side * L.rootArm;
+      b.px = L.rootX + ax * ca;
+      b.py = L.rootY + ax * sa + L.string;
+
+      var t = torqueOf(b);
+      var target = clamp(t * 0.032, -0.38, 0.38);
+      b.angle += (target - b.angle) * Math.min(1, dt * 8);
+
+      var cb = Math.cos(b.angle), sb = Math.sin(b.angle);
+      for (var j = 0; j < b.hooks.length; j++) {
+        var h = b.hooks[j];
+        var hx = h.off * L.u;
+        h.x = b.px + hx * cb;
+        h.y = b.py + hx * sb;
+      }
+      if (b.flash > 0) b.flash = Math.max(0, b.flash - dt);
+    }
+  }
+
+  // ---------------------------------------------------------------- scoring
+  function popup(x, y, text, good) {
+    G.popups.push({ x: x, y: y, text: text, t: 0, life: 1.1, good: !!good });
+  }
+
+  function checkClears() {
+    for (var i = 0; i < G.beams.length; i++) {
+      var b = G.beams[i];
+      var n = countOf(b);
+      if (n < 2) continue;
+      var t = torqueOf(b);
+      if (Math.abs(t) > TOL) continue;
+
+      var sum = 0;
+      for (var j = 0; j < b.hooks.length; j++) {
+        if (b.hooks[j].pod) { sum += b.hooks[j].pod.w; b.hooks[j].pod = null; }
+      }
+      var perfect = (t === 0);
+      var pts = Math.round(sum * n * 10 * (perfect ? 1.5 : 1));
+      G.score += pts;
+      G.clears++;
+      b.flash = 0.5;
+      popup(b.px, b.py - 22, '+' + pts + (perfect ? ' PERFECT' : ''), true);
+      G.level = 1 + Math.floor(G.clears / CLEARS_PER_LEVEL);
+      if (G.clears >= G.refundAt) {
+        G.refundAt += REFUND_EVERY;
+        if (G.drops > 0) { G.drops--; popup(b.px, b.py - 44, 'DROP RECOVERED', true); }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- game flow
+  function startGame() {
+    G.state = 'play';
+    G.score = 0; G.clears = 0; G.level = 1; G.strain = 0; G.elapsed = 0;
+    G.drops = 0; G.refundAt = REFUND_EVERY; G.overMsg = '';
+    G.beams = makeBeams();
+    G.pod = null; G.spawnTimer = 0.7; G.nextW = rollWeight();
+    G.rootAngle = 0; G.popups = []; G.carry = null; G.pointerId = null; G.snapFx = 0;
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+  }
+
+  function endGame(msg) {
+    if (G.state === 'over') return;
+    G.state = 'over';
+    G.snapFx = msg ? 0 : 1;
+    shakeWrap('shake-big', 500);
+    G.overMsg = msg || 'THE WIRE SNAPPED';
+    document.getElementById('overTitle').textContent = G.overMsg;
+    G.carry = null; G.pointerId = null;
+    if (G.score > G.best) G.best = G.score;
+    overStats.innerHTML = 'Score <b>' + G.score + '</b> &nbsp;&middot;&nbsp; Beams cleared <b>' + G.clears +
+      '</b> &nbsp;&middot;&nbsp; Level <b>' + G.level + '</b><br>Best <b>' + G.best + '</b>';
+    overTip.textContent = 'Tip: outer hooks count triple, inner hooks count single \u2014 pair a 1 far out with a 3 close in.';
+    overScreen.classList.remove('hidden');
+  }
+
+  // ---------------------------------------------------------------- update
+  function update(dt) {
+    if (G.state !== 'play') { updatePositions(dt); updatePopups(dt); if (G.snapFx > 0) G.snapFx = Math.max(0, G.snapFx - dt / 0.7); return; }
+    G.elapsed += dt;
+
+    // spawn / expire the incoming weight
+    if (!G.pod) {
+      G.spawnTimer -= dt;
+      if (G.spawnTimer <= 0) {
+        G.pod = { w: G.nextW, t: podLife(), max: podLife() };
+        G.nextW = rollWeight();
+      }
+    } else if (!(G.carry && G.carry.from === 'holder')) {
+      G.pod.t -= dt;
+      if (G.pod.t <= 0) {
+        G.pod = null;
+        G.spawnTimer = SPAWN_GAP;
+        G.drops++;
+        G.strain = clamp(G.strain + DROP_PENALTY, 0, 1);
+        popup(L.holdX, L.holdY - 26, 'DROPPED ' + G.drops + '/' + MAX_DROPS, false);
+        shakeWrap('shake', 320);
+        if (G.drops >= MAX_DROPS) { endGame('TOO MANY DROPPED WEIGHTS'); return; }
+      }
+    }
+
+    updatePositions(dt);
+    checkClears();
+
+    // strain
+    var rate = 0;
+    for (var i = 0; i < G.beams.length; i++) {
+      var t = Math.abs(torqueOf(G.beams[i]));
+      rate += clamp((t - TOL) / BEAM_STRAIN_SPAN, 0, 1) * BEAM_STRAIN;
+    }
+    var rd = Math.abs(massOf(G.beams[1]) - massOf(G.beams[0]));
+    rate += clamp((rd - ROOT_DEAD) / ROOT_STRAIN_SPAN, 0, 1) * ROOT_STRAIN;
+
+    if (rate > 0) G.strain += rate * dt;
+    else G.strain -= STRAIN_RECOVER * dt;
+    G.strain = clamp(G.strain, 0, 1);
+
+    updatePopups(dt);
+
+    if (G.strain >= 1) endGame();
+  }
+
+  function updatePopups(dt) {
+    for (var i = G.popups.length - 1; i >= 0; i--) {
+      var p = G.popups[i];
+      p.t += dt;
+      if (p.t >= p.life) G.popups.splice(i, 1);
+    }
+  }
+
+  // ---------------------------------------------------------------- input
+  function posOf(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function hookAt(x, y, freeOnly) {
+    var best = null, bd = L.snap * L.snap;
+    for (var i = 0; i < G.beams.length; i++) {
+      var hs = G.beams[i].hooks;
+      for (var j = 0; j < hs.length; j++) {
+        var h = hs[j];
+        if (freeOnly && h.pod) continue;
+        var d = dist2(x, y, h.x, h.y + L.podDrop);
+        if (d < bd) { bd = d; best = { beam: G.beams[i], hook: h }; }
+      }
+    }
+    return best;
+  }
+
+  function podAt(x, y) {
+    var grab = L.podR + 16, best = null, bd = grab * grab;
+    for (var i = 0; i < G.beams.length; i++) {
+      var hs = G.beams[i].hooks;
+      for (var j = 0; j < hs.length; j++) {
+        var h = hs[j];
+        if (!h.pod) continue;
+        var d = dist2(x, y, h.x, h.y + L.podDrop);
+        if (d < bd) { bd = d; best = { beam: G.beams[i], hook: h }; }
+      }
+    }
+    return best;
+  }
+
+  function onDown(e) {
+    if (G.state !== 'play' || G.pointerId !== null) return;
+    e.preventDefault();
+    var p = posOf(e);
+
+    // 1) the incoming weight in the holder
+    if (G.pod) {
+      var grab = L.podR + 26;
+      if (dist2(p.x, p.y, L.holdX, L.holdY) <= grab * grab) {
+        G.carry = { from: 'holder', w: G.pod.w, x: p.x, y: p.y };
+        G.pointerId = e.pointerId;
+        try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+        return;
+      }
+    }
+    // 2) a weight already hanging on the mobile
+    var hit = podAt(p.x, p.y);
+    if (hit) {
+      var w = hit.hook.pod.w;
+      hit.hook.pod = null;
+      G.carry = { from: 'hook', w: w, x: p.x, y: p.y, hook: hit.hook };
+      G.pointerId = e.pointerId;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  }
+
+  function onMove(e) {
+    if (G.pointerId === null || e.pointerId !== G.pointerId || !G.carry) return;
+    e.preventDefault();
+    var p = posOf(e);
+    G.carry.x = p.x; G.carry.y = p.y;
+  }
+
+  function onUp(e) {
+    if (G.pointerId === null || e.pointerId !== G.pointerId) return;
+    e.preventDefault();
+    releaseCarry();
+    G.pointerId = null;
+    try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  function releaseCarry() {
+    var c = G.carry;
+    G.carry = null;
+    if (!c) return;
+
+    var target = hookAt(c.x, c.y, true);
+    if (target) {
+      target.hook.pod = { w: c.w };
+      if (c.from === 'holder') {
+        G.pod = null;
+        G.spawnTimer = SPAWN_GAP;
+      }
+      checkClears();
+      return;
+    }
+    // no free hook under the finger
+    if (c.from === 'hook') {
+      G.strain = clamp(G.strain + JETTISON_PENALTY, 0, 1);
+      popup(c.x, c.y - 20, 'JETTISON', false);
+      shakeWrap('shake', 280);
+      if (G.strain >= 1 && G.state === 'play') endGame();
+    }
+    // from the holder: it simply snaps back, no penalty
+  }
+
+  function onCancel(e) {
+    if (G.pointerId === null || e.pointerId !== G.pointerId) return;
+    var c = G.carry;
+    G.carry = null;
+    G.pointerId = null;
+    if (c && c.from === 'hook' && c.hook && !c.hook.pod) c.hook.pod = { w: c.w };  // put it back
+  }
+
+  cv.addEventListener('pointerdown', onDown, { passive: false });
+  cv.addEventListener('pointermove', onMove, { passive: false });
+  cv.addEventListener('pointerup', onUp, { passive: false });
+  cv.addEventListener('pointercancel', onCancel);
+  cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.addEventListener('touchmove', function (e) {
+    if (e.target === cv && e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('againBtn').addEventListener('click', startGame);
+
+  // ---------------------------------------------------------------- render
+  function drawPod(x, y, w, alpha, hot) {
+    ctx.globalAlpha = alpha;
+    var base = hot ? PAL.podCarry : mixC(PAL.podCool, PAL.podWarm, clamp((w - 1) / 7, 0, 1));
+    var hi = liteC(base, 46);
+    var grad = ctx.createRadialGradient(x - L.podR * 0.35, y - L.podR * 0.4, L.podR * 0.15, x, y, L.podR * 1.05);
+    grad.addColorStop(0, rgbS(hi));
+    grad.addColorStop(1, rgbS(base));
+    ctx.beginPath();
+    ctx.arc(x, y, L.podR, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = PAL.podStroke;
+    ctx.stroke();
+    ctx.fillStyle = PAL.podText;
+    ctx.font = '700 ' + Math.round(L.podR * 1.15) + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(w), x, y + 1);
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    if (!G.beams.length) return;
+
+    // ceiling + main wire (breaks apart briefly on a wire-snap game over)
+    ctx.strokeStyle = PAL.wire;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (G.snapFx > 0) {
+      var gap = (1 - G.snapFx) * 46 + 4;
+      var midX = W * 0.5, sag = (1 - G.snapFx) * 22;
+      ctx.moveTo(W * 0.18, L.anchorY);
+      ctx.lineTo(midX - gap, L.anchorY + sag * 0.4);
+      ctx.moveTo(midX + gap, L.anchorY + sag * 0.4);
+      ctx.lineTo(W * 0.82, L.anchorY);
+    } else {
+      ctx.moveTo(W * 0.18, L.anchorY);
+      ctx.lineTo(W * 0.82, L.anchorY);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(L.rootX, L.anchorY);
+    ctx.lineTo(L.rootX, G.snapFx > 0 ? L.rootY + (1 - G.snapFx) * 34 : L.rootY);
+    ctx.stroke();
+    if (G.snapFx > 0) {
+      ctx.globalAlpha = G.snapFx * 0.28;
+      ctx.fillStyle = PAL.strainHigh;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    // root beam
+    var rd = massOf(G.beams[1]) - massOf(G.beams[0]);
+    var rootHot = Math.abs(rd) > ROOT_DEAD;
+    ctx.save();
+    ctx.translate(L.rootX, L.rootY);
+    ctx.rotate(G.rootAngle);
+    ctx.strokeStyle = rootHot ? PAL.beamHot : PAL.beam;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-L.rootArm, 0);
+    ctx.lineTo(L.rootArm, 0);
+    ctx.stroke();
+    ctx.restore();
+
+    // beams + hooks + pods
+    for (var i = 0; i < G.beams.length; i++) {
+      var b = G.beams[i];
+      var ca = Math.cos(G.rootAngle), sa = Math.sin(G.rootAngle);
+      var ex = L.rootX + b.side * L.rootArm * ca;
+      var ey = L.rootY + b.side * L.rootArm * sa;
+
+      ctx.strokeStyle = PAL.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(b.px, b.py);
+      ctx.stroke();
+
+      var t = torqueOf(b);
+      var hot = Math.abs(t) > TOL;
+      ctx.save();
+      ctx.translate(b.px, b.py);
+      ctx.rotate(b.angle);
+      if (b.flash > 0) {
+        ctx.shadowColor = PAL.beamClear;
+        ctx.shadowBlur = 14 * (b.flash / 0.5);
+      }
+      ctx.strokeStyle = b.flash > 0 ? PAL.beamClear : (hot ? PAL.beamHot : PAL.beam);
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-3.4 * L.u, 0);
+      ctx.lineTo(3.4 * L.u, 0);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      for (var j = 0; j < b.hooks.length; j++) {
+        var h = b.hooks[j];
+        ctx.strokeStyle = PAL.hookLine;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(h.x, h.y);
+        ctx.lineTo(h.x, h.y + L.podDrop - L.podR);
+        ctx.stroke();
+        if (h.pod) {
+          drawPod(h.x, h.y + L.podDrop, h.pod.w, 1, false);
+        } else {
+          ctx.beginPath();
+          ctx.arc(h.x, h.y + L.podDrop, L.podR * 0.62, 0, Math.PI * 2);
+          ctx.strokeStyle = '#39424e';
+          ctx.setLineDash([4, 4]);
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // hook multiplier label
+        ctx.fillStyle = PAL.dim;
+        ctx.font = '600 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText((Math.abs(h.off) === 3 ? '×3' : '×1'), h.x, h.y - 9);
+      }
+
+      // torque readout under each beam
+      ctx.fillStyle = hot ? PAL.torqueHot : PAL.torqueDim;
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText((t > 0 ? '+' : '') + t, b.px, b.py + L.podDrop + L.podR + 8);
+    }
+
+    // holder: incoming weight
+    if (G.state === 'play') {
+      ctx.strokeStyle = '#39424e';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(L.holdX, L.holdY, L.podR + 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (G.pod && !(G.carry && G.carry.from === 'holder')) {
+        drawPod(L.holdX, L.holdY, G.pod.w, 1, true);
+      }
+      if (G.pod) {
+        // countdown bar under the holder
+        var bw = 74, frac = clamp(G.pod.t / G.pod.max, 0, 1);
+        ctx.fillStyle = '#232a34';
+        ctx.fillRect(L.holdX - bw / 2, L.holdY + L.podR + 14, bw, 7);
+        ctx.fillStyle = frac < 0.3 ? PAL.beamHot : PAL.strainLow;
+        ctx.fillRect(L.holdX - bw / 2, L.holdY + L.podR + 14, bw * frac, 7);
+      }
+      // next weight preview
+      ctx.globalAlpha = 0.55;
+      drawPod(L.nextX, L.nextY, G.nextW, 0.55, false);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = PAL.dim;
+      ctx.font = '600 10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('NEXT', L.nextX, L.nextY + L.podR + 6);
+    }
+
+    // carried weight
+    if (G.carry) {
+      var snapT = hookAt(G.carry.x, G.carry.y, true);
+      if (snapT) {
+        ctx.strokeStyle = PAL.beamClear;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(snapT.hook.x, snapT.hook.y + L.podDrop, L.podR + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      drawPod(G.carry.x, G.carry.y, G.carry.w, 0.92, true);
+    }
+
+    // popups
+    for (var k = 0; k < G.popups.length; k++) {
+      var p = G.popups[k];
+      var a = 1 - p.t / p.life;
+      var rise = p.t * 26;
+      var scale = 1 + (1 - clamp(p.t / 0.22, 0, 1)) * 0.25;
+      ctx.globalAlpha = clamp(a, 0, 1);
+      ctx.fillStyle = p.good ? PAL.good : PAL.bad;
+      ctx.font = '700 15px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.save();
+      ctx.translate(p.x, p.y - rise);
+      ctx.scale(scale, scale);
+      ctx.fillText(p.text, 0, 0);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function syncHud() {
+    elScore.textContent = String(G.score);
+    elLvl.textContent = 'Level ' + G.level + '  ·  cleared ' + G.clears;
+    elStrain.style.width = Math.round(G.strain * 100) + '%';
+    elStrain.style.background = G.strain > 0.75 ? PAL.strainHigh : (G.strain > 0.45 ? PAL.strainMid : PAL.strainLow);
+    elStrainWrap.classList.toggle('danger', G.strain > 0.75);
+    elDrops.textContent = 'DROPS ' + G.drops + '/' + MAX_DROPS;
+    elDrops.className = G.drops >= MAX_DROPS - 1 ? 'warn' : '';
+  }
+
+  // ---------------------------------------------------------------- loop
+  var last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    update(dt);
+    render();
+    syncHud();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  G.beams = makeBeams();
+  updatePositions(0.016);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

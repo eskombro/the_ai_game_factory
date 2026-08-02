@@ -2,6 +2,8 @@
 
 <p align="center">A collection of original, AI-generated, browser-game prototypes.</p>
 
+<p align="center"><a href="https://gamefactory.esklab.com/">▶ Play the live demo</a></p>
+
 <p align="center">
   <img src="docs/screenshot.png" alt="The AI Game Factory homepage" width="600">
 </p>

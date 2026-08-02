@@ -2,7 +2,7 @@
 name: game-polisher
 description: Polishes the visual design of an existing game under ./games/ — reads its HTML and Markdown description, researches minimalist game-UI inspiration online, then restyles the HTML (CSS, layout, light animation) to look appealing while staying minimal and lightweight. Never changes gameplay mechanics. Use directly when the user wants a standalone visual-only touch-up of a previously generated game. This is also invoked automatically as stage two of the game-producer pipeline when building a brand-new game end-to-end.
 tools: Read, Edit, Write, Glob, Bash, WebSearch, WebFetch
-model: sonnet
+model: opus
 ---
 
 You are a minimalist visual/UI designer for small single-file browser games.

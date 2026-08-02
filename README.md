@@ -2,6 +2,8 @@
 
 <p align="center">A collection of original, AI-generated, browser-game prototypes.</p>
 
+<p align="center"><em>Every game in this repo is designed and coded by AI agents, not typed by hand — see <a href="#purpose-of-this-project">Purpose of this project</a> for how.</em></p>
+
 <p align="center"><a href="https://gamefactory.esklab.com/">▶ Play the live demo</a></p>
 
 <p align="center">
@@ -10,22 +12,10 @@
 
 ## Contents
 
-- [Main features and functionalities](#main-features-and-functionalities)
 - [Purpose of this project](#purpose-of-this-project)
+- [Main features and functionalities](#main-features-and-functionalities)
 - [Main parts of the project](#main-parts-of-the-project)
 - [Potential Future Directions (currently out of scope)](#potential-future-directions-currently-out-of-scope)
-
-# Main features and functionalities
-
-- Each game is a single-page, self-contained HTML file — no build step, no dependencies, just open it in a browser
-- Every game is designed mobile-first: controls are touch-only (tap/swipe/drag/hold), no keyboard or mouse required
-- Every game ships with a companion design doc describing its pitch, controls, core mechanics, and win/lose conditions
-- Games are built through a staged pipeline — mechanics first, then visual polish, then difficulty tuning — each stage recorded as its own section in the game's design doc
-- New games get promotional thumbnails and a listing on the root landing page, so the collection is directly browsable/playable from `index.html`
-- The landing page itself is dynamic: it fetches its game list from a small Cloudflare Worker API (`GET /games`) instead of hardcoded HTML, kept in sync with `games/` by a CI step on every deploy
-- Each game is played through a small wrapper page with a 1-5 star rating bar; ratings are aggregated across visitors (via the same Worker), and the homepage can be sorted by Newest or Best Rated
-- New games are added as dated folders, so the collection doubles as a timeline of prototypes
-- A scheduled automation loop generates and publishes new games on its own, on a recurring cadence, with no human review in the loop — gated by an automated smoke check before anything ships, and able to resume from where it left off if interrupted partway through (e.g. a usage limit) instead of losing the run
 
 # Purpose of this project
 
@@ -40,6 +30,18 @@ Concretely, the project showcases a simple generative AI workflow — game conce
 - **A fully autonomous release loop, resilient to real-world interruption.** A scheduled job (see `scripts/`) checks out the repo, runs the same `game-producer` pipeline a human would trigger by hand, gates the result behind an automated headless smoke check, then opens and merges its own pull request — closing the loop from idea to live deploy with no human intervention. It also checkpoints its progress to disk at every pipeline stage and, if a run gets cut off mid-way (e.g. a subscription usage limit), the next scheduled firing detects the unfinished branch and resumes from the last completed stage instead of losing the work — a small but real lesson in designing for a process that can die at any point.
 - **A judgment-gated quality check, not just a pass/fail one.** Before publishing, `game-producer` runs `game-qa` — a real headless playtest that actually drives the game's touch/pointer gestures in a browser, not a static read of the code — then decides for itself whether what it found is worth fixing, invoking `game-editor` only when the evidence warrants it (a real bug or usability problem) rather than on every stylistic nitpick, and re-verifies the fix with one more `game-qa` pass before moving on.
 - **Self-reported cost per run.** Every subagent invocation's model and token usage gets recorded in a `Pipeline Token Usage` table appended to that game's own `GAME.md`, so the pipeline's resource cost is tracked alongside its output, not left opaque. Model choice itself is a deliberate, permanent default per agent (not a per-run override) — settled after empirically comparing Sonnet/Opus/Fable as playtesters on a real shipped game, and ultimately favoring the model that keeps the autonomous run inside its subscription usage allowance over the one with marginally sharper QA judgment.
+
+# Main features and functionalities
+
+- Each game is a single-page, self-contained HTML file — no build step, no dependencies, just open it in a browser
+- Every game is designed mobile-first: controls are touch-only (tap/swipe/drag/hold), no keyboard or mouse required
+- Every game ships with a companion design doc describing its pitch, controls, core mechanics, and win/lose conditions
+- Games are built through a staged pipeline — mechanics first, then visual polish, then difficulty tuning — each stage recorded as its own section in the game's design doc
+- New games get promotional thumbnails and a listing on the root landing page, so the collection is directly browsable/playable from `index.html`
+- The landing page itself is dynamic: it fetches its game list from a small Cloudflare Worker API (`GET /games`) instead of hardcoded HTML, kept in sync with `games/` by a CI step on every deploy
+- Each game is played through a small wrapper page with a 1-5 star rating bar; ratings are aggregated across visitors (via the same Worker), and the homepage can be sorted by Newest or Best Rated
+- New games are added as dated folders, so the collection doubles as a timeline of prototypes
+- A scheduled automation loop generates and publishes new games on its own, on a recurring cadence, with no human review in the loop — gated by an automated smoke check before anything ships, and able to resume from where it left off if interrupted partway through (e.g. a usage limit) instead of losing the run
 
 # Main parts of the project
 

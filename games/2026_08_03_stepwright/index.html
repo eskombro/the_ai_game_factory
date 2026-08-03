@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Stepwright</title>
+<style>
+  :root {
+    --ink-0:   #070b13;
+    --ink-1:   #0e1523;
+    --ink-2:   #151e30;
+    --line:    rgba(146, 190, 238, 0.16);
+    --line-2:  rgba(146, 190, 238, 0.30);
+    --paper:   #dbe6f6;
+    --paper-2: #93a6c2;
+    --paper-3: #64768f;
+    --go:      #5ef2b0;
+    --go-dark: #35b47f;
+    --gold:    #ffd45e;
+    --rock:    #d3808c;
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: var(--ink-0); color: var(--paper);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  #wrap { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ---------- top HUD strip (TOP_BAND = 40px, must not shrink) ---------- */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 40px;
+    padding: 0 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+  #hud .grp { display: flex; align-items: center; gap: 8px; }
+  #hud .cell {
+    display: flex; align-items: baseline; gap: 6px;
+    padding: 3px 9px 4px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: rgba(9, 14, 24, 0.62);
+    backdrop-filter: blur(2px);
+  }
+  #hud .lbl {
+    font-size: 8.5px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--paper-3);
+  }
+  #hud .val {
+    font-family: var(--font-mono);
+    font-size: 15px; font-weight: 600; color: var(--paper);
+    font-variant-numeric: tabular-nums;
+  }
+  #hearts {
+    color: var(--rock); letter-spacing: 3px; font-size: 16px; line-height: 1;
+    padding: 6px 9px;
+    text-shadow: 0 0 10px rgba(211, 128, 140, 0.45);
+  }
+  #hearts.pulse { animation: heartHit 0.5s ease-out; }
+  @keyframes heartHit {
+    0%   { transform: scale(1);   filter: brightness(1); }
+    18%  { transform: scale(1.3); filter: brightness(2); }
+    100% { transform: scale(1);   filter: brightness(1); }
+  }
+  #sndBtn {
+    pointer-events: auto;
+    width: 30px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+    font-size: 13px; line-height: 1; color: var(--paper-2);
+    background: rgba(9, 14, 24, 0.62);
+    border: 1px solid var(--line); border-radius: 4px;
+    touch-action: manipulation; cursor: pointer;
+  }
+  #sndBtn.off { color: var(--paper-3); opacity: 0.55; }
+
+  /* ---------- bottom band (BOTTOM_BAND = 92px, must not shrink) ---------- */
+  #footer {
+    position: absolute; left: 0; bottom: 0;
+    width: 100%; height: 92px;
+    padding: 12px 14px 10px;
+    display: flex; flex-direction: column; justify-content: center; gap: 9px;
+    pointer-events: none;
+  }
+  #footer .hintbox {
+    max-width: calc(100% - 96px);
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.04em; line-height: 1.3;
+    color: var(--paper-3);
+    text-transform: uppercase;
+  }
+  #footer b { color: var(--paper); font-weight: 700; }
+  #legend {
+    display: flex; align-items: center; gap: 12px;
+    max-width: calc(100% - 96px);
+    overflow: hidden; white-space: nowrap;
+  }
+  #legend .item { display: flex; align-items: center; gap: 6px; }
+  .sw {
+    flex: none;
+    width: 17px; height: 15px; border-radius: 2px;
+    border: 1px solid rgba(146, 190, 238, 0.22);
+  }
+  .sw.free {
+    background: linear-gradient(180deg, #38465f 0%, #26314a 100%);
+    border-top: 3px solid #93b2d6;
+  }
+  .sw.rock {
+    background:
+      repeating-linear-gradient(45deg, rgba(255,150,150,0.34) 0 1.5px, transparent 1.5px 5px),
+      linear-gradient(180deg, #4a2b33 0%, #331e25 100%);
+    border: 1px solid rgba(211, 128, 140, 0.55);
+    border-top: 3px solid #a5626b;
+  }
+  .sw.clamp {
+    background:
+      repeating-linear-gradient(0deg, rgba(255,214,140,0.30) 0 1.5px, transparent 1.5px 5px),
+      linear-gradient(180deg, #4b3f22 0%, #332a16 100%);
+    border: 1px dashed rgba(207, 165, 92, 0.75);
+    border-top: 3px solid #c39a4e;
+  }
+  #legend .cap {
+    font-family: var(--font-mono);
+    font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--paper-3);
+  }
+
+  @media (max-width: 380px) {
+    #legend { gap: 9px; }
+    #legend .item { gap: 5px; }
+    #legend .cap { font-size: 8.5px; letter-spacing: 0.07em; }
+    #footer .hintbox { font-size: 10.5px; letter-spacing: 0.02em; }
+  }
+
+  /* ---------- overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(146,190,238,0.045) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(146,190,238,0.045) 0 1px, transparent 1px 28px),
+      radial-gradient(120% 90% at 50% 22%, rgba(20, 30, 50, 0.97) 0%, rgba(6, 9, 16, 0.985) 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px 22px 120px 22px;
+    text-align: center;
+    animation: fadeIn 0.28s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .overlay.hidden { display: none; }
+  .card {
+    width: 100%; max-width: 360px;
+    padding: 22px 20px 24px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(10, 15, 25, 0.72);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(146, 190, 238, 0.10);
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .card::before, .card::after {
+    content: ""; position: absolute; width: 12px; height: 12px;
+    border: 1px solid var(--line-2);
+  }
+  .card::before { top: 6px; left: 6px; border-right: none; border-bottom: none; }
+  .card::after  { bottom: 6px; right: 6px; border-left: none; border-top: none; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.34em; text-transform: uppercase;
+    color: var(--go); opacity: 0.85; margin-bottom: 10px;
+  }
+  .overlay h1 {
+    font-size: 34px; font-weight: 800; margin: 0 0 2px 0;
+    letter-spacing: 0.20em; text-indent: 0.20em;
+    color: var(--paper);
+    text-shadow: 0 0 26px rgba(94, 242, 176, 0.16);
+  }
+  .overlay h2 {
+    font-size: 21px; font-weight: 700; margin: 0 0 4px 0;
+    letter-spacing: 0.09em; color: var(--paper);
+  }
+  .rule {
+    width: 64px; height: 1px; margin: 12px 0 12px;
+    background: linear-gradient(90deg, transparent, var(--line-2), transparent);
+  }
+  .overlay p {
+    font-size: 14.5px; line-height: 1.5; margin: 5px 0; max-width: 320px;
+    color: var(--paper-2);
+  }
+  .overlay p.lead { color: var(--paper); font-size: 15px; }
+  .overlay .rules { font-size: 13px; line-height: 1.5; color: var(--paper-3); }
+  .overlay .rules b { color: var(--paper-2); }
+  .keys {
+    display: flex; gap: 8px 14px; justify-content: center; flex-wrap: wrap;
+    margin: 14px 0 4px;
+  }
+  .keys .k {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--paper-2);
+  }
+  .keys .sw { width: 15px; height: 14px; }
+  .btn {
+    margin-top: 20px;
+    min-width: 200px; min-height: 62px;
+    padding: 16px 28px;
+    font-family: var(--font-ui);
+    font-size: 18px; font-weight: 800; letter-spacing: 0.16em;
+    color: #06120c; background: var(--go);
+    border: none; border-radius: 6px;
+    box-shadow: 0 0 0 1px rgba(94,242,176,0.5), 0 10px 30px rgba(94, 242, 176, 0.18);
+    touch-action: manipulation; cursor: pointer;
+    transition: transform 0.09s ease, background 0.12s ease, box-shadow 0.12s ease;
+  }
+  .btn:active {
+    background: var(--go-dark);
+    transform: translateY(2px) scale(0.985);
+    box-shadow: 0 0 0 1px rgba(94,242,176,0.4), 0 4px 14px rgba(94, 242, 176, 0.12);
+  }
+  #finalStats {
+    margin-top: 12px;
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  }
+  #finalStats .st {
+    min-width: 74px; padding: 8px 10px 9px;
+    border: 1px solid var(--line); border-radius: 5px;
+    background: rgba(146, 190, 238, 0.05);
+  }
+  #finalStats .st .k {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 8.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--paper-3); margin-bottom: 3px;
+  }
+  #finalStats .st .v {
+    font-family: var(--font-mono);
+    font-size: 20px; font-weight: 700; color: var(--paper);
+    font-variant-numeric: tabular-nums;
+  }
+  #finalStats .st.hi .v { color: var(--go); }
+
+  /* short viewports: keep the whole card (and its button) on screen */
+  @media (max-height: 700px) {
+    .overlay { padding: 14px 18px 104px; }
+    .overlay h1 { font-size: 27px; }
+    .overlay h2 { font-size: 19px; }
+    .overlay p { font-size: 13.5px; margin: 4px 0; }
+    .overlay .rules { font-size: 12.5px; }
+    .card { padding: 16px 16px 18px; }
+    .rule { margin: 9px 0; }
+    .keys { margin: 10px 0 2px; }
+    .btn { margin-top: 14px; min-height: 56px; font-size: 17px; }
+  }
+  @media (max-height: 560px) {
+    .overlay { padding: 10px 14px 96px; }
+    .overlay h1 { font-size: 23px; letter-spacing: 0.15em; text-indent: 0.15em; }
+    .overlay p { font-size: 12.5px; line-height: 1.4; }
+    .overlay .rules { font-size: 11.5px; line-height: 1.4; }
+    .card { padding: 12px 14px 14px; max-width: 380px; }
+    .eyebrow { margin-bottom: 6px; }
+    .rule { margin: 7px 0; }
+    .keys { margin: 8px 0 0; }
+    .btn { margin-top: 11px; min-height: 50px; font-size: 16px; }
+    #rulesB { display: none; }
+  }
+  @media (max-height: 430px) {
+    .overlay { padding: 8px 12px 90px; }
+    .overlay .eyebrow { display: none; }
+    .overlay h1 { font-size: 20px; }
+    .overlay h2 { font-size: 17px; }
+    .overlay p { font-size: 11.5px; margin: 3px 0; }
+    .overlay .rules { font-size: 11px; }
+    .card { padding: 10px 12px 12px; }
+    .rule { margin: 6px 0; }
+    .keys { margin: 6px 0 0; gap: 6px 12px; }
+    .btn { margin-top: 9px; min-height: 46px; font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div class="grp">
+      <button id="sndBtn" aria-label="Toggle sound">&#9834;</button>
+      <div class="cell" id="hearts">&hearts;&hearts;&hearts;</div>
+    </div>
+    <div class="grp">
+      <div class="cell"><span class="lbl">Steps</span><span class="val" id="steps">0</span></div>
+      <div class="cell"><span class="lbl">Score</span><span class="val" id="score">0</span></div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <div id="legend">
+      <div class="item"><span class="sw free"></span><span class="cap">Free</span></div>
+      <div class="item"><span class="sw rock"></span><span class="cap">Bedrock</span></div>
+      <div class="item"><span class="sw clamp"></span><span class="cap">Clamped</span></div>
+    </div>
+    <div class="hintbox">
+      Drag columns ahead &middot; climb <b>1</b> max &middot; drop <b>3</b> max
+    </div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <div class="eyebrow">Terrain Works</div>
+      <h1>STEPWRIGHT</h1>
+      <p class="lead">You cannot steer the walker. You build the ground under him.</p>
+      <div class="rule"></div>
+      <p class="rules">Drag any column ahead of him up or down to set its height. He can climb <b>1 block up</b> and drop <b>3 blocks down</b> &mdash; anything steeper is a stumble. Line a column up with a floating coin to grab it.</p>
+      <div class="keys">
+        <span class="k"><span class="sw free"></span>Free</span>
+        <span class="k"><span class="sw rock"></span>Bedrock &middot; fixed</span>
+        <span class="k"><span class="sw clamp"></span>Clamped &middot; ranged</span>
+      </div>
+      <p class="rules" id="rulesB">Hatched bedrock never moves. Striped columns only move inside their marked range. You cannot reach past the dashed line.</p>
+      <button class="btn" id="startBtn">START</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <div class="card">
+      <div class="eyebrow">Site Closed</div>
+      <h2>He stopped walking.</h2>
+      <div class="rule"></div>
+      <div id="finalStats"></div>
+      <button class="btn" id="againBtn">PLAY AGAIN</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+
+  // ---------- constants ----------
+  var MAXH = 8;          // max column level
+  var MAX_UP = 1;        // max levels the walker can climb in one step
+  var MAX_DROP = 3;      // max levels he can drop in one step
+  var HEARTS_START = 3;
+  var RIGHT_MARGIN = 88; // un-reachable strip on the right (keeps bottom-right corner free)
+  var BOTTOM_BAND = 92;  // reserved HUD band under the ground line
+  var TOP_BAND = 40;     // reserved HUD band on top
+  var SPD_MIN = 0.60;    // columns / second at start (was 0.75 - gentler opening pace)
+  var SPD_MAX = 2.10;    // columns / second at full ramp (unchanged - endgame ceiling)
+  var SPD_RAMP = 170;    // steps taken to reach SPD_MAX (was 150 - smoother, slightly longer climb)
+  var STAGGER = 0.7;     // seconds frozen after a stumble
+  var COIN_VALUE = 10;
+  var TUTORIAL_LEN = 14;    // columns pre-flattened as a free runway (was 8 - longer time to learn the drag)
+  var SPECIAL_RAMP = 160;   // columns after the tutorial over which bedrock/clamped frequency ramps to max
+
+  // ---------- palette (presentation only) ----------
+  var C = {
+    bgTop:    '#141d2f',
+    bgBot:    '#080c15',
+    far:      '#131b2b',
+    grid:     'rgba(146, 190, 238, 0.055)',
+    gridMaj:  'rgba(146, 190, 238, 0.11)',
+    slab:     '#05080e',
+    slabLine: 'rgba(146, 190, 238, 0.26)',
+    freeA:    '#38465f', freeB: '#232e45', freeCap: '#93b2d6', freeHi: '#cbdef4',
+    rockA:    '#4a2b33', rockB: '#2f1b22', rockCap: '#a5626b', rockHi: '#d3808c',
+    clampA:   '#4b3f22', clampB: '#2f2714', clampCap: '#c39a4e', clampHi: '#e7c479',
+    flashA:   '#7a2f38', flashB: '#5a222a', flashCap: '#e2727f', flashHi: '#ffb0b8',
+    walker:   '#fdf6e8', walkerHurt: '#ff9090',
+    coin:     '#ffd45e',
+    go:       '#5ef2b0',
+    reach:    'rgba(146, 190, 238, 0.24)'
+  };
+
+  // ---------- geometry (recomputed on resize) ----------
+  var W = 0, H = 0, DPR = 1;
+  var CW = 55, UH = 30, groundY = 400, anchorX = 90;
+  var bgGrad = null, vignette = null, horizon = null, veil = null;
+
+  function layout() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = cv.clientWidth || window.innerWidth;
+    H = cv.clientHeight || window.innerHeight;
+    cv.width = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    CW = Math.max(44, Math.min(66, W / 7));
+    groundY = H - BOTTOM_BAND;
+    UH = Math.max(18, Math.min(34, (groundY - TOP_BAND - 40) / (MAXH + 1)));
+    anchorX = Math.max(CW * 0.9, W * 0.24);
+
+    bgGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+    bgGrad.addColorStop(0, C.bgTop);
+    bgGrad.addColorStop(1, C.bgBot);
+    vignette = ctx.createRadialGradient(W * 0.5, groundY * 0.55, Math.min(W, H) * 0.24,
+                                        W * 0.5, groundY * 0.55, Math.max(W, H) * 0.80);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.42)');
+
+    veil = ctx.createLinearGradient(W - RIGHT_MARGIN, 0, W, 0);
+    veil.addColorStop(0, 'rgba(7, 11, 19, 0)');
+    veil.addColorStop(1, 'rgba(7, 11, 19, 0.55)');
+
+    horizon = ctx.createLinearGradient(0, Math.max(0, groundY - UH * 9), 0, groundY);
+    horizon.addColorStop(0, 'rgba(94, 242, 176, 0)');
+    horizon.addColorStop(0.62, 'rgba(80, 150, 200, 0.05)');
+    horizon.addColorStop(1, 'rgba(120, 190, 240, 0.11)');
+  }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 120); });
+
+  // ---------- textures (non-colour cues for column types) ----------
+  var patRock = null, patClamp = null;
+  (function buildPatterns() {
+    var a = document.createElement('canvas'); a.width = 8; a.height = 8;
+    var ga = a.getContext('2d');
+    ga.strokeStyle = 'rgba(255, 155, 155, 0.20)';
+    ga.lineWidth = 1.4;
+    ga.beginPath();
+    ga.moveTo(-2, 6); ga.lineTo(6, -2);
+    ga.moveTo(2, 10); ga.lineTo(10, 2);
+    ga.stroke();
+    patRock = ctx.createPattern(a, 'repeat');
+
+    var b = document.createElement('canvas'); b.width = 6; b.height = 6;
+    var gb = b.getContext('2d');
+    gb.fillStyle = 'rgba(255, 214, 140, 0.16)';
+    gb.fillRect(0, 0, 6, 1.6);
+    patClamp = ctx.createPattern(b, 'repeat');
+  })();
+
+  // ---------- helpers ----------
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function ri(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  function fhash(i) { var x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); }
+
+  // ---------- world ----------
+  var cols, maxGen, lastSpecial;
+  var walker, hearts, steps, coins, stagger, state, drags, shake;
+
+  function genCol(i) {
+    var c = { h: 2, minH: 0, maxH: MAXH, locked: false, coin: -1, gotCoin: false, flash: 0 };
+    if (i < TUTORIAL_LEN) { c.h = 2; c.minH = 0; c.maxH = MAXH; return c; }
+
+    // d ramps 0 -> 1 starting the moment the tutorial runway ends, so bedrock/clamped
+    // columns fade in from zero (no immediate jump) and only reach full frequency
+    // after SPECIAL_RAMP columns of plain, freely-draggable terrain.
+    var d = clamp((i - TUTORIAL_LEN) / SPECIAL_RAMP, 0, 1);
+    var canSpecial = (i - lastSpecial) >= 2;   // never two specials in a row -> always solvable
+    var r = Math.random();
+    var pLock = 0.30 * d;
+    var pClamp = 0.28 * d;
+
+    if (canSpecial && r < pLock) {
+      c.locked = true;
+      c.h = ri(0, 5);
+      c.minH = c.h; c.maxH = c.h;
+      lastSpecial = i;
+    } else if (canSpecial && r < pLock + pClamp) {
+      var span = ri(1, 3);
+      c.minH = ri(0, MAXH - span);
+      c.maxH = c.minH + span;
+      c.h = ri(c.minH, c.maxH);
+      lastSpecial = i;
+    } else {
+      c.h = ri(0, MAXH);
+      if (i > TUTORIAL_LEN && Math.random() < 0.20) c.coin = ri(2, 6);
+    }
+    return c;
+  }
+
+  function ensureGen(upto) {
+    while (maxGen < upto) { maxGen++; cols.set(maxGen, genCol(maxGen)); }
+  }
+
+  var FALLBACK = { h: 2, minH: 2, maxH: 2, locked: true, coin: -1, gotCoin: true, flash: 0 };
+  function getCol(i) {
+    if (i < 0) return FALLBACK;
+    if (!cols.has(i)) {
+      if (i <= maxGen) return FALLBACK;   // pruned behind the walker
+      ensureGen(i);
+    }
+    return cols.get(i) || FALLBACK;
+  }
+
+  function reset() {
+    cols = new Map();
+    maxGen = -1;
+    lastSpecial = -99;
+    ensureGen(24);
+    walker = { u: 2.5, index: 2, level: 2, drawLevel: 2, hurt: 0 };
+    hearts = HEARTS_START;
+    steps = 0;
+    coins = 0;
+    stagger = 0;
+    shake = 0;
+    drags = new Map();
+    parts.length = 0;
+    pops.length = 0;
+    squash = 0;
+    syncHud();
+  }
+
+  // ---------- HUD ----------
+  var elHearts = document.getElementById('hearts');
+  var elSteps = document.getElementById('steps');
+  var elScore = document.getElementById('score');
+  var startScreen = document.getElementById('startScreen');
+  var overScreen = document.getElementById('overScreen');
+  var finalStats = document.getElementById('finalStats');
+
+  function scoreValue() { return steps + coins * COIN_VALUE; }
+
+  function syncHud() {
+    var s = '';
+    for (var i = 0; i < hearts; i++) s += '♥';
+    for (var j = hearts; j < HEARTS_START; j++) s += '♡';
+    elHearts.textContent = s;
+    elSteps.textContent = String(steps);
+    elScore.textContent = String(scoreValue());
+  }
+
+  function pulseHearts() {
+    elHearts.classList.remove('pulse');
+    void elHearts.offsetWidth;
+    elHearts.classList.add('pulse');
+  }
+
+  // ---------- cosmetic fx ----------
+  var parts = [];   // dust / sparks
+  var pops = [];    // floating score text
+  var squash = 0;   // landing squash 0..1
+  var clock = 0;
+
+  function spawnDust(x, y, n, col) {
+    for (var i = 0; i < n; i++) {
+      if (parts.length > 90) break;
+      parts.push({
+        x: x + (Math.random() - 0.5) * 8,
+        y: y - Math.random() * 3,
+        vx: (Math.random() - 0.5) * 46 - 14,
+        vy: -Math.random() * 42 - 8,
+        life: 0.45 + Math.random() * 0.3, max: 0.75,
+        r: 1 + Math.random() * 1.8,
+        c: col || '#9fb6d6'
+      });
+    }
+  }
+
+  function spawnBurst(x, y, n, col) {
+    for (var i = 0; i < n; i++) {
+      if (parts.length > 90) break;
+      var a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+      var sp = 55 + Math.random() * 70;
+      parts.push({
+        x: x, y: y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20,
+        life: 0.5 + Math.random() * 0.25, max: 0.75,
+        r: 1.4 + Math.random() * 1.6,
+        c: col || C.coin
+      });
+    }
+  }
+
+  // ---------- sound (cosmetic; off-switch in HUD) ----------
+  var actx = null, sndOn = true;
+  var sndBtn = document.getElementById('sndBtn');
+
+  function audio() {
+    if (!sndOn) return null;
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+    }
+    if (actx && actx.state === 'suspended') { try { actx.resume(); } catch (e) {} }
+    return actx;
+  }
+
+  function beep(freq, dur, vol, type, slideTo) {
+    var a = audio();
+    if (!a) return;
+    try {
+      var o = a.createOscillator(), g = a.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, a.currentTime);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime + dur);
+      g.gain.setValueAtTime(0.0001, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(vol, a.currentTime + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+      o.connect(g); g.connect(a.destination);
+      o.start(); o.stop(a.currentTime + dur + 0.02);
+    } catch (e) {}
+  }
+
+  sndBtn.addEventListener('pointerup', function (e) {
+    e.preventDefault();
+    sndOn = !sndOn;
+    sndBtn.classList.toggle('off', !sndOn);
+    sndBtn.innerHTML = sndOn ? '&#9834;' : '&#9834;';
+    if (sndOn) beep(660, 0.07, 0.05, 'triangle');
+  });
+  sndBtn.addEventListener('click', function (e) { e.preventDefault(); });
+
+  // ---------- input ----------
+  function camX() { return walker.u * CW - anchorX; }
+
+  function colIndexAtScreenX(x) { return Math.floor((camX() + x) / CW); }
+
+  function levelFromY(y, c) {
+    var lvl = Math.round((groundY - y) / UH);
+    return clamp(lvl, c.minH, c.maxH);
+  }
+
+  function pointerPos(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function onDown(e) {
+    if (state !== 'play') return;
+    e.preventDefault();
+    var p = pointerPos(e);
+    if (p.x > W - RIGHT_MARGIN) return;      // out of reach (and keeps bottom-right free)
+    if (p.y > groundY) return;               // must grab above the ground line
+    if (p.y < TOP_BAND) return;              // HUD strip
+    var idx = colIndexAtScreenX(p.x);
+    if (idx <= walker.index) return;         // can't reshape the ground he's on or behind
+    var c = getCol(idx);
+    if (c.locked) { c.flash = 0.35; beep(150, 0.09, 0.05, 'square'); return; }
+    if (c.minH === c.maxH) { c.flash = 0.35; beep(150, 0.09, 0.05, 'square'); return; }
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    drags.set(e.pointerId, idx);
+    c.h = levelFromY(p.y, c);
+  }
+
+  function onMove(e) {
+    if (state !== 'play') return;
+    if (!drags.has(e.pointerId)) return;
+    e.preventDefault();
+    var idx = drags.get(e.pointerId);
+    if (idx <= walker.index) { drags.delete(e.pointerId); return; }
+    var c = getCol(idx);
+    var p = pointerPos(e);
+    var before = c.h;
+    c.h = levelFromY(p.y, c);
+    if (c.h !== before) beep(320 + c.h * 26, 0.035, 0.022, 'triangle');
+  }
+
+  function onUp(e) {
+    if (drags.has(e.pointerId)) drags.delete(e.pointerId);
+    try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  cv.addEventListener('pointerdown', onDown, { passive: false });
+  cv.addEventListener('pointermove', onMove, { passive: false });
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
+  cv.addEventListener('lostpointercapture', onUp);
+  cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+
+  function bindTap(el, fn) {
+    el.addEventListener('pointerup', function (e) { e.preventDefault(); fn(); });
+    el.addEventListener('click', function (e) { e.preventDefault(); });
+  }
+  bindTap(document.getElementById('startBtn'), startGame);
+  bindTap(document.getElementById('againBtn'), startGame);
+
+  function startGame() {
+    reset();
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+    state = 'play';
+    last = 0;
+    beep(520, 0.09, 0.06, 'triangle', 880);
+  }
+
+  function gameOver() {
+    state = 'over';
+    drags.clear();
+    finalStats.innerHTML =
+      '<div class="st"><span class="k">Steps</span><span class="v">' + steps + '</span></div>' +
+      '<div class="st"><span class="k">Coins</span><span class="v">' + coins + '</span></div>' +
+      '<div class="st hi"><span class="k">Score</span><span class="v">' + scoreValue() + '</span></div>';
+    overScreen.classList.remove('hidden');
+    beep(220, 0.5, 0.07, 'sawtooth', 70);
+  }
+
+  // ---------- simulation ----------
+  function currentSpeed() {
+    var t = clamp(steps / SPD_RAMP, 0, 1);
+    return SPD_MIN + (SPD_MAX - SPD_MIN) * t;
+  }
+
+  function stumble() {
+    hearts--;
+    stagger = STAGGER;
+    walker.hurt = 0.6;
+    shake = 10;
+    syncHud();
+    pulseHearts();
+    spawnDust(walker.u * CW - camX(), groundY - walker.drawLevel * UH, 12, '#ff9090');
+    beep(180, 0.22, 0.07, 'square', 80);
+    if (hearts <= 0) gameOver();
+  }
+
+  function stepOnto(idx) {
+    var c = getCol(idx);
+    var from = walker.level;
+    var to = c.h;
+    walker.index = idx;
+    steps++;
+    if (to - from > MAX_UP || from - to > MAX_DROP) {
+      walker.level = to;
+      stumble();
+    } else {
+      walker.level = to;
+      if (c.coin >= 0 && !c.gotCoin && c.h === c.coin) {
+        c.gotCoin = true;
+        coins++;
+        var ccx = idx * CW - camX() + CW / 2;
+        var ccy = groundY - c.coin * UH - 14;
+        spawnBurst(ccx, ccy, 10, C.coin);
+        pops.push({ x: ccx, y: ccy, life: 0.9, max: 0.9, txt: '+' + COIN_VALUE });
+        beep(880, 0.07, 0.06, 'triangle');
+        beep(1320, 0.11, 0.045, 'triangle');
+      } else {
+        squash = Math.max(squash, clamp((from - to) / MAX_DROP, 0.25, 1));
+        if (from - to >= 2) {
+          spawnDust(walker.u * CW - camX(), groundY - to * UH, 4, '#8fa8c8');
+          beep(140 + to * 8, 0.06, 0.028, 'sine');
+        }
+      }
+    }
+    // drop drags that are no longer legal
+    drags.forEach(function (v, k) { if (v <= walker.index) drags.delete(k); });
+    // prune far-behind columns
+    if (idx > 12) cols.delete(idx - 12);
+    syncHud();
+  }
+
+  function update(dt) {
+    if (state !== 'play') return;
+
+    if (stagger > 0) {
+      stagger -= dt;
+    } else {
+      walker.u += currentSpeed() * dt;
+      var idx = Math.floor(walker.u);
+      while (idx > walker.index && state === 'play') {
+        stepOnto(walker.index + 1);
+      }
+    }
+
+    if (walker.hurt > 0) walker.hurt -= dt;
+    if (shake > 0) shake = Math.max(0, shake - dt * 40);
+    if (squash > 0) squash = Math.max(0, squash - dt * 4.5);
+
+    walker.drawLevel += (walker.level - walker.drawLevel) * Math.min(1, dt * 16);
+
+    ensureGen(walker.index + 24);
+
+    cols.forEach(function (c) { if (c.flash > 0) c.flash -= dt; });
+
+    var i;
+    for (i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      p.vy += 260 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    for (i = pops.length - 1; i >= 0; i--) {
+      pops[i].life -= dt;
+      pops[i].y -= 26 * dt;
+      if (pops[i].life <= 0) pops.splice(i, 1);
+    }
+  }
+
+  // ---------- render ----------
+  function colTopY(h) { return groundY - h * UH; }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function drawBackdrop(cam) {
+    ctx.fillStyle = bgGrad || C.bgBot;
+    ctx.fillRect(0, 0, W, groundY + 2);
+    if (horizon) {
+      ctx.fillStyle = horizon;
+      ctx.fillRect(0, Math.max(0, groundY - UH * 9), W, Math.min(groundY, UH * 9));
+    }
+
+    // distant parallax skyline of columns
+    var pcam = cam * 0.42;
+    var pw = CW * 1.7;
+    var pf = Math.floor(pcam / pw) - 1;
+    var pl = Math.ceil((pcam + W) / pw) + 1;
+    ctx.fillStyle = C.far;
+    for (var i = pf; i <= pl; i++) {
+      var hgt = (1.2 + fhash(i) * 4.6) * UH;
+      var px = i * pw - pcam;
+      ctx.fillRect(px, groundY - hgt, pw - 6, hgt);
+    }
+
+    // blueprint grid: horizontals snap to level heights, verticals to column edges
+    ctx.lineWidth = 1;
+    for (var k = 0; k <= MAXH; k++) {
+      var y = colTopY(k) + 0.5;
+      if (y < TOP_BAND - 8) continue;
+      ctx.strokeStyle = (k % 4 === 0) ? C.gridMaj : C.grid;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    var vf = Math.floor(cam / CW) - 1;
+    var vl = Math.ceil((cam + W) / CW) + 1;
+    ctx.strokeStyle = C.grid;
+    ctx.beginPath();
+    for (var v = vf; v <= vl; v++) {
+      var vx = Math.round(v * CW - cam) + 0.5;
+      ctx.moveTo(vx, Math.max(TOP_BAND - 8, colTopY(MAXH) - UH));
+      ctx.lineTo(vx, groundY);
+    }
+    ctx.stroke();
+  }
+
+  function drawSlab(cam) {
+    ctx.fillStyle = C.slab;
+    ctx.fillRect(0, groundY, W, H - groundY);
+    ctx.strokeStyle = C.slabLine;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, groundY + 0.5); ctx.lineTo(W, groundY + 0.5); ctx.stroke();
+    // ruler ticks along the ground line, anchored to the world
+    ctx.strokeStyle = 'rgba(146, 190, 238, 0.14)';
+    ctx.beginPath();
+    var tf = Math.floor(cam / (CW / 2)) - 1;
+    var tl = Math.ceil((cam + W) / (CW / 2)) + 1;
+    for (var i = tf; i <= tl; i++) {
+      var x = Math.round(i * (CW / 2) - cam) + 0.5;
+      var len = (i % 2 === 0) ? 8 : 4;
+      ctx.moveTo(x, groundY + 2); ctx.lineTo(x, groundY + 2 + len);
+    }
+    ctx.stroke();
+  }
+
+  function drawColumn(i, c, x, cam, faded) {
+    var top = colTopY(c.h);
+    var kind = c.locked ? 'rock' : ((c.minH > 0 || c.maxH < MAXH) ? 'clamp' : 'free');
+    var a, b, cap, hi, pat = null, edge = null, dash = null;
+
+    if (kind === 'rock') { a = C.rockA; b = C.rockB; cap = C.rockCap; hi = C.rockHi; pat = patRock; edge = 'rgba(211,128,140,0.45)'; }
+    else if (kind === 'clamp') { a = C.clampA; b = C.clampB; cap = C.clampCap; hi = C.clampHi; pat = patClamp; edge = 'rgba(207,165,92,0.55)'; dash = [4, 3]; }
+    else { a = C.freeA; b = C.freeB; cap = C.freeCap; hi = C.freeHi; }
+
+    if (c.flash > 0) { a = C.flashA; b = C.flashB; cap = C.flashCap; hi = C.flashHi; edge = 'rgba(255,160,170,0.8)'; }
+
+    if (faded) ctx.globalAlpha = 0.4;
+
+    var bx = x + 1, bw = CW - 2;
+
+    if (c.h > 0) {
+      var g = ctx.createLinearGradient(0, top, 0, groundY);
+      g.addColorStop(0, a);
+      g.addColorStop(1, b);
+      ctx.fillStyle = g;
+      ctx.fillRect(bx, top, bw, groundY - top);
+
+      if (pat) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(bx, top, bw, groundY - top); ctx.clip();
+        ctx.translate(bx, top);
+        ctx.fillStyle = pat;
+        ctx.fillRect(0, 0, bw, groundY - top);
+        ctx.restore();
+      }
+      // inner left light / right shade for volume
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(bx, top, 2, groundY - top);
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillRect(bx + bw - 2, top, 2, groundY - top);
+
+      if (edge) {
+        ctx.strokeStyle = edge;
+        ctx.lineWidth = 1;
+        if (dash) ctx.setLineDash(dash);
+        ctx.strokeRect(bx + 0.5, top + 0.5, bw - 1, groundY - top);
+        ctx.setLineDash([]);
+      }
+    }
+
+    // cap
+    ctx.fillStyle = cap;
+    ctx.fillRect(bx, top - 5, bw, 6);
+    ctx.fillStyle = hi;
+    ctx.fillRect(bx, top - 5, bw, 2);
+
+    // non-colour cap signature per type
+    if (kind === 'rock') {
+      ctx.fillStyle = 'rgba(10,12,18,0.55)';
+      for (var t = 0; t < 4; t++) {
+        ctx.fillRect(bx + 2 + t * (bw - 4) / 3.6, top - 5, 2, 6);
+      }
+    } else if (kind === 'clamp') {
+      ctx.fillStyle = 'rgba(10,12,18,0.5)';
+      ctx.fillRect(bx, top - 2, bw, 1.4);
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRangeMarks(c, x) {
+    ctx.strokeStyle = 'rgba(240, 200, 110, 0.75)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, colTopY(c.maxH) + 0.5);
+    ctx.lineTo(x + CW - 3, colTopY(c.maxH) + 0.5);
+    ctx.moveTo(x + 3, colTopY(c.minH) + 0.5);
+    ctx.lineTo(x + CW - 3, colTopY(c.minH) + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // chevrons: ceiling points up, floor points down (non-colour range cue)
+    ctx.fillStyle = 'rgba(226, 178, 74, 0.75)';
+    var mx = x + CW / 2;
+    var ty = colTopY(c.maxH) - 2;
+    ctx.beginPath();
+    ctx.moveTo(mx, ty - 4); ctx.lineTo(mx + 4, ty); ctx.lineTo(mx - 4, ty);
+    ctx.closePath(); ctx.fill();
+    var by = colTopY(c.minH) + 2;
+    ctx.beginPath();
+    ctx.moveTo(mx, by + 4); ctx.lineTo(mx + 4, by); ctx.lineTo(mx - 4, by);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawCoin(c, x, i, faded) {
+    var lvlY = colTopY(c.coin);
+    var cy = lvlY - 15 + Math.sin(clock * 2.6 + i) * 2.2;
+    var cx = x + CW / 2;
+    ctx.globalAlpha = faded ? 0.45 : 1;
+
+    // target tick at the exact required height
+    ctx.strokeStyle = 'rgba(255, 212, 94, 0.45)';
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 2, lvlY + 0.5); ctx.lineTo(x + CW - 2, lvlY + 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255, 212, 94, 0.8)';
+    ctx.beginPath();
+    ctx.moveTo(x + 2.5, lvlY - 3); ctx.lineTo(x + 2.5, lvlY + 3);
+    ctx.moveTo(x + CW - 2.5, lvlY - 3); ctx.lineTo(x + CW - 2.5, lvlY + 3);
+    ctx.stroke();
+
+    // coin: squashed disc + ring, glowing
+    var wob = Math.abs(Math.cos(clock * 2.2 + i)) * 0.75 + 0.25;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(wob, 1);
+    ctx.fillStyle = 'rgba(255, 212, 94, 0.16)';
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = C.coin;
+    ctx.beginPath(); ctx.arc(0, 0, 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(90, 60, 10, 0.5)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawWalker(wx, wy) {
+    var hurt = walker.hurt > 0;
+    var ink = hurt ? C.walkerHurt : C.walker;
+    var moving = (state === 'play' && stagger <= 0);
+    var ph = walker.u * Math.PI * 2;
+    var sw = moving ? Math.sin(ph) : 0;
+    var bob = moving ? Math.abs(Math.cos(ph)) * 1.5 : 0;
+    var sq = squash;
+    var vs = 1 - sq * 0.22;
+    var tilt = hurt ? 0.34 * clamp(walker.hurt / 0.6, 0, 1) : 0;
+
+    ctx.save();
+    ctx.translate(wx, wy);
+    ctx.rotate(tilt);
+
+    // contact shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath(); ctx.ellipse(0, 1, 11, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+    var legL = 14 * vs;
+    var hipY = -legL - bob;
+    var torsoH = 16 * vs;
+    var shY = hipY - torsoH;
+
+    ctx.strokeStyle = ink;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // legs
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(0, hipY); ctx.lineTo(sw * 6, -Math.max(0, Math.sin(ph)) * 3);
+    ctx.moveTo(0, hipY); ctx.lineTo(-sw * 6, -Math.max(0, -Math.sin(ph)) * 3);
+    ctx.stroke();
+
+    // torso
+    ctx.lineWidth = 8 * (1 + sq * 0.18);
+    ctx.beginPath();
+    ctx.moveTo(0, hipY); ctx.lineTo(0, shY + 1);
+    ctx.stroke();
+
+    // arm (counter-swings)
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = hurt ? C.walkerHurt : 'rgba(253,246,232,0.82)';
+    ctx.beginPath();
+    ctx.moveTo(0, shY + 4); ctx.lineTo(-sw * 7, shY + 11 - Math.abs(sw) * 2);
+    ctx.stroke();
+
+    // head
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.arc(0, shY - 5.5, 6.2, 0, Math.PI * 2);
+    ctx.fill();
+    // tiny lamp/visor facing forward
+    ctx.fillStyle = hurt ? 'rgba(255,255,255,0.5)' : C.go;
+    ctx.fillRect(2, shY - 7.5, 4.6, 2.2);
+
+    ctx.restore();
+  }
+
+  function draw() {
+    var sx = shake > 0 ? (Math.random() - 0.5) * shake * 0.5 : 0;
+    var sy = shake > 0 ? (Math.random() - 0.5) * shake * 0.5 : 0;
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = C.bgBot;
+    ctx.fillRect(0, 0, W, H);
+    ctx.translate(sx, sy);
+
+    var cam = camX();
+    var first = Math.floor(cam / CW) - 1;
+    var last2 = Math.ceil((cam + W) / CW) + 1;
+    ensureGen(last2 + 2);
+
+    var reachX = W - RIGHT_MARGIN;
+
+    drawBackdrop(cam);
+    drawSlab(cam);
+
+    // legal landing band on the very next column
+    var nextIdx = walker.index + 1;
+    var lo = Math.max(0, walker.level - MAX_DROP);
+    var hi = Math.min(MAXH, walker.level + MAX_UP);
+    var nx = nextIdx * CW - cam;
+    var bandY = colTopY(hi), bandH = colTopY(lo) - colTopY(hi) + 2;
+    var pulse = 0.10 + 0.05 * (0.5 + 0.5 * Math.sin(clock * 3.4));
+    ctx.fillStyle = 'rgba(94, 242, 176, ' + pulse.toFixed(3) + ')';
+    ctx.fillRect(nx, bandY, CW, bandH);
+    ctx.strokeStyle = 'rgba(94, 242, 176, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(nx + 0.5, bandY + 0.5, CW - 1, bandH - 1);
+    ctx.setLineDash([]);
+    // solid corner brackets so the band reads without relying on hue
+    ctx.strokeStyle = 'rgba(94, 242, 176, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(nx + 1, bandY + 7); ctx.lineTo(nx + 1, bandY + 1); ctx.lineTo(nx + 8, bandY + 1);
+    ctx.moveTo(nx + CW - 8, bandY + 1); ctx.lineTo(nx + CW - 1, bandY + 1); ctx.lineTo(nx + CW - 1, bandY + 7);
+    ctx.moveTo(nx + 1, bandY + bandH - 8); ctx.lineTo(nx + 1, bandY + bandH - 1); ctx.lineTo(nx + 8, bandY + bandH - 1);
+    ctx.moveTo(nx + CW - 8, bandY + bandH - 1); ctx.lineTo(nx + CW - 1, bandY + bandH - 1); ctx.lineTo(nx + CW - 1, bandY + bandH - 8);
+    ctx.stroke();
+
+    for (var i = first; i <= last2; i++) {
+      if (i < 0) continue;
+      var c = getCol(i);
+      var x = i * CW - cam;
+      var top = colTopY(c.h);
+      var behind = i <= walker.index;
+      var outOfReach = (x + CW * 0.5) > reachX;
+      var faded = behind || outOfReach;
+
+      drawColumn(i, c, x, cam, faded);
+
+      // allowed-range markers for clamped columns (over the body so the floor stays visible)
+      if (!c.locked && (c.minH > 0 || c.maxH < MAXH)) {
+        if (faded) ctx.globalAlpha = 0.5;
+        drawRangeMarks(c, x);
+        ctx.globalAlpha = 1;
+      }
+
+      // dragging highlight
+      var dragged = false;
+      drags.forEach(function (v) { if (v === i) dragged = true; });
+      if (dragged) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, top - 5, CW - 2, groundY - top + 6);
+        ctx.strokeStyle = 'rgba(94, 242, 176, 0.45)';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(x + 1, top - 5, CW - 2, groundY - top + 6);
+        // height read-out ticks on the grabbed column
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(x + CW / 2 - 9, top - 12, 18, 2);
+      }
+
+      // coin
+      if (c.coin >= 0 && !c.gotCoin) drawCoin(c, x, i, faded);
+    }
+
+    // reach limit line
+    ctx.strokeStyle = C.reach;
+    ctx.setLineDash([6, 8]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(reachX, TOP_BAND);
+    ctx.lineTo(reachX, groundY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // soft "out of reach" veil on the preview strip
+    if (veil) {
+      ctx.fillStyle = veil;
+      ctx.fillRect(reachX, TOP_BAND, W - reachX, groundY - TOP_BAND);
+    }
+
+    // particles
+    for (var pi = 0; pi < parts.length; pi++) {
+      var p = parts[pi];
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // walker
+    var wx = walker.u * CW - cam;
+    var wy = groundY - walker.drawLevel * UH;
+    drawWalker(wx, wy);
+
+    // floating score pops
+    ctx.textAlign = 'center';
+    ctx.font = '700 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    for (var oi = 0; oi < pops.length; oi++) {
+      var o = pops[oi];
+      ctx.globalAlpha = clamp(o.life / o.max, 0, 1);
+      ctx.fillStyle = C.coin;
+      ctx.fillText(o.txt, o.x, o.y);
+    }
+    ctx.globalAlpha = 1;
+
+    // vignette + hurt flash
+    if (vignette) { ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H); }
+    if (walker.hurt > 0) {
+      ctx.fillStyle = 'rgba(255, 80, 80, ' + (0.13 * clamp(walker.hurt / 0.6, 0, 1)).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  // ---------- loop ----------
+  var last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    clock += dt;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  layout();
+  reset();
+  state = 'start';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Leadline</title>
+<style>
+  /* ============================================================
+     LEADLINE — "night stage telemetry"
+     Palette: cold near-black void, pine-dark verge, slate asphalt.
+     Exactly two accents: mint (your line / your agency) and
+     amber-to-coral (time, hazard, warning).
+     ============================================================ */
+  :root {
+    --void:    #070b10;
+    --panel:   rgba(8, 12, 17, 0.72);
+    --mint:    #5ff0c0;
+    --mint-dk: #2fbf94;
+    --amber:   #ffd166;
+    --coral:   #ff6a45;
+    --ink:     #04070b;
+    --text:    #e7eef7;
+    --muted:   #7d8da0;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: #05080c; color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+  #wrap {
+    position: relative;
+    width: 100%; height: 100%;
+    max-width: 560px; margin: 0 auto;
+    touch-action: none;
+    background: var(--void);
+    box-shadow: 0 0 0 1px rgba(95, 240, 192, 0.07), 0 0 60px rgba(0, 0, 0, 0.9);
+    overflow: hidden;
+  }
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; background: var(--void); }
+
+  /* ---- HUD (top bar, never intercepts pointer input) ---- */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 10px 12px 18px;
+    pointer-events: none;
+    display: flex; align-items: flex-start; gap: 14px;
+    line-height: 1.1;
+    background: linear-gradient(180deg, rgba(4,7,11,0.92) 0%, rgba(4,7,11,0.55) 58%, rgba(4,7,11,0) 100%);
+    opacity: 0; transition: opacity .25s ease;
+  }
+  /* HUD + nag only exist during a run, so they never ghost behind an overlay */
+  body.playing #hud { opacity: 1; }
+  body:not(.playing) #warn { opacity: 0 !important; }
+  #hud .cell { min-width: 64px; }
+  #hud .lbl {
+    font-size: 9px; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase;
+    color: #6f8299;
+    margin-bottom: 3px;
+  }
+  #hud .val {
+    font-family: var(--mono);
+    font-size: 19px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+    color: var(--text);
+    text-shadow: 0 0 12px rgba(95, 240, 192, 0.18);
+  }
+  #hud #dist { color: var(--mint); text-shadow: 0 0 14px rgba(95, 240, 192, 0.35); }
+  #hud #time { transition: color .18s ease; }
+  #hud #time.low { color: var(--coral); text-shadow: 0 0 16px rgba(255, 106, 69, 0.5); animation: tick .5s steps(2, end) infinite; }
+  @keyframes tick { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  #hud #time.gain { animation: gain .5s ease-out; }
+  @keyframes gain {
+    0%   { color: var(--amber); text-shadow: 0 0 22px rgba(255, 209, 102, .8); transform: scale(1.14); }
+    100% { color: var(--text);  text-shadow: 0 0 12px rgba(95, 240, 192, .18); transform: scale(1); }
+  }
+  #throttleWrap { flex: 1; }
+  #throttleBox {
+    height: 10px; border-radius: 5px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  #throttleBar {
+    height: 100%; width: 0%;
+    background: var(--mint);
+    border-radius: 5px;
+    transition: width .08s linear, background-color .2s ease;
+  }
+  #warn {
+    position: absolute; left: 0; right: 0; top: 62px;
+    text-align: center;
+    pointer-events: none; opacity: 0;
+    transition: opacity .18s ease;
+  }
+  #warn span {
+    display: inline-block;
+    padding: 5px 13px;
+    font-family: var(--mono);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .22em; text-transform: uppercase;
+    color: var(--amber);
+    background: rgba(8, 12, 17, 0.7);
+    border: 1px solid rgba(255, 209, 102, 0.35);
+    border-radius: 999px;
+    animation: nag 1.1s ease-in-out infinite;
+  }
+  @keyframes nag { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+
+  /* ---- Overlays (start / game over) ---- */
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 28px 24px 56px;
+    text-align: center;
+    background:
+      radial-gradient(120% 78% at 50% 34%, rgba(14, 34, 30, 0.55) 0%, rgba(5, 8, 12, 0.94) 62%),
+      rgba(5, 8, 12, 0.93);
+    animation: fadeIn .28s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .overlay.hidden { display: none; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: .34em; text-transform: uppercase;
+    color: var(--mint-dk);
+  }
+  .overlay h1 {
+    margin: 0;
+    font-size: clamp(34px, 12vw, 46px); font-weight: 800;
+    letter-spacing: .16em;
+    color: var(--text);
+    text-shadow: 0 0 34px rgba(95, 240, 192, 0.28);
+  }
+  .overlay h1 .l { color: var(--mint); }
+  .rule {
+    width: 132px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--mint), transparent);
+    opacity: .7;
+  }
+  .overlay h2 {
+    margin: 0;
+    font-size: 15px; font-weight: 700;
+    letter-spacing: .3em; text-transform: uppercase;
+    color: var(--coral);
+  }
+  .overlay p {
+    margin: 0; font-size: 15px; line-height: 1.6;
+    max-width: 330px; color: #b3c1d1;
+  }
+  .overlay p.lede { color: var(--text); font-weight: 600; }
+  .overlay .rules {
+    text-align: left; font-size: 14px;
+    padding: 14px 16px;
+    border-left: 2px solid rgba(95, 240, 192, 0.4);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 0 8px 8px 0;
+  }
+  .overlay .rules b { color: var(--mint); font-weight: 600; }
+  .btn {
+    margin-top: 8px;
+    min-width: 214px; min-height: 64px;
+    padding: 16px 30px;
+    font-family: var(--sans);
+    font-size: 18px; font-weight: 800; letter-spacing: .18em;
+    color: var(--ink);
+    background: linear-gradient(180deg, var(--mint) 0%, var(--mint-dk) 100%);
+    border: none; border-radius: 14px;
+    cursor: pointer; touch-action: manipulation;
+    box-shadow: 0 0 0 1px rgba(95, 240, 192, 0.5), 0 10px 30px rgba(47, 191, 148, 0.28);
+    transition: transform .1s ease, box-shadow .1s ease, filter .1s ease;
+  }
+  .btn:active {
+    transform: translateY(2px) scale(.985);
+    filter: brightness(.92);
+    box-shadow: 0 0 0 1px rgba(95, 240, 192, 0.45), 0 4px 14px rgba(47, 191, 148, 0.2);
+  }
+  .stats { font-size: 12px; letter-spacing: .24em; text-transform: uppercase; color: #6f8299; font-weight: 700; }
+  .stats .big {
+    display: block;
+    font-family: var(--mono);
+    font-size: clamp(44px, 16vw, 58px); font-weight: 700;
+    letter-spacing: -.02em; text-transform: none;
+    color: var(--mint);
+    text-shadow: 0 0 40px rgba(95, 240, 192, 0.32);
+    margin-bottom: 2px;
+  }
+  #bestLine {
+    font-family: var(--mono);
+    font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+    color: #7d8da0; font-weight: 600;
+  }
+  #bestLine.record { color: var(--amber); }
+  .foot {
+    position: absolute; bottom: 14px; left: 0; right: 0;
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+    color: #4d5c6e;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div class="cell"><div class="lbl">Time</div><div class="val" id="time">20.0</div></div>
+    <div class="cell"><div class="lbl">Dist</div><div class="val" id="dist">0m</div></div>
+    <div id="throttleWrap">
+      <div class="lbl">Throttle &mdash; line ahead</div>
+      <div id="throttleBox"><div id="throttleBar"></div></div>
+    </div>
+  </div>
+  <div id="warn"><span>Draw ahead</span></div>
+
+  <div class="overlay" id="startScreen">
+    <div class="eyebrow">Endless night stage</div>
+    <h1><span class="l">LEAD</span>LINE</h1>
+    <div class="rule"></div>
+    <p class="lede">Drag to draw the line your car follows.</p>
+    <p class="rules">
+      The car only speeds up while there is unused line <b>ahead</b> of it — your drawn line is the throttle.
+      Keep drawing ahead, pass the glowing checkpoints for more time, stay on the road and miss the blockers.
+    </p>
+    <button class="btn" id="startBtn">START</button>
+    <div class="foot">drag anywhere &middot; touch or mouse</div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <h2 id="overTitle">Time up</h2>
+    <div class="rule"></div>
+    <div class="stats"><span class="big" id="finalDist">0m</span>distance</div>
+    <div class="stats" id="bestLine">best 0m</div>
+    <button class="btn" id="retryBtn">DRIVE AGAIN</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+     TUNING  — pacing constants (safe for a balance pass to edit)
+     ============================================================ */
+  var TUNE = {
+    START_TIME: 24,          // seconds on the clock at launch
+    MAX_TIME: 30,            // clock cap so bonuses can't stockpile
+    CP_GAP_BASE: 640,        // px between checkpoints at the start
+    CP_GAP_GROWTH: 0.048,    // extra px of gap per px travelled
+    CP_BONUS: 5.5,           // seconds awarded per checkpoint
+
+    SPEED_BASE: 190,         // px/s top speed at distance 0
+    SPEED_GAIN: 240,         // additional top speed at full ramp (same 430 ceiling as before)
+    SPEED_RAMP: 16000,       // px travelled to reach full top speed (was 13000 — longer runway)
+    ACCEL: 130,              // px/s^2
+    BRAKE: 260,              // px/s^2 when over the current cap
+    MIN_SPEED: 40,           // the car never fully stops
+    OFFROAD_SPEED: 95,       // speed cap while off the tarmac
+
+    THROTTLE_FULL: 300,      // px of line ahead that counts as full throttle
+    THROTTLE_FLOOR: 0.30,    // speed cap fraction with no line at all
+
+    TURN_BASE: 3.4,          // rad/s steering rate at a standstill
+    TURN_SPEED_REF: 260,     // higher = less understeer at speed
+    HEADING_LIMIT: 1.05,     // rad; car can never point sideways/backwards
+    LOOKAHEAD: 46,           // px ahead on the line the car aims for
+    CORNER_DRAG: 26,         // speed bled per rad/s of steering
+
+    ROAD_W_START: 0.33,      // half-width as a fraction of screen width (wider opening lane)
+    ROAD_W_END: 0.175,       // ceiling unchanged
+    ROAD_W_RAMP: 12000,      // was 9000 — narrows more gradually
+    WANDER_START: 0.20,      // how much of the free space the road uses (gentler opening bends)
+    WANDER_END: 0.95,        // ceiling unchanged
+    WANDER_RAMP: 12000,      // was 8000 — matches ROAD_W_RAMP so the two hazards ramp together
+
+    OBS_FIRST: 950,          // px before the first blocker appears (was 620 — real warm-up lap)
+    OBS_GAP_START: 640,      // was 520 — more room between early blockers
+    OBS_GAP_END: 210,        // ceiling unchanged
+    OBS_GAP_RAMP: 12500,     // was 9000 — density grows more gradually
+    OBS_PENALTY: 3.0,        // seconds lost on a hit
+    OBS_SPEED_KEEP: 0.32,    // speed multiplier after a hit
+
+    CAR_R: 10,
+    OBS_R: 13
+  };
+
+  /* ============================================================
+     Canvas / layout
+     ============================================================ */
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var W = 360, H = 640, CAR_SCREEN_Y = 460;
+
+  function resize() {
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = Math.max(200, cv.clientWidth);
+    H = Math.max(320, cv.clientHeight);
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    CAR_SCREEN_Y = H * 0.72;
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 120); });
+
+  /* ============================================================
+     Helpers
+     ============================================================ */
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function lerp(a, b, t) { return a + (b - a) * clamp(t, 0, 1); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  /* ============================================================
+     Road: analytic, smooth, always fully on screen
+     ============================================================ */
+  var harmonics = [];
+  function seedRoad() {
+    harmonics = [
+      { a: 0.55, f: 1 / 210, p: Math.random() * 6.28 },
+      { a: 0.30, f: 1 / 118, p: Math.random() * 6.28 },
+      { a: 0.15, f: 1 / 63,  p: Math.random() * 6.28 }
+    ];
+  }
+  function halfWidthAt(d) {
+    return W * lerp(TUNE.ROAD_W_START, TUNE.ROAD_W_END, d / TUNE.ROAD_W_RAMP);
+  }
+  function wanderAt(d) {
+    return lerp(TUNE.WANDER_START, TUNE.WANDER_END, d / TUNE.WANDER_RAMP);
+  }
+  // Road geometry for a given world y.
+  function roadAt(wy) {
+    var d = Math.max(0, wy - game.startY);
+    var hw = halfWidthAt(d);
+    var free = Math.max(6, W / 2 - hw - 8);
+    var amp = free * wanderAt(d);
+    var off = 0;
+    for (var i = 0; i < harmonics.length; i++) {
+      off += harmonics[i].a * Math.sin(wy * harmonics[i].f + harmonics[i].p);
+    }
+    return { cx: W / 2 + off * amp, hw: hw };
+  }
+
+  /* ============================================================
+     Game state
+     ============================================================ */
+  var game = null;
+  var state = "start";      // "start" | "play" | "over"
+  var best = 0;
+  try { best = parseInt(localStorage.getItem("leadline_best") || "0", 10) || 0; } catch (e) { best = 0; }
+
+  function newGame() {
+    seedRoad();
+    var startY = 0;
+    game = {
+      startY: startY,
+      car: { x: W / 2, y: startY, a: 0, v: TUNE.MIN_SPEED },
+      path: [],            // world-space points of the drawn line
+      idx: 0,              // first path point not yet passed by the car
+      time: TUNE.START_TIME,
+      dist: 0,
+      obstacles: [],
+      obsNextY: startY + TUNE.OBS_FIRST,
+      cpY: startY + TUNE.CP_GAP_BASE,
+      cpFlash: 0,
+      hitFlash: 0,
+      offroad: false,
+      throttle: 0,
+      noLine: true
+    };
+    // The road formula reads game.startY, so it must exist before the car is placed.
+    game.car.x = roadAt(startY).cx;
+  }
+
+  /* ============================================================
+     World generation
+     ============================================================ */
+  function generateAhead() {
+    var horizon = game.car.y + H * 1.25;
+    var guard = 0;
+    while (game.obsNextY < horizon && guard++ < 60) {
+      var y = game.obsNextY;
+      var d = Math.max(0, y - game.startY);
+      var r = roadAt(y);
+      var lane = rand(-0.62, 0.62);
+      game.obstacles.push({ x: r.cx + lane * r.hw, y: y, hit: false });
+      var gap = lerp(TUNE.OBS_GAP_START, TUNE.OBS_GAP_END, d / TUNE.OBS_GAP_RAMP);
+      game.obsNextY = y + gap * rand(0.75, 1.45);
+    }
+    // drop what is safely behind
+    var cutoff = game.car.y - 240;
+    while (game.obstacles.length && game.obstacles[0].y < cutoff) game.obstacles.shift();
+  }
+
+  /* ============================================================
+     Drawing the leadline (pointer = touch AND mouse, same path)
+     ============================================================ */
+  var activePointer = null;
+
+  function toWorld(clientX, clientY) {
+    var rect = cv.getBoundingClientRect();
+    var sx = clientX - rect.left;
+    var sy = clientY - rect.top;
+    return { x: sx, y: game.car.y + (CAR_SCREEN_Y - sy) };
+  }
+
+  function strokeStart(p) {
+    game.path.length = 0;
+    game.idx = 0;
+    game.path.push(p);
+  }
+  function strokeExtend(p) {
+    var last = game.path[game.path.length - 1];
+    if (!last) { game.path.push(p); return; }
+    var dx = p.x - last.x, dy = p.y - last.y;
+    if (dx * dx + dy * dy >= 49) game.path.push(p);   // >= 7px spacing
+    if (game.path.length > 600) { game.path.splice(0, 100); game.idx = Math.max(0, game.idx - 100); }
+  }
+
+  function onDown(e) {
+    if (state !== "play") return;
+    if (activePointer !== null) return;               // ignore extra fingers
+    activePointer = e.pointerId;
+    if (cv.setPointerCapture) { try { cv.setPointerCapture(e.pointerId); } catch (err) {} }
+    strokeStart(toWorld(e.clientX, e.clientY));
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (state !== "play" || e.pointerId !== activePointer) return;
+    strokeExtend(toWorld(e.clientX, e.clientY));
+    e.preventDefault();
+  }
+  function onUp(e) {
+    if (e.pointerId !== activePointer) return;
+    activePointer = null;
+    e.preventDefault();
+  }
+  cv.addEventListener("pointerdown", onDown, { passive: false });
+  cv.addEventListener("pointermove", onMove, { passive: false });
+  cv.addEventListener("pointerup", onUp, { passive: false });
+  cv.addEventListener("pointercancel", onUp, { passive: false });
+  // Fallback for browsers where setPointerCapture is unavailable: never leave a stroke stuck "down".
+  window.addEventListener("pointerup", onUp, { passive: false });
+  window.addEventListener("pointercancel", onUp, { passive: false });
+  // Belt and braces: stop scroll/zoom gestures on older mobile browsers.
+  cv.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+  cv.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+
+  /* ============================================================
+     Pure-pursuit steering along the drawn line
+     ============================================================ */
+  function advanceIndex() {
+    var car = game.car;
+    var fx = Math.sin(car.a), fy = Math.cos(car.a);
+    while (game.idx < game.path.length) {
+      var p = game.path[game.idx];
+      var dx = p.x - car.x, dy = p.y - car.y;
+      var d2 = dx * dx + dy * dy;
+      if (dx * fx + dy * fy <= 0 || d2 < 36) game.idx++;
+      else break;
+    }
+    // recycle consumed points, keeping a short tail for rendering
+    if (game.idx > 80) { game.path.splice(0, 60); game.idx -= 60; }
+  }
+
+  function targetPoint() {
+    var car = game.car;
+    for (var i = game.idx; i < game.path.length; i++) {
+      var p = game.path[i];
+      var dx = p.x - car.x, dy = p.y - car.y;
+      if (dx * dx + dy * dy >= TUNE.LOOKAHEAD * TUNE.LOOKAHEAD) return p;
+    }
+    // No point far enough away: fall back to the tip, but only if it is still ahead of the nose.
+    if (game.idx < game.path.length) {
+      var tip = game.path[game.path.length - 1];
+      var tx = tip.x - car.x, ty = tip.y - car.y;
+      if (tx * Math.sin(car.a) + ty * Math.cos(car.a) > 0) return tip;
+    }
+    return null;
+  }
+
+  function lineAheadLength() {
+    var car = game.car;
+    if (game.idx >= game.path.length) return 0;
+    var p0 = game.path[game.idx];
+    var total = Math.min(120, Math.hypot(p0.x - car.x, p0.y - car.y));
+    for (var i = game.idx; i < game.path.length - 1; i++) {
+      var a = game.path[i], b = game.path[i + 1];
+      total += Math.hypot(b.x - a.x, b.y - a.y);
+      if (total > TUNE.THROTTLE_FULL * 1.5) break;
+    }
+    return total;
+  }
+
+  /* ============================================================
+     Update
+     ============================================================ */
+  function update(dt) {
+    var car = game.car;
+
+    advanceIndex();
+    var tgt = targetPoint();
+    game.noLine = !tgt;
+
+    // --- steering ---
+    var turnRate = 0;
+    if (tgt) {
+      var desired = Math.atan2(tgt.x - car.x, tgt.y - car.y);
+      var diff = desired - car.a;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      var maxTurn = TUNE.TURN_BASE / (1 + car.v / TUNE.TURN_SPEED_REF);
+      var step = clamp(diff, -maxTurn * dt, maxTurn * dt);
+      car.a += step;
+      turnRate = Math.abs(step) / Math.max(dt, 0.0001);
+    }
+    car.a = clamp(car.a, -TUNE.HEADING_LIMIT, TUNE.HEADING_LIMIT);
+
+    // --- throttle from remaining line ---
+    var ahead = lineAheadLength();
+    game.throttle = clamp(ahead / TUNE.THROTTLE_FULL, 0, 1);
+    var frac = lerp(TUNE.THROTTLE_FLOOR, 1, game.throttle);
+
+    var road = roadAt(car.y);
+    game.offroad = Math.abs(car.x - road.cx) > road.hw - TUNE.CAR_R * 0.5;
+
+    var top = TUNE.SPEED_BASE + TUNE.SPEED_GAIN * clamp(game.dist / TUNE.SPEED_RAMP, 0, 1);
+    var cap = game.offroad ? Math.min(TUNE.OFFROAD_SPEED, top) : top * frac;
+
+    if (car.v < cap) car.v = Math.min(cap, car.v + TUNE.ACCEL * dt);
+    else car.v = Math.max(cap, car.v - TUNE.BRAKE * dt);
+    car.v -= turnRate * TUNE.CORNER_DRAG * dt;
+    car.v = clamp(car.v, TUNE.MIN_SPEED, top);
+
+    // --- move ---
+    car.x += Math.sin(car.a) * car.v * dt;
+    car.y += Math.cos(car.a) * car.v * dt;
+    if (car.x < TUNE.CAR_R) { car.x = TUNE.CAR_R; }
+    if (car.x > W - TUNE.CAR_R) { car.x = W - TUNE.CAR_R; }
+
+    game.dist = Math.max(game.dist, car.y - game.startY);
+
+    generateAhead();
+
+    // --- collisions ---
+    var rr = (TUNE.CAR_R + TUNE.OBS_R) * (TUNE.CAR_R + TUNE.OBS_R);
+    for (var i = 0; i < game.obstacles.length; i++) {
+      var o = game.obstacles[i];
+      if (o.hit) continue;
+      if (Math.abs(o.y - car.y) > 60) continue;
+      var dx2 = o.x - car.x, dy2 = o.y - car.y;
+      if (dx2 * dx2 + dy2 * dy2 < rr) {
+        o.hit = true;
+        game.time -= TUNE.OBS_PENALTY;
+        car.v = Math.max(TUNE.MIN_SPEED, car.v * TUNE.OBS_SPEED_KEEP);
+        game.hitFlash = 0.45;
+      }
+    }
+
+    // --- checkpoints ---
+    if (car.y >= game.cpY) {
+      game.time = Math.min(TUNE.MAX_TIME, game.time + TUNE.CP_BONUS);
+      game.cpFlash = 0.6;
+      var d = Math.max(0, game.cpY - game.startY);
+      game.cpY += TUNE.CP_GAP_BASE + d * TUNE.CP_GAP_GROWTH;
+    }
+
+    // --- clock ---
+    game.time -= dt;
+    game.cpFlash = Math.max(0, game.cpFlash - dt);
+    game.hitFlash = Math.max(0, game.hitFlash - dt);
+    if (game.time <= 0) { game.time = 0; endGame(); }
+  }
+
+  /* ============================================================
+     Render  — presentation only; reads game state, never writes it
+     (except purely cosmetic caches held in VFX)
+     ============================================================ */
+  var PAL = {
+    void:     "#070b10",
+    verge:    "#0d1a18",
+    vergeTop: "#0a1315",
+    tick:     "rgba(95,240,192,0.10)",
+    asphalt:  "#191f27",
+    asphaltHi:"#222a34",
+    edge:     "rgba(150,172,196,0.55)",
+    edgeSoft: "rgba(95,240,192,0.10)",
+    centre:   "rgba(226,238,252,0.16)",
+    mint:     "#5ff0c0",
+    mintDim:  "rgba(95,240,192,0.13)",
+    tip:      "#d7fff1",
+    amber:    "#ffd166",
+    coral:    "#ff6a45",
+    car:      "#eef4ff",
+    carHit:   "#ff5a5a"
+  };
+
+  // Cosmetic-only caches (gradients + the frame clock used by idle shimmer).
+  var VFX = { w: 0, h: 0, vig: null, fog: null, road: null, t: 0 };
+  function buildGradients() {
+    VFX.w = W; VFX.h = H;
+    var v = ctx.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.30,
+                                     W / 2, H * 0.55, Math.max(W, H) * 0.78);
+    v.addColorStop(0, "rgba(0,0,0,0)");
+    v.addColorStop(1, "rgba(0,0,0,0.62)");
+    VFX.vig = v;
+    var f = ctx.createLinearGradient(0, 0, 0, H * 0.34);
+    f.addColorStop(0, "rgba(7,11,16,0.92)");
+    f.addColorStop(0.55, "rgba(7,11,16,0.42)");
+    f.addColorStop(1, "rgba(7,11,16,0)");
+    VFX.fog = f;
+    var r = ctx.createLinearGradient(0, 0, 0, H);
+    r.addColorStop(0, PAL.asphalt);
+    r.addColorStop(0.72, PAL.asphaltHi);
+    r.addColorStop(1, PAL.asphalt);
+    VFX.road = r;
+  }
+  // deterministic hash -> [0,1), so scenery is stable in world space
+  function hash01(n) {
+    var x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  function sy(wy) { return CAR_SCREEN_Y - (wy - game.car.y); }
+
+  function render() {
+    if (VFX.w !== W || VFX.h !== H || !VFX.vig) buildGradients();
+    VFX.t += 1 / 60;
+
+    var car = game.car;
+    var speedT = clamp((car.v - TUNE.MIN_SPEED) / 380, 0, 1);
+    var shake = game.hitFlash > 0 ? (game.hitFlash / 0.45) : 0;
+
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    if (shake > 0) {
+      var mag = 6 * shake * shake;
+      ctx.translate((Math.random() * 2 - 1) * mag, (Math.random() * 2 - 1) * mag);
+    }
+
+    // --- verge (off-road) ---
+    ctx.fillStyle = PAL.verge;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+
+    // world-space bounds currently visible
+    var wyBot = car.y + CAR_SCREEN_Y - H - 60;
+    var wyTop = car.y + CAR_SCREEN_Y + 60;
+
+    // --- verge speed ticks: fixed in the world, so they streak with speed ---
+    var tickSpan = 52;
+    var tLen = 7 + speedT * 30;
+    ctx.strokeStyle = PAL.tick;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    for (var t = Math.floor(wyBot / tickSpan); t <= Math.ceil(wyTop / tickSpan); t++) {
+      var twy = t * tickSpan;
+      var tr = roadAt(twy);
+      var ts = sy(twy);
+      var h1 = hash01(t), h2 = hash01(t + 7777);
+      var lx = tr.cx - tr.hw - 12 - h1 * (tr.cx - tr.hw - 4);
+      var rx = tr.cx + tr.hw + 12 + h2 * (W - tr.cx - tr.hw - 4);
+      if (lx > 2) { ctx.moveTo(lx, ts); ctx.lineTo(lx, ts + tLen); }
+      if (rx < W - 2) { ctx.moveTo(rx, ts); ctx.lineTo(rx, ts + tLen); }
+    }
+    ctx.stroke();
+
+    // --- road band ---
+    var step = 12;
+    var left = [], right = [];
+    for (var s = -step; s <= H + step; s += step) {
+      var wy = car.y + (CAR_SCREEN_Y - s);
+      var r = roadAt(wy);
+      left.push([r.cx - r.hw, s]);
+      right.push([r.cx + r.hw, s]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(left[0][0], left[0][1]);
+    for (var i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+    for (var j = right.length - 1; j >= 0; j--) ctx.lineTo(right[j][0], right[j][1]);
+    ctx.closePath();
+    ctx.fillStyle = VFX.road;
+    ctx.fill();
+
+    // soft inner shoulder glow, then a crisp edge line
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = PAL.edgeSoft;
+    ctx.lineWidth = 10;
+    ctx.stroke();
+    ctx.strokeStyle = PAL.edge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // --- dashed centre line, anchored to world y ---
+    var dashSpan = 46, dashLen = 20;
+    ctx.strokeStyle = PAL.centre;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (var k0 = Math.floor(wyBot / dashSpan); k0 <= Math.ceil(wyTop / dashSpan); k0++) {
+      var y0 = k0 * dashSpan, y1 = y0 + dashLen;
+      var r0 = roadAt(y0), rm = roadAt((y0 + y1) / 2), r1 = roadAt(y1);
+      ctx.moveTo(r0.cx, sy(y0));
+      ctx.lineTo(rm.cx, sy((y0 + y1) / 2));
+      ctx.lineTo(r1.cx, sy(y1));
+    }
+    ctx.stroke();
+
+    // --- checkpoint gate ---
+    var cs = sy(game.cpY);
+    if (cs > -40 && cs < H + 40) {
+      var cr = roadAt(game.cpY);
+      var pulse = 0.65 + 0.35 * Math.sin(VFX.t * 5);
+      var gx0 = cr.cx - cr.hw, gx1 = cr.cx + cr.hw;
+      var g = ctx.createLinearGradient(gx0, 0, gx1, 0);
+      g.addColorStop(0, "rgba(255,209,102,0.15)");
+      g.addColorStop(0.5, "rgba(255,209,102," + (0.55 * pulse) + ")");
+      g.addColorStop(1, "rgba(255,209,102,0.15)");
+      ctx.fillStyle = g;
+      ctx.fillRect(gx0, cs - 16, cr.hw * 2, 32);
+      ctx.strokeStyle = PAL.amber;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(gx0, cs); ctx.lineTo(gx1, cs);
+      ctx.stroke();
+      // gate posts
+      ctx.fillStyle = PAL.amber;
+      ctx.fillRect(gx0 - 3, cs - 11, 6, 22);
+      ctx.fillRect(gx1 - 3, cs - 11, 6, 22);
+    }
+
+    // --- blockers ---
+    for (var k = 0; k < game.obstacles.length; k++) {
+      var o = game.obstacles[k];
+      var oy = sy(o.y);
+      if (oy < -40 || oy > H + 40) continue;
+      if (o.hit) {
+        ctx.strokeStyle = "rgba(255,106,69,0.28)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(o.x, oy, TUNE.OBS_R, 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
+      var og = ctx.createRadialGradient(o.x, oy, 2, o.x, oy, TUNE.OBS_R * 2.4);
+      og.addColorStop(0, "rgba(255,106,69,0.34)");
+      og.addColorStop(1, "rgba(255,106,69,0)");
+      ctx.fillStyle = og;
+      ctx.beginPath();
+      ctx.arc(o.x, oy, TUNE.OBS_R * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = PAL.coral;
+      ctx.beginPath();
+      ctx.arc(o.x, oy, TUNE.OBS_R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(7,11,16,0.85)";
+      ctx.beginPath();
+      ctx.arc(o.x, oy, TUNE.OBS_R * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // --- the leadline: consumed tail dim, live part bright & glowing ---
+    if (game.path.length > 1) {
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = PAL.mintDim;
+      ctx.beginPath();
+      for (var a = 0; a <= Math.min(game.idx, game.path.length - 1); a++) {
+        var pa = game.path[a];
+        if (a === 0) ctx.moveTo(pa.x, sy(pa.y)); else ctx.lineTo(pa.x, sy(pa.y));
+      }
+      ctx.stroke();
+
+      if (game.idx < game.path.length) {
+        ctx.save();
+        ctx.shadowColor = "rgba(95,240,192,0.9)";
+        ctx.shadowBlur = 6 + game.throttle * 16;
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = PAL.mint;
+        ctx.beginPath();
+        ctx.moveTo(car.x, sy(car.y));
+        for (var b = game.idx; b < game.path.length; b++) {
+          var pb = game.path[b];
+          ctx.lineTo(pb.x, sy(pb.y));
+        }
+        ctx.stroke();
+        ctx.restore();
+        // tip marker: soft halo + bright core
+        var tip = game.path[game.path.length - 1];
+        var tipY = sy(tip.y);
+        var tg = ctx.createRadialGradient(tip.x, tipY, 1, tip.x, tipY, 16);
+        tg.addColorStop(0, "rgba(95,240,192,0.5)");
+        tg.addColorStop(1, "rgba(95,240,192,0)");
+        ctx.fillStyle = tg;
+        ctx.beginPath();
+        ctx.arc(tip.x, tipY, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = PAL.tip;
+        ctx.beginPath();
+        ctx.arc(tip.x, tipY, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // --- car ---
+    var cxp = car.x, cyp = sy(car.y);
+    var ang = car.a;
+    ctx.save();
+    ctx.translate(cxp, cyp);
+    ctx.rotate(ang);            // screen-space: +a leans right, nose stays up
+
+    // exhaust / speed trail behind the car
+    var trail = 22 + speedT * 60;
+    var eg = ctx.createLinearGradient(0, 8, 0, 8 + trail);
+    eg.addColorStop(0, "rgba(95,240,192," + (0.28 + speedT * 0.30) + ")");
+    eg.addColorStop(1, "rgba(95,240,192,0)");
+    ctx.fillStyle = eg;
+    ctx.beginPath();
+    ctx.moveTo(-6, 9);
+    ctx.lineTo(6, 9);
+    ctx.lineTo(1.6, 9 + trail);
+    ctx.lineTo(-1.6, 9 + trail);
+    ctx.closePath();
+    ctx.fill();
+
+    // body
+    ctx.shadowColor = game.hitFlash > 0 ? "rgba(255,90,90,0.9)" : "rgba(180,215,255,0.55)";
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(0, -15);
+    ctx.lineTo(9, 11);
+    ctx.lineTo(0, 6);
+    ctx.lineTo(-9, 11);
+    ctx.closePath();
+    ctx.fillStyle = game.hitFlash > 0 ? PAL.carHit : PAL.car;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // cockpit slit
+    ctx.fillStyle = "rgba(7,11,16,0.55)";
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(3.2, 4);
+    ctx.lineTo(-3.2, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();   // end shake
+
+    // --- full-screen atmosphere & feedback (unshaken) ---
+    ctx.fillStyle = VFX.fog;
+    ctx.fillRect(0, 0, W, H * 0.34);
+    ctx.fillStyle = VFX.vig;
+    ctx.fillRect(0, 0, W, H);
+
+    // checkpoint pass: warm wash + expanding ring from the car
+    if (game.cpFlash > 0) {
+      var cf = game.cpFlash / 0.6;
+      ctx.fillStyle = "rgba(255,209,102," + (cf * 0.16) + ")";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(255,209,102," + (cf * 0.55) + ")";
+      ctx.lineWidth = 2 + cf * 3;
+      ctx.beginPath();
+      ctx.arc(cxp, cyp, (1 - cf) * Math.max(W, H) * 0.62 + 20, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // hit: coral bloom from the edges
+    if (game.hitFlash > 0) {
+      var hf = game.hitFlash / 0.45;
+      ctx.fillStyle = "rgba(255,106,69," + (hf * 0.14) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // off-road: pulsing coral inset instead of a hard border
+    if (game.offroad) {
+      var op = 0.45 + 0.25 * Math.sin(VFX.t * 9);
+      var band = Math.min(W, H) * 0.16;
+      var lg = ctx.createLinearGradient(0, 0, band, 0);
+      lg.addColorStop(0, "rgba(255,106,69," + op + ")");
+      lg.addColorStop(1, "rgba(255,106,69,0)");
+      ctx.fillStyle = lg;
+      ctx.fillRect(0, 0, band, H);
+      var rg = ctx.createLinearGradient(W, 0, W - band, 0);
+      rg.addColorStop(0, "rgba(255,106,69," + op + ")");
+      rg.addColorStop(1, "rgba(255,106,69,0)");
+      ctx.fillStyle = rg;
+      ctx.fillRect(W - band, 0, band, H);
+    }
+  }
+
+  /* ============================================================
+     HUD + screens
+     ============================================================ */
+  var elTime = document.getElementById("time");
+  var elDist = document.getElementById("dist");
+  var elBar = document.getElementById("throttleBar");
+  var elWarn = document.getElementById("warn");
+  var startScreen = document.getElementById("startScreen");
+  var overScreen = document.getElementById("overScreen");
+  var elFinal = document.getElementById("finalDist");
+  var elBest = document.getElementById("bestLine");
+  var elOverTitle = document.getElementById("overTitle");
+
+  function metres() { return Math.floor(game.dist / 12); }
+
+  var prevCpFlash = 0;
+  // drop the one-shot pop class again so it can't shadow the low-time blink
+  elTime.addEventListener("animationend", function (e) {
+    if (e.animationName === "gain") elTime.classList.remove("gain");
+  });
+  function drawHud() {
+    elTime.textContent = game.time.toFixed(1);
+    if (game.time < 5) elTime.classList.add("low"); else elTime.classList.remove("low");
+    // cosmetic: pop the clock the moment a checkpoint bonus lands
+    if (game.cpFlash > prevCpFlash) {
+      elTime.classList.remove("gain");
+      void elTime.offsetWidth;          // restart the CSS animation
+      elTime.classList.add("gain");
+    }
+    prevCpFlash = game.cpFlash;
+    elDist.textContent = metres() + "m";
+    elBar.style.width = Math.round(game.throttle * 100) + "%";
+    elBar.style.background = game.throttle < 0.25 ? "#ff6a45" : (game.throttle < 0.6 ? "#ffd166" : "#5ff0c0");
+    elBar.style.boxShadow = "0 0 12px " + (game.throttle < 0.25 ? "rgba(255,106,69,.5)"
+                                        : (game.throttle < 0.6 ? "rgba(255,209,102,.5)" : "rgba(95,240,192,.55)"));
+    elWarn.style.opacity = (game.noLine || game.throttle < 0.12) ? "1" : "0";
+  }
+
+  function startGame() {
+    resize();
+    newGame();
+    state = "play";
+    startScreen.classList.add("hidden");
+    overScreen.classList.add("hidden");
+    document.body.classList.add("playing");   // cosmetic: fades the HUD in
+    activePointer = null;
+    last = 0;
+    drawHud();
+  }
+
+  function endGame() {
+    state = "over";
+    activePointer = null;
+    document.body.classList.remove("playing");
+    var m = metres();
+    var isRecord = m > best;
+    if (isRecord) {
+      best = m;
+      try { localStorage.setItem("leadline_best", String(best)); } catch (e) {}
+    }
+    elOverTitle.textContent = "TIME UP";
+    elFinal.textContent = m + "m";
+    elBest.textContent = isRecord ? "new best · " + best + "m" : "best " + best + "m";
+    if (isRecord) elBest.classList.add("record"); else elBest.classList.remove("record");
+    overScreen.classList.remove("hidden");
+  }
+
+  function bindTap(el, fn) {
+    var fired = false;
+    el.addEventListener("pointerup", function (e) {
+      e.preventDefault();
+      fired = true;
+      fn();
+      setTimeout(function () { fired = false; }, 400);
+    }, { passive: false });
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (!fired) fn();
+    });
+  }
+  bindTap(document.getElementById("startBtn"), startGame);
+  bindTap(document.getElementById("retryBtn"), startGame);
+
+  /* ============================================================
+     Main loop
+     ============================================================ */
+  var last = 0;
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    if (!last) last = ts;
+    var dt = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    if (state === "play") {
+      update(dt);
+      render();
+      drawHud();
+    } else if (state === "over") {
+      render();
+    }
+  }
+
+  resize();
+  newGame();       // so the title screen has a valid world behind it
+  render();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

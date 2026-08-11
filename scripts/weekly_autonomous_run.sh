@@ -5,8 +5,8 @@
 # from, to avoid the two processes touching the same working tree).
 #
 # Fires DAILY, not weekly: scripts/weekly_prompt.md only actually builds a new
-# game roughly every 3 days (it self-gates on "was a game already added in the
-# last 3 days?") and otherwise exits almost immediately. The daily cadence
+# game roughly once a week (it self-gates on "was a game already added in the
+# last 7 days?") and otherwise exits almost immediately. The daily cadence
 # exists so that if a run gets killed mid-pipeline (e.g. a usage limit), the
 # very next day's firing detects the in-progress branch and resumes it from
 # its last checkpoint instead of leaving it stalled for days.

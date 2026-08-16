@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Recoil Deck</title>
+<style>
+  :root {
+    --ink:      #14131d;   /* page base                       */
+    --ink-2:    #1c1a29;   /* raised panel                    */
+    --line:     #322f47;   /* hairlines / panel borders       */
+    --line-2:   #45415f;   /* stronger hairline               */
+    --cream:    #ece5db;   /* primary text                    */
+    --mute:     #948da8;   /* secondary text                  */
+    --faint:    #6b6580;   /* tertiary text                   */
+    --ember:    #e26a45;   /* the boss / damage / recoil      */
+    --ember-lo: #5d2a24;   /* ember fill                      */
+    --mint:     #63c6a0;   /* you / safe / armed              */
+    --mint-lo:  #1f3a33;
+    --steel:    #7e8ccd;   /* block & armour                  */
+    --steel-lo: #262b47;
+    --gold:     #e8b877;   /* energy / selection              */
+    --gold-lo:  #3a3121;
+    --mauve:    #a482bb;   /* boss-buff recoil                */
+    --mauve-lo: #33254a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--ink); color: var(--cream);
+    background-image:
+      radial-gradient(120% 70% at 50% -10%, rgba(226,106,69,.13), transparent 62%),
+      radial-gradient(120% 60% at 50% 110%, rgba(99,198,160,.09), transparent 60%);
+    background-attachment: fixed;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  #game {
+    display: none; flex-direction: column;
+    height: 100vh; height: 100dvh; width: 100%;
+    max-width: 520px; margin: 0 auto; padding: 8px 10px 0;
+  }
+  #game.shake { animation: shake .28s ease-out; }
+  @keyframes shake {
+    0%,100% { transform: translate(0,0); }
+    20%     { transform: translate(-3px,2px); }
+    45%     { transform: translate(3px,-2px); }
+    70%     { transform: translate(-2px,-1px); }
+  }
+
+  .panel {
+    border: 1px solid var(--line); border-radius: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+    padding: 7px 9px; margin-bottom: 7px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 4px 14px rgba(0,0,0,.28);
+  }
+
+  /* ---- top: boss ---- */
+  #topbar { position: relative; overflow: hidden; }
+  #topbar::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(226,106,69,.7), transparent);
+  }
+  #topbar.hitboss { animation: bossflash .34s ease-out; }
+  @keyframes bossflash {
+    0%   { box-shadow: 0 0 0 1px var(--ember) inset, 0 0 18px rgba(226,106,69,.45); }
+    100% { box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 4px 14px rgba(0,0,0,.28); }
+  }
+  #topbar .row, #status .row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; gap: 6px; }
+  #topbar .name {
+    font-weight: 700; font-size: 14px; letter-spacing: .1em; text-transform: uppercase;
+    color: #f3c9b7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #topbar .row > span:last-child, #status .row > span:first-child { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  #status .row > span:first-child b { letter-spacing: .12em; color: var(--mint); }
+  .bar {
+    height: 9px; background: rgba(0,0,0,.4); border-radius: 999px; overflow: hidden;
+    margin-top: 6px; box-shadow: 0 0 0 1px rgba(255,255,255,.05) inset;
+  }
+  .bar > i {
+    display: block; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #8e3226, var(--ember));
+    box-shadow: 0 0 10px rgba(226,106,69,.5);
+    transition: width .32s cubic-bezier(.22,1,.36,1);
+  }
+  .bar.self > i {
+    background: linear-gradient(90deg, #2b6d57, var(--mint));
+    box-shadow: 0 0 10px rgba(99,198,160,.45);
+  }
+  .sub { font-family: var(--mono); font-size: 10px; letter-spacing: .02em; color: var(--faint); margin-top: 5px; }
+
+  /* ---- return track (the signature element) ---- */
+  #track .thead {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--mute); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  #track .thead::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%; flex: none;
+    background: var(--ember); box-shadow: 0 0 8px var(--ember);
+  }
+  .cols { display: flex; gap: 4px; }
+  .col {
+    flex: 1 1 0; min-width: 0; border: 1px dashed var(--line); border-radius: 6px;
+    padding: 3px 3px 4px; min-height: 48px; background: rgba(0,0,0,.18);
+  }
+  .col.soon {
+    border-color: rgba(226,106,69,.75); border-style: solid;
+    background: rgba(226,106,69,.09);
+    box-shadow: 0 0 12px rgba(226,106,69,.16) inset;
+    animation: soonpulse 2.4s ease-in-out infinite;
+  }
+  @keyframes soonpulse {
+    0%,100% { border-color: rgba(226,106,69,.45); }
+    50%     { border-color: rgba(226,106,69,.95); }
+  }
+  .col .lbl {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .08em; color: var(--faint);
+    text-align: center; margin-bottom: 3px;
+  }
+  .col.soon .lbl { color: var(--ember); }
+  .chip {
+    font-family: var(--mono); font-size: 8.5px; line-height: 1.25; letter-spacing: -.01em;
+    background: rgba(255,255,255,.06); border-left: 2px solid var(--line-2);
+    border-radius: 3px; padding: 3px 4px; margin-bottom: 3px; color: var(--cream);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    animation: chipin .22s ease-out;
+  }
+  @keyframes chipin { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+  .chip.bad  { background: var(--ember-lo); border-left-color: var(--ember); color: #f6cdbe; }
+  .chip.warn { background: var(--mauve-lo); border-left-color: var(--mauve); color: #e0cdee; }
+
+  /* ---- player status ---- */
+  #status.hitself { animation: selfflash .34s ease-out; }
+  @keyframes selfflash {
+    0%   { box-shadow: 0 0 0 1px var(--ember) inset, 0 0 18px rgba(226,106,69,.4); }
+    100% { box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 4px 14px rgba(0,0,0,.28); }
+  }
+  .pill {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .02em;
+    padding: 3px 7px; border-radius: 999px; margin-left: 4px;
+    background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--mute);
+    display: inline-block;
+  }
+  .pill.blk { background: var(--steel-lo); border-color: rgba(126,140,205,.5); color: #b9c2ee; }
+  .pill.en  { background: var(--gold-lo);  border-color: rgba(232,184,119,.5); color: var(--gold); }
+  #incoming {
+    font-family: var(--mono); font-size: 10.5px; margin-top: 6px; padding: 4px 7px;
+    border-radius: 5px; border-left: 3px solid var(--line-2); background: rgba(0,0,0,.22);
+    letter-spacing: .01em;
+  }
+  #incoming.safe { color: var(--mint);  border-left-color: var(--mint);  background: rgba(99,198,160,.09); }
+  #incoming.hurt { color: #f28a6c; border-left-color: var(--ember); background: rgba(226,106,69,.11); }
+
+  /* ---- log ---- */
+  #log {
+    font-family: var(--mono); font-size: 10px; color: var(--mute); line-height: 1.4;
+    height: 56px; overflow: hidden; border: 1px solid transparent; border-left: 2px solid var(--line-2);
+    border-radius: 0 6px 6px 0; background: rgba(0,0,0,.2);
+    padding: 5px 8px; margin-bottom: 6px;
+  }
+
+  /* ---- decorative breathing room between log and hand ---- */
+  #spacer { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+  #spacer::after {
+    content: "\21A9"; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%); font-size: 46px; line-height: 1;
+    color: rgba(236,229,219,.05); pointer-events: none;
+  }
+
+  /* ---- hand ---- */
+  #handwrap { padding: 0 40px 16px 0; }
+  #hand { display: flex; gap: 6px; justify-content: center; align-items: flex-end;
+          touch-action: none; min-height: 130px; }
+  .card {
+    flex: 1 1 76px; min-width: 0; max-width: 84px; height: 124px;
+    border: 1px solid var(--line-2); border-radius: 9px;
+    background: linear-gradient(170deg, #292539 0%, #1b1927 68%, #171522 100%);
+    padding: 6px 5px; display: flex; flex-direction: column;
+    touch-action: none; position: relative; overflow: hidden;
+    box-shadow: 0 3px 10px rgba(0,0,0,.42), 0 1px 0 rgba(255,255,255,.06) inset;
+    /* never transition transform: JS drives drag via inline transform */
+    transition: border-color .14s ease, box-shadow .14s ease, opacity .14s ease, filter .14s ease;
+  }
+  .card::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(226,106,69,.55), transparent);
+  }
+  .card.sel {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px rgba(232,184,119,.35), 0 6px 16px rgba(0,0,0,.5), 0 0 16px rgba(232,184,119,.22);
+  }
+  .card.armed {
+    border-color: var(--mint); filter: brightness(1.12);
+    box-shadow: 0 0 0 1px rgba(99,198,160,.5), 0 10px 24px rgba(0,0,0,.55), 0 0 26px rgba(99,198,160,.35);
+  }
+  .card.poor { opacity: .4; filter: grayscale(.5); }
+  .card .cn {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    padding-right: 16px; color: var(--cream);
+  }
+  .card .cc {
+    position: absolute; top: 4px; right: 4px;
+    font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--gold);
+    width: 15px; height: 15px; line-height: 14px; text-align: center;
+    border: 1px solid rgba(232,184,119,.55); border-radius: 50%; background: var(--gold-lo);
+  }
+  .card .ce { font-size: 9.5px; color: #cfc8d8; margin-top: 5px; line-height: 1.25; }
+  .card .cr {
+    font-family: var(--mono); font-size: 8px; color: #d99178; margin-top: auto;
+    line-height: 1.3; padding-top: 4px; border-top: 1px dashed rgba(226,106,69,.28);
+  }
+  .empty { font-family: var(--mono); font-size: 11px; color: var(--faint); padding: 40px 0; letter-spacing: .04em; }
+
+  /* ---- bottom bar : right 76px kept clear (rating widget lives there) ---- */
+  #bottombar { display: flex; gap: 8px; padding: 0 76px 10px 0; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  button {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--cream);
+    background: linear-gradient(180deg, #2a2740, #201e30);
+    border: 1px solid var(--line-2); border-radius: 9px;
+    padding: 12px 8px; min-height: 48px; flex: 1 1 0;
+    touch-action: manipulation; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.06) inset;
+    transition: background .15s ease, border-color .15s ease, opacity .15s ease, box-shadow .15s ease, transform .08s ease;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .32; box-shadow: none; }
+  button.primary {
+    background: linear-gradient(180deg, #3a4a86, #2a3560);
+    border-color: rgba(126,140,205,.75); color: #eef0ff;
+    box-shadow: 0 2px 10px rgba(58,74,134,.4), 0 1px 0 rgba(255,255,255,.1) inset;
+  }
+  #btnPlay:not(:disabled) {
+    border-color: rgba(232,184,119,.7); color: var(--gold);
+    background: linear-gradient(180deg, #3a2f1f, #271f14);
+  }
+
+  /* ---- overlay screens ---- */
+  #overlay {
+    position: fixed; inset: 0;
+    background: radial-gradient(90% 60% at 50% 0%, rgba(226,106,69,.12), transparent 60%), rgba(13,12,19,.95);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    display: none; flex-direction: column; justify-content: center; align-items: center;
+    padding: 20px 16px 80px; text-align: center; overflow-y: auto;
+  }
+  #overlay .box { width: 100%; max-width: 380px; animation: rise .3s cubic-bezier(.22,1,.36,1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  #overlay h1 {
+    font-family: var(--mono); font-size: 25px; letter-spacing: .16em; margin: 0 0 10px;
+    color: var(--cream); text-shadow: 0 0 26px rgba(226,106,69,.5);
+  }
+  #overlay h2 {
+    font-family: var(--mono); font-size: 16px; letter-spacing: .12em; text-transform: uppercase;
+    margin: 0 0 10px; color: #f3c9b7;
+  }
+  #overlay p { font-size: 13px; line-height: 1.55; color: #c3bcd0; margin: 0 0 12px; }
+  #overlay p b { color: var(--cream); }
+  #overlay .ex {
+    font-size: 11.5px; color: var(--mute);
+    border: 1px solid var(--line); border-left: 2px solid var(--ember); border-radius: 0 8px 8px 0;
+    background: rgba(255,255,255,.03);
+    padding: 10px 11px; text-align: left; margin-bottom: 14px; line-height: 1.6;
+  }
+  #overlay .ex b { color: var(--cream); }
+  #overlay button { width: 100%; margin-top: 8px; display: block; }
+  .offer {
+    text-align: left; letter-spacing: normal; text-transform: none;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    border-left: 2px solid var(--gold);
+  }
+  .offer b { display: block; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
+  .offer span { font-size: 11px; font-weight: 400; color: #c3bcd0; }
+
+  /* narrow phones: keep the track header on one line and fit more chip text */
+  @media (max-width: 360px) {
+    #track .thead { font-size: 8.5px; letter-spacing: .08em; white-space: nowrap; }
+    .chip { font-size: 7.5px; letter-spacing: -.02em; padding: 3px 3px; }
+    .col { padding-left: 2px; padding-right: 2px; }
+    #topbar .name { font-size: 13px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <div id="topbar" class="panel"></div>
+  <div id="track" class="panel"></div>
+  <div id="status" class="panel"></div>
+  <div id="log"></div>
+  <div id="spacer"></div>
+  <div id="handwrap"><div id="hand"></div></div>
+  <div id="bottombar">
+    <button id="btnPlay">PLAY</button>
+    <button id="btnEnd" class="primary">END TURN</button>
+  </div>
+</div>
+
+<div id="overlay"><div class="box" id="obox"></div></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================ TUNING ============================ */
+  var HAND_SIZE   = 4;    // cards drawn each turn
+  var ENERGY      = 3;    // energy per turn
+  var MAX_HP      = 60;   // player max hp
+  var FURY_RAMP   = 4;    // boss lash damage +1 every N turns of a fight
+  var FURY_DEPTH  = 2;    // boss lash's per-fight base is +1 higher every N fights
+  var FURY_BASE_CAP = 6;  // that per-fight base never climbs past this (long-run plateau)
+  var BOSS_HP     = 36;   // boss 1 hp
+  var BOSS_HP_INC = 8;    // extra hp per fight, for the first BOSS_HP_RAMP_FIGHTS fights
+  var BOSS_HP_RAMP_FIGHTS = 6; // number of +BOSS_HP_INC steps before hp growth eases off
+  var BOSS_HP_INC_LATE = 5;    // extra hp per fight after that ramp (gentler long-run tail)
+  var WIN_HEAL    = 12;   // free heal for clearing a fight
+  var HEAL_SKIP   = 16;   // heal offered instead of a new card
+  var MAXHP_BONUS = 5;    // max hp gained with the skip/heal reward
+
+  /* ============================ CARDS ============================
+     Every card resolves for you now, then sits on the RETURN TRACK
+     and resolves against you after `d` turns (d = 0 -> never returns).
+     Damage returns as damage to you; block returns as boss armour;
+     heal returns as boss healing.                                     */
+  var CARDS = {
+    jab:     { n: 'Jab',     c: 1, d: 2, dmg: 5 },
+    guard:   { n: 'Guard',   c: 1, d: 3, blk: 8 },
+    slam:    { n: 'Slam',    c: 2, d: 2, dmg: 12 },
+    mend:    { n: 'Mend',    c: 1, d: 3, heal: 6 },
+    riposte: { n: 'Riposte', c: 1, d: 2, dmg: 4, blk: 4 },
+    crush:   { n: 'Crush',   c: 3, d: 3, dmg: 20 },
+    bulwark: { n: 'Bulwark', c: 2, d: 3, blk: 16 },
+    purge:   { n: 'Purge',   c: 1, d: 0, purge: 1 },
+    stall:   { n: 'Stall',   c: 1, d: 0, stall: 1 }
+  };
+  var REWARD_POOL = ['jab', 'guard', 'slam', 'mend', 'riposte', 'crush', 'bulwark', 'purge', 'stall'];
+  var START_DECK = ['jab', 'jab', 'jab', 'jab', 'jab', 'guard', 'guard', 'guard', 'slam', 'slam', 'mend', 'purge'];
+  var BOSS_NAMES = ['The Grudge', 'Hollow Warden', 'Mirror Tyrant', 'Ash Colossus', 'The Recoil'];
+
+  function selfText(k) {
+    var c = CARDS[k], p = [];
+    if (c.dmg) p.push('Deal ' + c.dmg);
+    if (c.blk) p.push('Gain ' + c.blk + ' block');
+    if (c.heal) p.push('Heal ' + c.heal);
+    if (c.purge) p.push('Cancel soonest return');
+    if (c.stall) p.push('Delay all returns +1');
+    return p.join(', ');
+  }
+  function retText(k) {
+    var c = CARDS[k], p = [];
+    if (!c.d) return 'never returns';
+    if (c.dmg) p.push(c.dmg + ' dmg to you');
+    if (c.blk) p.push('boss +' + c.blk + ' armour');
+    if (c.heal) p.push('boss heals ' + c.heal);
+    return p.join(' & ');
+  }
+  // short recoil label used on the card face
+  function recoilLabel(k) {
+    var c = CARDS[k];
+    return c.d ? '\u21A9 in ' + c.d + ': ' + retText(k) : '\u21A9 never returns';
+  }
+  function chipText(k) {
+    var c = CARDS[k], p = [];
+    if (c.dmg) p.push(c.dmg + ' dmg');
+    if (c.blk) p.push('+' + c.blk + ' armr');
+    if (c.heal) p.push('+' + c.heal + ' hp');
+    return c.n + ' ' + p.join(' ');
+  }
+
+  /* ============================ STATE ============================ */
+  var G = null;
+  var selected = -1;
+  var best = 0;
+  try { best = parseInt(localStorage.getItem('recoildeck_best') || '0', 10) || 0; } catch (e) { best = 0; }
+
+  var elGame = document.getElementById('game');
+  var elOverlay = document.getElementById('overlay');
+  var elBox = document.getElementById('obox');
+  var elTop = document.getElementById('topbar');
+  var elTrack = document.getElementById('track');
+  var elStatus = document.getElementById('status');
+  var elLog = document.getElementById('log');
+  var elHand = document.getElementById('hand');
+  var btnPlay = document.getElementById('btnPlay');
+  var btnEnd = document.getElementById('btnEnd');
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function log(msg) {
+    G.log.unshift(msg);
+    if (G.log.length > 3) G.log.length = 3;
+  }
+
+  /* ============================ RUN / FIGHT SETUP ============================ */
+  function newRun() {
+    G = {
+      screen: 'fight',
+      deck: START_DECK.slice(),
+      draw: [], hand: [], discard: [], returns: [],
+      hp: MAX_HP, maxHp: MAX_HP, block: 0, energy: ENERGY,
+      boss: null, turn: 0, depth: 1, cleared: 0, dealt: 0, log: []
+    };
+    startFight();
+  }
+
+  function bossHpForDepth(d) {
+    var extra = d - 1;
+    var early = Math.min(extra, BOSS_HP_RAMP_FIGHTS);
+    var late = extra - early;
+    return BOSS_HP + early * BOSS_HP_INC + late * BOSS_HP_INC_LATE;
+  }
+
+  function startFight() {
+    var d = G.depth;
+    var hp = bossHpForDepth(d);
+    G.boss = {
+      name: BOSS_NAMES[(d - 1) % BOSS_NAMES.length] + (d > BOSS_NAMES.length ? ' ' + (Math.floor((d - 1) / BOSS_NAMES.length) + 1) : ''),
+      hp: hp,
+      maxHp: hp,
+      block: 0
+    };
+    G.returns = [];
+    G.discard = [];
+    G.hand = [];
+    G.draw = shuffle(G.deck.slice());
+    G.block = 0;
+    G.turn = 0;
+    G.log = [];
+    G.screen = 'fight';
+    log('Fight ' + d + ': ' + G.boss.name + '. Cards you play come back at you.');
+    beginTurn();
+  }
+
+  function furyBase(depth) {
+    var b = Math.floor((depth - 1) / FURY_DEPTH);
+    return b > FURY_BASE_CAP ? FURY_BASE_CAP : b;
+  }
+  function furyAt(t) {
+    var v = furyBase(G.depth) + Math.floor((t - 1) / FURY_RAMP);
+    return v > 0 ? v : 0;
+  }
+
+  /* ============================ TURN FLOW ============================ */
+  function beginTurn() {
+    G.turn++;
+    var i, r;
+    for (i = 0; i < G.returns.length; i++) G.returns[i].t--;
+
+    var f = furyAt(G.turn);
+    if (f > 0) { log(G.boss.name + ' lashes for ' + f + '.'); damagePlayer(f); }
+
+    var landing = [], kept = [];
+    for (i = 0; i < G.returns.length; i++) {
+      if (G.returns[i].t <= 0) landing.push(G.returns[i]); else kept.push(G.returns[i]);
+    }
+    G.returns = kept;
+    for (i = 0; i < landing.length; i++) {
+      r = landing[i];
+      var c = CARDS[r.k];
+      if (c.dmg) { log(c.n + ' recoils: ' + c.dmg + ' damage to you.'); damagePlayer(c.dmg); }
+      if (c.blk) { G.boss.block += c.blk; log(c.n + ' recoils: boss gains ' + c.blk + ' armour.'); }
+      if (c.heal) {
+        G.boss.hp = Math.min(G.boss.maxHp, G.boss.hp + c.heal);
+        log(c.n + ' recoils: boss heals ' + c.heal + '.');
+      }
+      G.discard.push(r.k);
+    }
+
+    if (G.hp <= 0) { gameOver(); return; }
+
+    G.block = 0;
+    G.energy = ENERGY;
+    drawTo(HAND_SIZE);
+    selected = -1;
+    render();
+  }
+
+  function drawTo(n) {
+    while (G.hand.length < n) {
+      if (G.draw.length === 0) {
+        if (G.discard.length === 0) break;      // rest of the deck is in flight
+        G.draw = shuffle(G.discard);
+        G.discard = [];
+      }
+      G.hand.push(G.draw.pop());
+    }
+  }
+
+  function endTurn() {
+    if (G.screen !== 'fight') return;
+    while (G.hand.length) G.discard.push(G.hand.pop());
+    selected = -1;
+    beginTurn();
+  }
+
+  function damagePlayer(n) {
+    var absorbed = Math.min(G.block, n);
+    G.block -= absorbed;
+    G.hp -= (n - absorbed);
+    if (G.hp < 0) G.hp = 0;
+  }
+  function damageBoss(n) {
+    var absorbed = Math.min(G.boss.block, n);
+    G.boss.block -= absorbed;
+    var real = n - absorbed;
+    G.boss.hp -= real;
+    G.dealt += real;
+    if (G.boss.hp < 0) G.boss.hp = 0;
+  }
+
+  /* ============================ PLAYING CARDS ============================ */
+  function playCard(i) {
+    if (G.screen !== 'fight') return;
+    if (i < 0 || i >= G.hand.length) { render(); return; }
+    var k = G.hand[i], c = CARDS[k];
+    if (c.c > G.energy) { log('Not enough energy for ' + c.n + '.'); selected = i; render(); return; }
+
+    G.energy -= c.c;
+    G.hand.splice(i, 1);
+
+    if (c.dmg) { damageBoss(c.dmg); }
+    if (c.blk) { G.block += c.blk; }
+    if (c.heal) { G.hp = Math.min(G.maxHp, G.hp + c.heal); }
+    if (c.purge) {
+      if (G.returns.length) {
+        var b = 0, j;
+        for (j = 1; j < G.returns.length; j++) if (G.returns[j].t < G.returns[b].t) b = j;
+        var rem = G.returns.splice(b, 1)[0];
+        G.discard.push(rem.k);
+        log('Purged the incoming ' + CARDS[rem.k].n + '.');
+      } else {
+        log('Purge fizzles - nothing on the track.');
+      }
+    }
+    if (c.stall) {
+      if (G.returns.length) {
+        for (var m = 0; m < G.returns.length; m++) G.returns[m].t++;
+        log('All returns delayed by 1 turn.');
+      } else {
+        log('Stall fizzles - nothing on the track.');
+      }
+    }
+
+    if (c.d > 0) G.returns.push({ k: k, t: c.d }); else G.discard.push(k);
+    log('Played ' + c.n + '.');
+
+    selected = -1;
+    if (G.boss.hp <= 0) { winFight(); return; }
+    render();
+  }
+
+  /* ============================ WIN / LOSE ============================ */
+  function winFight() {
+    G.cleared++;
+    G.hp = Math.min(G.maxHp, G.hp + WIN_HEAL);
+    if (G.cleared > best) {
+      best = G.cleared;
+      try { localStorage.setItem('recoildeck_best', String(best)); } catch (e) {}
+    }
+    G.screen = 'reward';
+    G.offers = [];
+    var pool = shuffle(REWARD_POOL.slice());
+    G.offers.push(pool[0]);
+    G.offers.push(pool[1]);
+    render();
+  }
+
+  function gameOver() {
+    G.screen = 'over';
+    render();
+  }
+
+  function takeReward(kind, key) {
+    if (G.screen !== 'reward') return;
+    if (kind === 'card') {
+      G.deck.push(key);
+    } else {
+      G.maxHp += MAXHP_BONUS;
+      G.hp = Math.min(G.maxHp, G.hp + HEAL_SKIP);
+    }
+    G.depth++;
+    startFight();
+  }
+
+  /* ==================== COSMETIC FX (presentation only) ====================
+     Reads HP values after a render to flash/shake the relevant panel.
+     Touches no game state and changes no rules.                            */
+  var fxHp = null, fxBossHp = null;
+  function fxKick(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;   // restart the animation
+    el.classList.add(cls);
+  }
+  function fxAfterRender() {
+    if (fxHp !== null && G.hp < fxHp) { fxKick(elGame, 'shake'); fxKick(elStatus, 'hitself'); }
+    if (fxBossHp !== null && G.boss && G.boss.hp < fxBossHp) fxKick(elTop, 'hitboss');
+    fxHp = G.hp;
+    fxBossHp = G.boss ? G.boss.hp : null;
+  }
+
+  /* ============================ RENDER ============================ */
+  function render() {
+    if (!G || G.screen === 'start') {
+      elGame.style.display = 'none';
+      elOverlay.style.display = 'flex';
+      renderOverlay();
+      return;
+    }
+    elGame.style.display = 'flex';
+    renderFight();
+    if (G.screen === 'fight') {
+      elOverlay.style.display = 'none';
+    } else {
+      elOverlay.style.display = 'flex';
+      renderOverlay();
+    }
+  }
+
+  function renderFight() {
+    var b = G.boss;
+    elTop.innerHTML =
+      '<div class="row"><span class="name">' + b.name + '</span>' +
+      '<span>' + b.hp + ' / ' + b.maxHp + (b.block ? ' <span class="pill blk">armour ' + b.block + '</span>' : '') + '</span></div>' +
+      '<div class="bar"><i style="width:' + (b.maxHp ? (100 * b.hp / b.maxHp) : 0) + '%"></i></div>' +
+      '<div class="sub">Fight ' + G.depth + ' &middot; turn ' + G.turn +
+      ' &middot; lash now ' + furyAt(G.turn) + ', next turn ' + furyAt(G.turn + 1) + '</div>';
+
+    // return track
+    var cols = [[], [], [], []];
+    for (var i = 0; i < G.returns.length; i++) {
+      var r = G.returns[i];
+      var idx = Math.min(r.t, 4) - 1;
+      if (idx < 0) idx = 0;
+      cols[idx].push(r.k);
+    }
+    var html = '<div class="thead">RETURN TRACK &mdash; your played cards coming back</div><div class="cols">';
+    for (var ci = 0; ci < 4; ci++) {
+      html += '<div class="col' + (ci === 0 ? ' soon' : '') + '"><div class="lbl">' + (ci === 3 ? '4+' : 'in ' + (ci + 1)) + '</div>';
+      for (var j = 0; j < cols[ci].length; j++) {
+        var cc = CARDS[cols[ci][j]];
+        var cls = cc.dmg ? 'bad' : 'warn';
+        html += '<div class="chip ' + cls + '">' + chipText(cols[ci][j]) + '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    elTrack.innerHTML = html;
+
+    // player status
+    var inc = incomingNext();
+    var safe = G.block >= inc;
+    elStatus.innerHTML =
+      '<div class="row"><span><b>YOU</b> ' + G.hp + ' / ' + G.maxHp + '</span>' +
+      '<span><span class="pill blk">block ' + G.block + '</span><span class="pill en">energy ' + G.energy + '</span>' +
+      '<span class="pill">deck ' + (G.draw.length + G.discard.length) + '</span></span></div>' +
+      '<div class="bar self"><i style="width:' + (100 * G.hp / G.maxHp) + '%"></i></div>' +
+      '<div id="incoming" class="' + (safe ? 'safe' : 'hurt') + '">Incoming next turn: ' + inc +
+      ' &rarr; ' + (safe ? 'fully blocked' : 'you take ' + (inc - G.block)) + '</div>';
+
+    elLog.innerHTML = G.log.join('<br>');
+
+    // hand
+    if (G.hand.length === 0) {
+      elHand.innerHTML = '<div class="empty">No cards left this turn &mdash; end your turn.</div>';
+    } else {
+      var h = '';
+      for (var k = 0; k < G.hand.length; k++) {
+        var c = CARDS[G.hand[k]];
+        var poor = c.c > G.energy ? ' poor' : '';
+        var sel = k === selected ? ' sel' : '';
+        h += '<div class="card' + poor + sel + '" data-i="' + k + '">' +
+             '<div class="cn">' + c.n + '</div><div class="cc">' + c.c + '</div>' +
+             '<div class="ce">' + selfText(G.hand[k]) + '</div>' +
+             '<div class="cr">' + recoilLabel(G.hand[k]) + '</div>' +
+             '</div>';
+      }
+      elHand.innerHTML = h;
+    }
+
+    var canPlay = selected >= 0 && selected < G.hand.length && G.screen === 'fight' &&
+                  CARDS[G.hand[selected]].c <= G.energy;
+    btnPlay.disabled = !canPlay;
+    btnPlay.textContent = (selected >= 0 && selected < G.hand.length) ? 'PLAY ' + CARDS[G.hand[selected]].n.toUpperCase() : 'PLAY';
+    btnEnd.disabled = G.screen !== 'fight';
+
+    fxAfterRender();
+  }
+
+  function incomingNext() {
+    var dmg = furyAt(G.turn + 1);
+    for (var i = 0; i < G.returns.length; i++) {
+      if (G.returns[i].t === 1) {
+        var c = CARDS[G.returns[i].k];
+        if (c.dmg) dmg += c.dmg;
+      }
+    }
+    return dmg;
+  }
+
+  function renderOverlay() {
+    if (!G || G.screen === 'start') {
+      elBox.innerHTML =
+        '<h1>RECOIL DECK</h1>' +
+        '<p>A tiny turn-based card duel. Every card you play hits the boss <b>now</b> &mdash; then lands on the <b>return track</b> and hits <b>you</b> a few turns later.</p>' +
+        '<div class="ex">' +
+        '<b>Drag a card upward</b> to play it (or tap it, then tap PLAY).<br>' +
+        '<b>Block</b> you gain this turn only survives to absorb next turn\'s incoming, so time your defence around your own attacks.<br>' +
+        'Defensive cards recoil as <b>boss armour</b>, healing recoils as <b>boss healing</b>. Beat as many bosses as you can.' +
+        '</div>' +
+        '<button class="primary" data-act="start">START RUN</button>' +
+        (best ? '<p style="margin-top:10px">Best run: ' + best + ' boss' + (best === 1 ? '' : 'es') + ' defeated</p>' : '');
+      return;
+    }
+    if (G.screen === 'reward') {
+      var h = '<h2>' + G.boss.name + ' falls</h2>' +
+              '<p>You healed ' + WIN_HEAL + '. HP ' + G.hp + '/' + G.maxHp + ' &middot; bosses defeated: <b>' + G.cleared + '</b>' +
+              '<br>Add one card to your deck, or skip and heal.</p>';
+      for (var i = 0; i < G.offers.length; i++) {
+        var k = G.offers[i], c = CARDS[k];
+        h += '<button class="offer" data-act="card" data-key="' + k + '"><b>' + c.n + ' &middot; ' + c.c + ' energy</b>' +
+             '<span>' + selfText(k) + ' &mdash; ' + recoilLabel(k) + '</span></button>';
+      }
+      h += '<button class="primary" data-act="heal">SKIP &mdash; HEAL ' + HEAL_SKIP + ' &amp; +' + MAXHP_BONUS + ' MAX HP</button>';
+      elBox.innerHTML = h;
+      return;
+    }
+    if (G.screen === 'over') {
+      elBox.innerHTML =
+        '<h1>YOU FALL</h1>' +
+        '<p>Your own cards caught up with you on fight ' + G.depth + '.</p>' +
+        '<div class="ex">Bosses defeated: <b>' + G.cleared + '</b><br>Damage dealt: <b>' + G.dealt + '</b><br>Best run: <b>' + best + '</b></div>' +
+        '<button class="primary" data-act="start">NEW RUN</button>';
+      return;
+    }
+  }
+
+  /* ============================ INPUT (pointer = touch + mouse) ============================ */
+  var drag = null;
+  var LIFT = 55; // px upward release distance that plays a card
+
+  elHand.addEventListener('pointerdown', function (e) {
+    if (!G || G.screen !== 'fight') return;
+    var el = e.target.closest ? e.target.closest('.card') : null;
+    if (!el) return;
+    e.preventDefault();
+    drag = { el: el, i: parseInt(el.dataset.i, 10), x: e.clientX, y: e.clientY, moved: false, id: e.pointerId };
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+
+  elHand.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) drag.moved = true;
+    if (drag.moved) {
+      e.preventDefault();
+      drag.el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      drag.el.style.zIndex = '20';
+      if (dy < -LIFT) drag.el.classList.add('armed'); else drag.el.classList.remove('armed');
+    }
+  });
+
+  function endDrag(e, cancelled) {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    var d = drag; drag = null;
+    d.el.style.transform = '';
+    d.el.style.zIndex = '';
+    d.el.classList.remove('armed');
+    if (cancelled) { render(); return; }
+    var dy = e.clientY - d.y;
+    if (d.moved) {
+      if (dy < -LIFT) { playCard(d.i); } else { render(); }
+    } else {
+      selected = (selected === d.i) ? -1 : d.i;
+      render();
+    }
+  }
+  elHand.addEventListener('pointerup', function (e) { endDrag(e, false); });
+  elHand.addEventListener('pointercancel', function (e) { endDrag(e, true); });
+
+  btnPlay.addEventListener('click', function () {
+    if (selected >= 0) playCard(selected);
+  });
+  btnEnd.addEventListener('click', function () { endTurn(); });
+
+  elOverlay.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!t) return;
+    var act = t.getAttribute('data-act');
+    if (act === 'start') { newRun(); render(); }
+    else if (act === 'card') { takeReward('card', t.getAttribute('data-key')); }
+    else if (act === 'heal') { takeReward('heal'); }
+  });
+
+  // stop pinch-zoom / scroll fighting the drag
+  document.addEventListener('touchmove', function (e) {
+    if (drag) e.preventDefault();
+  }, { passive: false });
+
+  /* ============================ BOOT ============================ */
+  render(); // G is null -> start screen
+})();
+</script>
+</body>
+</html>

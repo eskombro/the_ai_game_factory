@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Deadhang</title>
+<style>
+  :root {
+    --void:      #0b0d11;
+    --granite:   #171c24;
+    --seam:      #242c37;
+    --chalk:     #eef2f6;
+    --chalk-dim: #9aa6b4;
+    --chalk-far: #5b6675;
+    --mint:      #6ee0a0;
+    --amber:     #f0964a;
+    --rust:      #ff6b5e;
+    --ice:       #56c8e8;
+    --gold:      #ffd76a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--void); color: var(--chalk);
+    font-family: var(--sans);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #wrap { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* soft depth vignette over the whole shaft — purely decorative */
+  #vig {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background:
+      radial-gradient(120% 78% at 50% 44%, rgba(0,0,0,0) 46%, rgba(0,0,0,0.42) 84%, rgba(0,0,0,0.66) 100%);
+  }
+  #vig.danger { background:
+      radial-gradient(120% 78% at 50% 44%, rgba(0,0,0,0) 40%, rgba(74,10,8,0.40) 82%, rgba(90,10,8,0.62) 100%);
+    animation: pulseVig 1.1s ease-in-out infinite; }
+  @keyframes pulseVig { 0%,100% { opacity: .75; } 50% { opacity: 1; } }
+
+  /* ---- HUD (top only; bottom-right is reserved) ---- */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    /* keep the readout aligned with the climbable column on wide screens */
+    padding: calc(10px + env(safe-area-inset-top)) max(12px, calc((100% - 470px) / 2)) 10px;
+    pointer-events: none; z-index: 6;
+    display: flex; flex-direction: column; gap: 8px;
+    background: linear-gradient(to bottom, rgba(6,8,11,0.88) 0%, rgba(6,8,11,0.55) 62%, rgba(6,8,11,0) 100%);
+  }
+  #hudRow {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+    color: var(--chalk-far); text-transform: uppercase;
+  }
+  #hudRow > span { display: flex; flex-direction: column; gap: 2px; line-height: 1; }
+  #hudRow > span:nth-child(2) { align-items: center; }
+  #hudRow > span:nth-child(3) { align-items: flex-end; }
+  #hudRow b { font-size: 21px; font-weight: 600; letter-spacing: 0; color: var(--chalk); }
+  #hudRow .unit { font-size: 11px; color: var(--chalk-far); }
+  #hFlow { color: var(--gold); transition: transform .12s ease-out; }
+  #hFlow.hot { color: var(--gold); text-shadow: 0 0 10px rgba(255,215,106,.55); transform: scale(1.12); }
+
+  #gripWrap { display: flex; align-items: center; gap: 8px; }
+  #gripLbl { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--chalk-far); }
+  #gripOuter {
+    position: relative; flex: 1; height: 9px; border-radius: 5px; overflow: hidden;
+    background: #11151b; box-shadow: inset 0 0 0 1px rgba(154,166,180,.22);
+  }
+  #gripFill {
+    height: 100%; width: 100%; border-radius: 5px;
+    background: var(--ice);
+    transition: background .25s linear;
+  }
+  #gripOuter::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 24px, rgba(11,13,17,.85) 24px 25px);
+  }
+  #gripOuter.low { animation: gripPulse .85s ease-in-out infinite; }
+  @keyframes gripPulse {
+    0%,100% { box-shadow: inset 0 0 0 1px rgba(255,107,94,.35); }
+    50%     { box-shadow: inset 0 0 0 1px rgba(255,107,94,.95), 0 0 12px rgba(255,107,94,.35); }
+  }
+
+  #warn {
+    position: absolute; top: 96px; left: 0; right: 0; text-align: center; z-index: 6;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--amber); pointer-events: none; min-height: 16px;
+  }
+  #warn.urgent { color: var(--rust); animation: warnBlink .5s steps(2, end) infinite; }
+  /* keep the live HUD from ghosting through the start / game-over panels */
+  #hud, #warn { transition: opacity .25s ease; }
+  body:has(.overlay:not(.hidden)) #hud,
+  body:has(.overlay:not(.hidden)) #warn { opacity: 0; }
+  @keyframes warnBlink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+  /* ---- Overlays ---- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(95% 72% at 50% 42%, rgba(11,13,17,0.62), rgba(6,7,10,0.92));
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    padding: 20px; z-index: 10;
+    animation: fadeIn .22s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .panel {
+    width: 100%; max-width: 360px; text-align: center; position: relative;
+    background: linear-gradient(170deg, #1b212a 0%, #14181f 100%);
+    border: 1px solid #2c3541; border-radius: 4px;
+    padding: 22px 18px 24px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6), inset 0 1px 0 rgba(238,242,246,.06);
+    animation: riseIn .28s cubic-bezier(.2,.9,.3,1);
+  }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  /* chalk seam along the top edge of the panel */
+  .panel::before {
+    content: ''; position: absolute; left: 18px; right: 18px; top: -1px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--mint), transparent); opacity: .7;
+  }
+  .panel h1 {
+    margin: 2px 0 2px; font-family: var(--mono); font-size: 34px; font-weight: 600;
+    letter-spacing: .22em; text-indent: .22em; color: var(--chalk);
+    text-shadow: 0 0 22px rgba(86,200,232,.22);
+  }
+  .panel h2 {
+    margin: 2px 0 4px; font-family: var(--mono); font-size: 24px; font-weight: 600;
+    letter-spacing: .2em; text-indent: .2em; color: var(--rust);
+  }
+  .tagline {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .3em; text-indent: .3em;
+    color: var(--chalk-far); text-transform: uppercase; margin: 0 0 14px;
+  }
+  .panel p { margin: 8px 0; font-size: 14.5px; line-height: 1.5; color: var(--chalk-dim); }
+  .panel ul {
+    text-align: left; margin: 14px 0 4px; padding: 0; list-style: none;
+    font-size: 13.5px; color: var(--chalk-dim); line-height: 1.45;
+  }
+  .panel ul li {
+    position: relative; padding: 5px 0 5px 18px;
+    border-top: 1px solid rgba(238,242,246,.055);
+  }
+  .panel ul li:first-child { border-top: none; }
+  .panel ul li::before {
+    content: ''; position: absolute; left: 2px; top: 12px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--chalk-far);
+  }
+  .panel ul li.j::before { background: var(--mint); box-shadow: 0 0 8px rgba(110,224,160,.6); }
+  .panel ul li.b::before { background: var(--amber); box-shadow: 0 0 8px rgba(240,150,74,.55); }
+  .panel ul li.d::before { background: var(--rust); box-shadow: 0 0 8px rgba(255,107,94,.55); }
+  .panel ul b { color: var(--chalk); font-weight: 600; }
+  .key { color: var(--chalk); font-weight: 600; }
+  .stats {
+    display: flex; justify-content: center; gap: 22px; margin: 14px 0 2px;
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--chalk-far);
+  }
+  .stats div { display: flex; flex-direction: column; gap: 3px; }
+  .stats b { font-size: 19px; letter-spacing: 0; color: var(--chalk-dim); font-weight: 600; }
+  .bigscore {
+    margin: 14px 0 0; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .28em; text-indent: .28em; color: var(--chalk-far); text-transform: uppercase;
+  }
+  .bigscore b {
+    display: block; margin-top: 2px; font-size: 42px; letter-spacing: 0; text-indent: 0;
+    color: var(--chalk); font-weight: 600; text-shadow: 0 0 24px rgba(86,200,232,.2);
+  }
+  .btn {
+    display: block; width: 100%; margin: 18px auto 0; padding: 17px 12px;
+    font-size: 15px; font-weight: 700; font-family: var(--mono);
+    letter-spacing: .2em; text-indent: .2em; text-transform: uppercase;
+    color: #08120c; background: var(--mint); border: none; border-radius: 3px;
+    cursor: pointer; touch-action: manipulation;
+    box-shadow: 0 0 0 0 rgba(110,224,160,.45), 0 6px 18px rgba(110,224,160,.16);
+    transition: transform .08s ease-out, background .12s linear, box-shadow .25s ease-out;
+  }
+  .btn:active { background: #47bd82; transform: translateY(2px) scale(.995); box-shadow: none; }
+  .sub {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--chalk-far); margin-top: 14px;
+  }
+  .sub span { color: var(--chalk-dim); }
+  .hidden { display: none !important; }
+
+  @media (max-height: 620px) {
+    .panel { padding: 16px 16px 18px; }
+    .panel h1 { font-size: 28px; }
+    .panel ul { font-size: 12.5px; margin-top: 10px; }
+    .panel ul li { padding-top: 4px; padding-bottom: 4px; }
+    .btn { padding: 15px 12px; margin-top: 14px; }
+    .bigscore b { font-size: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .overlay, .panel { animation: none; }
+    #vig.danger, #gripOuter.low, #warn.urgent { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <div id="vig"></div>
+
+  <div id="hud">
+    <div id="hudRow">
+      <span>Height<b><span id="hHeight">0</span><span class="unit">m</span></b></span>
+      <span>Score<b id="hScore">0</b></span>
+      <span>Flow<b id="hFlow">x1</b></span>
+    </div>
+    <div id="gripWrap">
+      <span id="gripLbl">GRIP</span>
+      <div id="gripOuter"><div id="gripFill"></div></div>
+    </div>
+  </div>
+  <div id="warn"></div>
+
+  <div class="overlay" id="startScreen">
+    <div class="panel">
+      <h1>DEADHANG</h1>
+      <div class="tagline">One hand at a time</div>
+      <p><span class="key">Tap a hold</span> to move a hand to it, or <span class="key">drag a hand</span> onto one within reach &mdash; the other hand holds your weight.</p>
+      <ul>
+        <li>Every hold <b>crumbles</b> the moment you move off it.</li>
+        <li>Your <b>grip</b> drains while you hang &mdash; faster with a hand in the air.</li>
+        <li class="j"><b>Green jugs</b> restore grip and drain slowest.</li>
+        <li class="b"><b>Orange holds</b> snap a moment after you grab them.</li>
+        <li class="d">Grip empty, or both hands off the wall &rarr; you fall.</li>
+      </ul>
+      <button class="btn" id="startBtn">Start climbing</button>
+      <div class="sub">Best <span id="bestStart">0</span></div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <div class="panel">
+      <h2 id="overTitle">YOU FELL</h2>
+      <p id="overReason">Your grip gave out.</p>
+      <div class="stats">
+        <div>Height<b><span id="overHeight">0</span>m</b></div>
+        <div>Flow bonus<b id="overFlow">0</b></div>
+      </div>
+      <div class="bigscore">Score<b id="overScore">0</b></div>
+      <button class="btn" id="retryBtn">Climb again</button>
+      <div class="sub">Best <span id="bestOver">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- config
+  var CFG = {
+    spanRatio: 0.44,      // max hand-to-hand reach, relative to play column width
+    spanMin: 120, spanMax: 210,
+    rowGapMin: 74, rowGapMax: 116,
+    gripMax: 100,
+    drainBase: 2.5,       // grip units per second at run start (t=0)
+    drainCap: 7.0,        // grip units per second once fully ramped (t=1)
+    multFree: 2.4, multJug: 0.55, multCrimp: 1.0, multBrittle: 1.2,
+    jugBonus: 14,
+    brittleFuseStart: 3.2, // seconds to react before a fresh run's brittle holds snap
+    brittleFuseEnd: 1.9,   // seconds once fully ramped (t=1)
+    snapRadius: 52,       // how close a drag must land to a hold
+    tapRadius: 62,        // how close a tap must land to a hold
+    grabRadius: 66,       // how close a press must be to pick up a hand
+    tapSlop: 14,          // px of movement still counted as a tap
+    pxPerMeter: 12,
+    flowWindow: 1.7, flowMax: 5,
+    rampSeconds: 100      // seconds of play (per run) over which difficulty reaches full
+  };
+
+  // "Chalk & Granite": a cold near-black shaft, one warm hazard hue, one cool guidance hue.
+  var COL = {
+    bg: '#0b0d11', bgTop: '#12161d',
+    wall: '#171c24', wallEdge: '#2e3945', wallLine: '#212832', wallGrain: '#20262f',
+    label: '#39424f',
+    crimp: '#8b98a8', crimpDark: '#5a6674',
+    jug: '#6ee0a0', jugDark: '#2f8a5c',
+    brittle: '#f0964a', brittleDark: '#8a4a17',
+    gone: '#2a2f38', hand: '#eef2f6', handFree: '#ff6b5e',
+    body: '#b9c4d0', bodyDark: '#7d8896',
+    reach: '#56c8e8', valid: '#ffd76a'
+  };
+
+  // ---------------------------------------------------------------- canvas
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+  var PLAY_W = 0, PLAY_X = 0;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    PLAY_W = Math.min(W, 460);
+    PLAY_X = (W - PLAY_W) / 2;
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+  resize();
+
+  function maxSpan() {
+    return Math.max(CFG.spanMin, Math.min(CFG.spanMax, PLAY_W * CFG.spanRatio));
+  }
+  function minX() { return PLAY_X + 26; }
+  function maxX() { return PLAY_X + PLAY_W - 26; }
+  // holds store a normalised column coordinate so resizing never breaks reach math
+  function HX(h) { return PLAY_X + h.u * PLAY_W; }
+  function toU(px) { return (px - PLAY_X) / PLAY_W; }
+
+  // ---------------------------------------------------------------- state
+  var state = 'start';      // 'start' | 'play' | 'over'
+  var holds = [];
+  var holdSeq = 0;
+  var hands = null;
+  var lastRow = null;
+  var grip = 0, flow = 1, flowPts = 0, lastMoveT = 0;
+  var startBodyY = 0, maxBodyY = 0, heightM = 0, bestScore = 0;
+  var camY = 0, now = 0, overReason = '';
+  var runStartT = 0;
+  var drag = null;          // { hand, x, y, sx, sy, moved, grabbed }
+  var noMoveT = 0;
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function ri(a, b) { return Math.floor(rnd(a, b + 1)); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function dist(ax, ay, bx, by) { var dx = ax - bx, dy = ay - by; return Math.sqrt(dx * dx + dy * dy); }
+  function holdDist(a, b) { return dist(HX(a), a.y, HX(b), b.y); }
+
+  function loadBest() {
+    try { bestScore = parseInt(localStorage.getItem('deadhang_best') || '0', 10) || 0; }
+    catch (e) { bestScore = 0; }
+  }
+  function saveBest(s) {
+    if (s <= bestScore) return;
+    bestScore = s;
+    try { localStorage.setItem('deadhang_best', String(s)); } catch (e) {}
+  }
+
+  // ---------------------------------------------------------------- holds
+  function mkHold(px, y, type) {
+    var h = { id: ++holdSeq, u: toU(clamp(px, minX(), maxX())), y: y, type: type, gone: false, fuse: 0, fuseFull: 0 };
+    holds.push(h);
+    return h;
+  }
+
+  // Difficulty ramps on elapsed play time (not distance climbed), so a slow
+  // starting row-gap/hazard-mix genuinely stays easy for the opening seconds
+  // of every run, then escalates smoothly to a "hard but fair" ceiling around
+  // rampSeconds and plateaus for longer runs. See GAME.md "Difficulty Tuning".
+  function elapsedRun() { return Math.max(0, now - runStartT); }
+  function difficultyT() { return clamp(elapsedRun() / CFG.rampSeconds, 0, 1); }
+  function maxHeightMeters() { return Math.max(0, (maxBodyY - startBodyY) / CFG.pxPerMeter); }
+  function brittleFuseFor(t) { return lerp(CFG.brittleFuseStart, CFG.brittleFuseEnd, t); }
+
+  function pickType(t) {
+    var jugP = lerp(0.34, 0.12, t);
+    var briP = lerp(0.03, 0.26, t);
+    var r = Math.random();
+    if (r < jugP) return 'jug';
+    if (r < jugP + briP) return 'brittle';
+    return 'crimp';
+  }
+
+  // place a hold at row height `y` no further than maxD from (ax, ay)
+  function placeWithin(ax, ay, y, maxD, preferDx) {
+    var dy = y - ay;
+    var room = Math.sqrt(Math.max(100, maxD * maxD - dy * dy));
+    var dx = clamp(preferDx, -room, room);
+    return clamp(ax + dx, minX(), maxX());
+  }
+
+  function genRow() {
+    var t = difficultyT();
+    var span = maxSpan();
+    var gap = lerp(CFG.rowGapMin, CFG.rowGapMax, t) + rnd(-7, 7);
+    gap = Math.min(gap, span * 0.72);
+    var y = lastRow.y + gap;
+
+    var ax = HX(lastRow.primary), ay = lastRow.primary.y;
+    var py = y + rnd(-6, 6);
+    var px = placeWithin(ax, ay, py, span * 0.88, rnd(-span, span));
+    var primary = mkHold(px, py, pickType(t));
+
+    // a partner hold on (roughly) the same row, always within reach of the primary
+    var sy = y + rnd(-12, 12);
+    var sdir = Math.random() < 0.5 ? -1 : 1;
+    var sdist = rnd(58, span * 0.66);
+    var sx = HX(primary) + sdir * sdist;
+    if (sx < minX() + 4 || sx > maxX() - 4) sx = HX(primary) - sdir * sdist;
+    sx = placeWithin(HX(primary), primary.y, sy, span * 0.82, sx - HX(primary));
+    var secondary = mkHold(sx, sy, pickType(t));
+    if (primary.type === 'brittle' && secondary.type === 'brittle') secondary.type = 'crimp';
+
+    // decoys: extra choices, no guarantees
+    var decoys = t < 0.5 ? ri(1, 2) : ri(0, 1);
+    for (var i = 0; i < decoys; i++) {
+      mkHold(rnd(minX(), maxX()), y + rnd(-gap * 0.45, gap * 0.45), pickType(t));
+    }
+
+    lastRow = { y: y, primary: primary, secondary: secondary };
+  }
+
+  function ensureGenerated() {
+    var top = camY + H * 0.75;
+    var guard = 0;
+    while (lastRow.y < top && guard++ < 60) genRow();
+  }
+
+  function cullHolds() {
+    var floor = camY - H * 0.75;
+    var kept = [];
+    for (var i = 0; i < holds.length; i++) {
+      var h = holds[i];
+      if (h.gone) continue;
+      if (h.y < floor && h !== hands[0].hold && h !== hands[1].hold) continue;
+      kept.push(h);
+    }
+    holds = kept;
+  }
+
+  // ---------------------------------------------------------------- setup
+  function reset() {
+    holds = []; holdSeq = 0;
+    var cx = PLAY_X + PLAY_W / 2;
+    var base = 0;
+    var a = mkHold(cx - Math.min(70, PLAY_W * 0.16), base, 'jug');
+    var b = mkHold(cx + Math.min(70, PLAY_W * 0.16), base + 10, 'crimp');
+    lastRow = { y: base, primary: a, secondary: b };
+
+    hands = [
+      { hold: a, px: HX(a), py: a.y, side: 'L' },
+      { hold: b, px: HX(b), py: b.y, side: 'R' }
+    ];
+
+    grip = CFG.gripMax;
+    flow = 1; flowPts = 0; lastMoveT = -99;
+    runStartT = now;
+    startBodyY = bodyY(); maxBodyY = startBodyY; heightM = 0;
+    camY = startBodyY;
+    drag = null; noMoveT = 0; overReason = '';
+    ensureGenerated();
+  }
+
+  function bodyY() { return (hands[0].py + hands[1].py) / 2; }
+  function bodyX() { return (hands[0].px + hands[1].px) / 2; }
+
+  // ---------------------------------------------------------------- rules
+  function partner(i) { return hands[1 - i]; }
+  function anchored(hand) { return hand.hold !== null && !hand.hold.gone; }
+  function canMoveHand(i) { return anchored(partner(i)); }
+
+  function isValidTarget(i, hold) {
+    if (!hold || hold.gone) return false;
+    if (hold === hands[0].hold || hold === hands[1].hold) return false;
+    if (!canMoveHand(i)) return false;
+    var p = partner(i).hold;
+    return dist(HX(hold), hold.y, HX(p), p.y) <= maxSpan();
+  }
+
+  function anyValidMove() {
+    for (var i = 0; i < 2; i++) {
+      if (!canMoveHand(i)) continue;
+      for (var k = 0; k < holds.length; k++) if (isValidTarget(i, holds[k])) return true;
+    }
+    return false;
+  }
+
+  function commitMove(i, hold) {
+    var hand = hands[i];
+    if (hand.hold) { hand.hold.gone = true; }
+    hand.hold = hold;
+    hand.px = HX(hold); hand.py = hold.y;
+    if (hold.type === 'jug') grip = Math.min(CFG.gripMax, grip + CFG.jugBonus);
+    if (hold.type === 'brittle') { hold.fuseFull = brittleFuseFor(difficultyT()); hold.fuse = hold.fuseFull; }
+
+    if (now - lastMoveT <= CFG.flowWindow) flow = Math.min(CFG.flowMax, flow + 1);
+    else flow = 1;
+    lastMoveT = now;
+    flowPts += flow;
+    ensureGenerated();
+  }
+
+  function score() { return Math.floor(heightM) + flowPts; }
+
+  function gameOver(reason) {
+    if (state !== 'play') return;
+    state = 'over';
+    drag = null;
+    overReason = reason;
+    var s = score();
+    saveBest(s);
+    document.getElementById('overReason').textContent = reason;
+    document.getElementById('overHeight').textContent = Math.floor(heightM);
+    document.getElementById('overFlow').textContent = flowPts;
+    document.getElementById('overScore').textContent = s;
+    document.getElementById('bestOver').textContent = bestScore;
+    document.getElementById('overScreen').classList.remove('hidden');
+  }
+
+  // ---------------------------------------------------------------- input
+  function ptFromEvent(e) {
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function screenToWorldY(sy) { return camY + (H * 0.58 - sy); }
+  function worldToScreenY(wy) { return H * 0.58 - (wy - camY); }
+
+  function nearestHand(wx, wy) {
+    var best = -1, bd = CFG.grabRadius;
+    for (var i = 0; i < 2; i++) {
+      if (!canMoveHand(i)) continue;
+      var d = dist(wx, wy, hands[i].px, hands[i].py);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
+  function nearestHold(wx, wy, radius, filter) {
+    var best = null, bd = radius;
+    for (var k = 0; k < holds.length; k++) {
+      var h = holds[k];
+      if (h.gone) continue;
+      if (filter && !filter(h)) continue;
+      var d = dist(wx, wy, HX(h), h.y);
+      if (d < bd) { bd = d; best = h; }
+    }
+    return best;
+  }
+
+  function onDown(e) {
+    if (state !== 'play') return;
+    e.preventDefault();
+    if (drag) return;
+    var p = ptFromEvent(e);
+    var wx = p.x, wy = screenToWorldY(p.y);
+    var hi = nearestHand(wx, wy);
+    drag = { hand: hi, x: wx, y: wy, sx: p.x, sy: p.y, moved: 0, grabbed: hi >= 0, id: (e.pointerId != null ? e.pointerId : 0) };
+    if (hi >= 0 && canvas.setPointerCapture && e.pointerId != null) {
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  }
+
+  function samePointer(e) {
+    return drag && (e.pointerId == null || drag.id === e.pointerId);
+  }
+
+  function onMove(e) {
+    if (state !== 'play' || !drag) return;
+    if (!samePointer(e)) return;          // ignore extra fingers while one is dragging
+    e.preventDefault();
+    var p = ptFromEvent(e);
+    drag.moved = Math.max(drag.moved, dist(p.x, p.y, drag.sx, drag.sy));
+    drag.x = p.x; drag.y = screenToWorldY(p.y);
+  }
+
+  function onUp(e) {
+    if (state !== 'play' || !drag) return;
+    if (!samePointer(e)) return;
+    e.preventDefault();
+    var d = drag; drag = null;
+    var i = d.hand;
+
+    // 1. deliberate drag of a picked-up hand -> snap to a reachable hold
+    if (d.grabbed && d.moved > CFG.tapSlop) {
+      var tgt = nearestHold(d.x, d.y, CFG.snapRadius, function (h) { return isValidTarget(i, h); });
+      if (tgt) commitMove(i, tgt);
+      return;
+    }
+
+    // 2. tap -> move whichever hand can legally reach the tapped hold
+    if (d.moved <= CFG.tapSlop) {
+      var order = [];
+      if (d.grabbed) order.push(i);
+      for (var k = 0; k < 2; k++) {
+        if (order.indexOf(k) >= 0) continue;
+        if (!anchored(hands[k])) order.unshift(k);   // a hand hanging free goes first
+        else order.push(k);
+      }
+      for (var o = 0; o < order.length; o++) {
+        var hi2 = order[o];
+        var t2 = nearestHold(d.x, d.y, CFG.tapRadius, function (h) { return isValidTarget(hi2, h); });
+        if (t2) { commitMove(hi2, t2); return; }
+      }
+    }
+  }
+
+  function onCancel(e) { if (drag) { drag = null; } }
+
+  if (window.PointerEvent) {
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onCancel);
+    canvas.addEventListener('lostpointercapture', onCancel);   // never leave a drag stuck
+  } else {
+    // legacy fallback: touch + mouse wired identically
+    var wrapTouch = function (fn) {
+      return function (e) {
+        var t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        fn({ clientX: t.clientX, clientY: t.clientY, preventDefault: function () { e.preventDefault(); } });
+      };
+    };
+    canvas.addEventListener('touchstart', wrapTouch(onDown), { passive: false });
+    canvas.addEventListener('touchmove', wrapTouch(onMove), { passive: false });
+    canvas.addEventListener('touchend', wrapTouch(onUp), { passive: false });
+    canvas.addEventListener('touchcancel', onCancel, { passive: false });
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', onUp);
+  }
+  // stop pinch-zoom / scroll chaining on mobile
+  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+
+  // ---------------------------------------------------------------- update
+  function update(dt) {
+    if (state !== 'play') return;
+
+    // brittle fuses
+    for (var k = 0; k < holds.length; k++) {
+      var h = holds[k];
+      if (h.fuse > 0) {
+        h.fuse -= dt;
+        if (h.fuse <= 0) {
+          h.gone = true;
+          for (var i = 0; i < 2; i++) if (hands[i].hold === h) hands[i].hold = null;
+        }
+      }
+    }
+
+    // hand render positions
+    for (var i2 = 0; i2 < 2; i2++) {
+      var hand = hands[i2];
+      if (drag && drag.grabbed && drag.hand === i2) {
+        hand.px = drag.x; hand.py = drag.y;
+      } else if (hand.hold) {
+        hand.px = HX(hand.hold); hand.py = hand.hold.y;
+      }
+      // a free, undragged hand simply stays where it was
+    }
+
+    if (!hands[0].hold && !hands[1].hold) { gameOver('Both hands came off the wall.'); return; }
+
+    // grip drain — ramps smoothly with elapsed run time, not raw height climbed
+    var drainRate = lerp(CFG.drainBase, CFG.drainCap, difficultyT());
+    var f = 0;
+    for (var i3 = 0; i3 < 2; i3++) {
+      var hd = hands[i3];
+      var isFree = (hd.hold === null) || (drag && drag.grabbed && drag.hand === i3);
+      if (isFree) f += CFG.multFree;
+      else if (hd.hold.type === 'jug') f += CFG.multJug;
+      else if (hd.hold.type === 'brittle') f += CFG.multBrittle;
+      else f += CFG.multCrimp;
+    }
+    f /= 2;
+    grip -= drainRate * f * dt;
+    if (grip <= 0) { grip = 0; gameOver('Your grip gave out.'); return; }
+
+    // height + camera
+    var by = bodyY();
+    if (by > maxBodyY) maxBodyY = by;
+    heightM = maxHeightMeters();
+    camY += (by - camY) * Math.min(1, dt * 6);
+
+    ensureGenerated();
+    cullHolds();
+
+    // dead-end nudge
+    noMoveT = anyValidMove() ? 0 : noMoveT + dt;
+  }
+
+  // ------------------------------------------------------------ fx (visual)
+  // Everything below is presentation only: it observes game state and never
+  // mutates it. No gameplay value is read back out of here.
+  var MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  var fxLast = 0, shake = 0, parts = [], motes = null;
+  var prevHoldPos = {}, prevHandHold = [0, 0], prevState = '', fxReady = false;
+
+  function hexToRgb(h) {
+    return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)];
+  }
+  function mix(a, b, t) {
+    var x = hexToRgb(a), y = hexToRgb(b);
+    return 'rgb(' + Math.round(lerp(x[0], y[0], t)) + ',' + Math.round(lerp(x[1], y[1], t)) +
+           ',' + Math.round(lerp(x[2], y[2], t)) + ')';
+  }
+  function rgba(h, a) { var c = hexToRgb(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  function hash1(n) { n = (n << 13) ^ n; return (((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 0x7fffffff); }
+
+  // --- tiny WebAudio blips (no assets, no library) ---
+  var actx = null, audioBad = false;
+  function ac() {
+    if (actx || audioBad) return actx;
+    try {
+      var C = window.AudioContext || window.webkitAudioContext;
+      if (!C) { audioBad = true; return null; }
+      actx = new C();
+    } catch (e) { audioBad = true; actx = null; }
+    return actx;
+  }
+  function blip(freq, dur, type, vol, slideTo) {
+    var a = ac(); if (!a) return;
+    try {
+      if (a.state === 'suspended') a.resume();
+      var t = a.currentTime;
+      var o = a.createOscillator(), g = a.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(a.destination);
+      o.start(t); o.stop(t + dur + 0.03);
+    } catch (e) {}
+  }
+  document.addEventListener('pointerdown', function () { ac(); }, { passive: true });
+  document.addEventListener('touchstart', function () { ac(); }, { passive: true });
+
+  function burst(x, wy, colHex, n, power) {
+    if (parts.length > 150) return;
+    for (var i = 0; i < n; i++) {
+      var ang = rnd(0, Math.PI * 2), sp = rnd(20, 120) * power;
+      parts.push({
+        x: x, y: wy,
+        vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp + rnd(0, 40),
+        life: 0, max: rnd(0.35, 0.85), r: rnd(1, 3.2), c: colHex
+      });
+    }
+  }
+
+  function fxTick() {
+    var d = clamp(now - fxLast, 0, 0.05); fxLast = now;
+    shake = Math.max(0, shake - d * 26);
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.life += d;
+      if (p.life >= p.max) { parts.splice(i, 1); continue; }
+      p.vy -= 620 * d;             // world +y is up, so dust falls
+      p.vx *= (1 - 2.2 * d);
+      p.x += p.vx * d; p.y += p.vy * d;
+    }
+    if (!motes) {
+      motes = [];
+      for (var m = 0; m < 16; m++) motes.push({ x: rnd(0, 1), y: camY + rnd(-H * 0.6, H * 0.6), v: rnd(5, 18), r: rnd(0.6, 1.7), a: rnd(0.05, 0.16) });
+    }
+    for (var k = 0; k < motes.length; k++) {
+      var mo = motes[k];
+      mo.y -= mo.v * d;
+      if (worldToScreenY(mo.y) > H + 30) { mo.y = camY + H * 0.62; mo.x = Math.random(); }
+      else if (worldToScreenY(mo.y) < -30) { mo.y = camY - H * 0.62; mo.x = Math.random(); }
+    }
+  }
+
+  // watch for state transitions worth reacting to, without touching the logic
+  function fxDetect() {
+    if (state !== prevState) {
+      if (state === 'over') { shake = 13; blip(320, 0.7, 'sawtooth', 0.05, 70); }
+      if (state === 'play' && prevState !== 'play') {
+        parts.length = 0; shake = 0; motes = null;
+        prevHoldPos = {}; prevHandHold = [0, 0]; fxReady = false;
+        blip(520, 0.12, 'triangle', 0.04, 780);
+      }
+      prevState = state;
+    }
+
+    var live = {}, i, k, h;
+    for (k = 0; k < holds.length; k++) {
+      h = holds[k];
+      if (h.gone) continue;
+      live[h.id] = 1;
+      prevHoldPos[h.id] = { x: HX(h), y: h.y, type: h.type };
+    }
+    if (fxReady) {
+      for (var id in prevHoldPos) {
+        if (live[id]) continue;
+        var q = prevHoldPos[id];
+        if (worldToScreenY(q.y) > -60 && worldToScreenY(q.y) < H + 60) {
+          var c = q.type === 'jug' ? COL.jug : (q.type === 'brittle' ? COL.brittle : COL.crimp);
+          burst(q.x, q.y, c, 9, 1);
+        }
+        delete prevHoldPos[id];
+      }
+    } else {
+      fxReady = true;
+    }
+
+    if (hands) {
+      for (i = 0; i < 2; i++) {
+        var cur = hands[i].hold ? hands[i].hold.id : 0;
+        if (cur !== prevHandHold[i]) {
+          if (cur === 0) {                 // hold snapped out from under this hand
+            shake = 7;
+            blip(150, 0.2, 'square', 0.05, 60);
+            burst(hands[i].px, hands[i].py, COL.handFree, 12, 1.2);
+          } else if (state === 'play' && prevHandHold[i] !== 0) {
+            var t = hands[i].hold.type;
+            blip(t === 'jug' ? 660 : 420 + flow * 42, 0.09, t === 'jug' ? 'triangle' : 'sine', 0.035);
+            burst(hands[i].px, hands[i].py, t === 'jug' ? COL.jug : COL.hand, 5, 0.55);
+          }
+          prevHandHold[i] = cur;
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- render
+  function drawHold(h) {
+    var x = HX(h), y = worldToScreenY(h.y);
+    if (y < -40 || y > H + 40) return;
+    var r = 13, col = COL.crimp, dark = COL.crimpDark;
+    if (h.type === 'jug') { col = COL.jug; dark = COL.jugDark; r = 16; }
+    else if (h.type === 'brittle') { col = COL.brittle; dark = COL.brittleDark; r = 14; }
+
+    var burn = 0;
+    if (h.fuse > 0) {
+      // load-bearing feedback: the hold visibly shrinks as the fuse burns
+      var fuseFull = h.fuseFull || CFG.brittleFuseStart;
+      burn = 1 - h.fuse / fuseFull;
+      r = 8 + 6 * (h.fuse / fuseFull);
+      var j = burn * burn * 2.6;
+      x += rnd(-j, j); y += rnd(-j, j);
+      col = mix(COL.brittle, COL.handFree, burn * 0.9);
+      dark = mix(COL.brittleDark, '#5a1712', burn * 0.9);
+    }
+
+    // pocket shadow so the hold reads as seated in the rock
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.beginPath(); ctx.arc(x, y + 2.5, r + 2.5, 0, Math.PI * 2); ctx.fill();
+
+    if (h.type === 'jug') {           // rest stop: a soft green halo
+      ctx.fillStyle = rgba(COL.jug, 0.11);
+      ctx.beginPath(); ctx.arc(x, y, r + 10, 0, Math.PI * 2); ctx.fill();
+    } else if (h.type === 'brittle' && burn > 0) {
+      ctx.fillStyle = rgba(COL.handFree, 0.08 + 0.16 * burn);
+      ctx.beginPath(); ctx.arc(x, y, r + 8 + burn * 6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = dark; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y - r * 0.15, r * 0.8, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+
+    // chalked lip
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(238,242,246,0.28)';
+    ctx.beginPath(); ctx.arc(x, y, r - 1.2, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+
+    if (h.type === 'brittle') {
+      ctx.lineWidth = 1.6; ctx.strokeStyle = rgba('#000000', 0.45);
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.65, y - r * 0.15); ctx.lineTo(x - r * 0.05, y + r * 0.1);
+      ctx.lineTo(x + r * 0.62, y - r * 0.28); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.05, y + r * 0.1); ctx.lineTo(x + r * 0.1, y + r * 0.7); ctx.stroke();
+    } else if (h.type === 'jug') {
+      ctx.lineWidth = 2; ctx.strokeStyle = rgba('#0b0d11', 0.4);
+      ctx.beginPath(); ctx.arc(x, y + r * 0.2, r * 0.42, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    }
+  }
+
+  var bgGrad = null, bgKey = '', wallGrad = null, wallKey = '';
+  function backdrop() {
+    var k1 = W + 'x' + H;
+    if (bgKey !== k1) {
+      bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, COL.bgTop);
+      bgGrad.addColorStop(1, COL.bg);
+      bgKey = k1;
+    }
+    ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+
+    // far parallax strata in the void behind the shaft
+    var pY = camY * 0.3, stepP = 190;
+    var firstP = Math.floor((pY - H * 0.7) / stepP) * stepP;
+    ctx.strokeStyle = 'rgba(238,242,246,0.028)'; ctx.lineWidth = 1;
+    for (var wy = firstP; wy < pY + H * 0.7; wy += stepP) {
+      var sy = H * 0.58 - (wy - pY);
+      if (sy < -10 || sy > H + 10) continue;
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+    }
+
+    // the climbable column
+    var k2 = PLAY_X + ':' + PLAY_W;
+    if (wallKey !== k2) {
+      wallGrad = ctx.createLinearGradient(PLAY_X, 0, PLAY_X + PLAY_W, 0);
+      wallGrad.addColorStop(0, '#0f1319');
+      wallGrad.addColorStop(0.42, COL.wall);
+      wallGrad.addColorStop(0.62, '#1a2029');
+      wallGrad.addColorStop(1, '#0f1319');
+      wallKey = k2;
+    }
+    ctx.fillStyle = wallGrad; ctx.fillRect(PLAY_X, 0, PLAY_W, H);
+
+    // rock grain, deterministic per world row so it scrolls with the wall
+    var gs = 56;
+    var r0 = Math.floor((camY - H * 0.62) / gs), r1 = Math.ceil((camY + H * 0.62) / gs);
+    for (var ri2 = r0; ri2 <= r1; ri2++) {
+      for (var s = 0; s < 2; s++) {
+        var hh = hash1(ri2 * 7 + s * 131);
+        var gx = PLAY_X + 8 + hh * (PLAY_W - 16);
+        var gy = worldToScreenY(ri2 * gs + hash1(ri2 * 31 + s) * gs);
+        if (gy < -6 || gy > H + 6) continue;
+        ctx.fillStyle = 'rgba(238,242,246,' + (0.016 + hh * 0.028).toFixed(3) + ')';
+        ctx.fillRect(gx, gy, 1 + hh * 22, 1 + (hh > 0.7 ? 1 : 0));
+      }
+    }
+
+    // column edges — a lit lip plus a falloff band so the shaft sits in front
+    if (PLAY_X > 1) {
+      var gl = ctx.createLinearGradient(PLAY_X - 30, 0, PLAY_X, 0);
+      gl.addColorStop(0, 'rgba(0,0,0,0)'); gl.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = gl; ctx.fillRect(PLAY_X - 30, 0, 30, H);
+      var gr = ctx.createLinearGradient(PLAY_X + PLAY_W, 0, PLAY_X + PLAY_W + 30, 0);
+      gr.addColorStop(0, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr; ctx.fillRect(PLAY_X + PLAY_W, 0, 30, H);
+    }
+    ctx.fillStyle = rgba(COL.wallEdge, 0.8);
+    ctx.fillRect(PLAY_X - 0.5, 0, 1, H);
+    ctx.fillRect(PLAY_X + PLAY_W - 0.5, 0, 1, H);
+
+    // height gridlines every 10 m
+    ctx.strokeStyle = COL.wallLine; ctx.lineWidth = 1;
+    ctx.fillStyle = COL.label; ctx.font = '9px ' + MONO; ctx.textAlign = 'left';
+    var step = 10 * CFG.pxPerMeter;
+    var firstM = Math.floor((camY - H * 0.6 - startBodyY) / step) * step + startBodyY;
+    for (var wy2 = firstM; wy2 < camY + H * 0.7; wy2 += step) {
+      var sy2 = worldToScreenY(wy2);
+      if (sy2 < -20 || sy2 > H + 20) continue;
+      var m = Math.round((wy2 - startBodyY) / CFG.pxPerMeter);
+      var major = (m % 50 === 0);
+      ctx.globalAlpha = major ? 1 : 0.55;
+      ctx.beginPath(); ctx.moveTo(PLAY_X, sy2); ctx.lineTo(PLAY_X + PLAY_W, sy2); ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (m >= 0) {
+        ctx.fillStyle = major ? '#4b5665' : COL.label;
+        ctx.fillText(m + 'M', PLAY_X + 6, sy2 - 4);
+      }
+    }
+    ctx.textAlign = 'start';
+  }
+
+  function drawMotes() {
+    if (!motes) return;
+    for (var i = 0; i < motes.length; i++) {
+      var mo = motes[i], sy = worldToScreenY(mo.y);
+      if (sy < -10 || sy > H + 10) continue;
+      ctx.fillStyle = 'rgba(238,242,246,' + mo.a.toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(PLAY_X + mo.x * PLAY_W, sy, mo.r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawParts() {
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i], sy = worldToScreenY(p.y);
+      if (sy < -20 || sy > H + 20) continue;
+      var a = 1 - p.life / p.max;
+      ctx.fillStyle = rgba(p.c, (a * a * 0.85).toFixed(3));
+      ctx.fillRect(p.x - p.r * 0.5, sy - p.r * 0.5, p.r, p.r);
+    }
+  }
+
+  function render() {
+    fxDetect();
+    fxTick();
+
+    ctx.save();
+    if (shake > 0.2) ctx.translate(rnd(-shake, shake) * 0.45, rnd(-shake, shake) * 0.45);
+
+    backdrop();
+    drawMotes();
+
+    // (the start screen keeps rendering the wall + climber behind its panel)
+
+    // reach circle + valid targets while dragging
+    if (drag && drag.grabbed && canMoveHand(drag.hand)) {
+      var p = partner(drag.hand).hold;
+      var cx = HX(p), cy = worldToScreenY(p.y);
+      ctx.save();
+      ctx.setLineDash([5, 8]);
+      ctx.lineDashOffset = -now * 22;
+      ctx.strokeStyle = COL.reach; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.arc(cx, cy, maxSpan(), 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = COL.reach;
+      ctx.beginPath(); ctx.arc(cx, cy, maxSpan(), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // holds
+    for (var k = 0; k < holds.length; k++) if (!holds[k].gone) drawHold(holds[k]);
+    drawParts();
+
+    if (drag && drag.grabbed && canMoveHand(drag.hand)) {
+      var di = drag.hand;
+      var pulse = 0.6 + 0.4 * Math.sin(now * 6);
+      for (var k2 = 0; k2 < holds.length; k2++) {
+        var h = holds[k2];
+        if (!isValidTarget(di, h)) continue;
+        var hx = HX(h), hy = worldToScreenY(h.y);
+        if (hy < -40 || hy > H + 40) continue;
+        ctx.strokeStyle = rgba(COL.valid, (0.35 + 0.45 * pulse).toFixed(3));
+        ctx.lineWidth = 1.75;
+        ctx.beginPath(); ctx.arc(hx, hy, 22, 0, Math.PI * 2); ctx.stroke();
+      }
+      // snap preview
+      var tgt = nearestHold(drag.x, drag.y, CFG.snapRadius, function (hh) { return isValidTarget(di, hh); });
+      if (tgt) {
+        var tx = HX(tgt), ty = worldToScreenY(tgt.y);
+        ctx.fillStyle = rgba(COL.valid, 0.22);
+        ctx.beginPath(); ctx.arc(tx, ty, 26, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = COL.valid; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(tx, ty, 22, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    // ---- climber: shoulders at the hand midpoint, body hanging below ----
+    var bx = bodyX(), bys = worldToScreenY(bodyY());
+    var sway = Math.sin(now * 1.5) * 3.5;
+
+    // legs, hanging and swinging a little
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(bx, bys + 30); ctx.lineTo(bx - 8 + sway, bys + 54); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, bys + 30); ctx.lineTo(bx + 7 + sway * 0.7, bys + 56); ctx.stroke();
+    ctx.strokeStyle = COL.bodyDark; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(bx, bys + 30); ctx.lineTo(bx - 8 + sway, bys + 54); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, bys + 30); ctx.lineTo(bx + 7 + sway * 0.7, bys + 56); ctx.stroke();
+
+    // arms: gently bowed under load
+    for (var i = 0; i < 2; i++) {
+      var hxA = hands[i].px, hyA = worldToScreenY(hands[i].py);
+      var mx = (bx + hxA) / 2 + (hxA < bx ? -8 : 8), my = (bys + hyA) / 2 + 6;
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(bx, bys + 5); ctx.quadraticCurveTo(mx, my, hxA, hyA); ctx.stroke();
+      ctx.strokeStyle = COL.bodyDark; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(bx, bys + 5); ctx.quadraticCurveTo(mx, my, hxA, hyA); ctx.stroke();
+      ctx.strokeStyle = rgba(COL.body, 0.75); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(bx, bys + 5); ctx.quadraticCurveTo(mx, my, hxA, hyA); ctx.stroke();
+    }
+
+    // torso + head, drawn over the arms so the climber reads as one silhouette
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    if (ctx.ellipse) ctx.ellipse(bx, bys + 21, 13, 19, 0, 0, Math.PI * 2);
+    else ctx.arc(bx, bys + 21, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COL.body;
+    ctx.beginPath();
+    if (ctx.ellipse) ctx.ellipse(bx, bys + 21, 10.5, 16.5, 0, 0, Math.PI * 2);
+    else ctx.arc(bx, bys + 20, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = rgba(COL.bodyDark, 0.55);
+    ctx.beginPath();
+    if (ctx.ellipse) ctx.ellipse(bx + 4, bys + 24, 5.5, 11, 0, 0, Math.PI * 2);
+    else ctx.arc(bx + 4, bys + 24, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COL.hand;
+    ctx.beginPath(); ctx.arc(bx, bys + 5, 7.5, 0, Math.PI * 2); ctx.fill();
+
+    // hands
+    for (var i4 = 0; i4 < 2; i4++) {
+      var hd = hands[i4];
+      var free = (hd.hold === null);
+      var lifted = free || (drag && drag.grabbed && drag.hand === i4);
+      var hxp = hd.px, hyp = worldToScreenY(hd.py);
+
+      if (lifted) {
+        var ring = 15 + (1 + Math.sin(now * 9)) * 6;
+        ctx.strokeStyle = rgba(free ? COL.handFree : COL.reach, free ? 0.6 : 0.4);
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(hxp, hyp, ring, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.arc(hxp, hyp + 2, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = free ? COL.handFree : COL.hand;
+      ctx.beginPath(); ctx.arc(hxp, hyp, 13.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = free ? 'rgba(255,255,255,0.9)' : '#10141a';
+      ctx.font = 'bold 11px ' + MONO;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(hd.side, hxp, hyp + 1);
+      ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'start';
+    }
+
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------- hud
+  var elHeight = document.getElementById('hHeight');
+  var elScore = document.getElementById('hScore');
+  var elFlow = document.getElementById('hFlow');
+  var elGrip = document.getElementById('gripFill');
+  var elWarn = document.getElementById('warn');
+  var elGripOuter = document.getElementById('gripOuter');
+  var elVig = document.getElementById('vig');
+  var wasLow = false, wasHot = false, wasUrgent = false, lastMsg = null;
+
+  function renderHud() {
+    elHeight.textContent = Math.floor(heightM);
+    elScore.textContent = score();
+    elFlow.textContent = 'x' + flow;
+
+    var hot = flow >= 3;
+    if (hot !== wasHot) { elFlow.classList.toggle('hot', hot); wasHot = hot; }
+
+    var pct = clamp(grip / CFG.gripMax, 0, 1);
+    elGrip.style.width = (pct * 100).toFixed(1) + '%';
+    elGrip.style.background = pct > 0.5 ? COL.reach : (pct > 0.22 ? COL.valid : COL.handFree);
+
+    var low = (state === 'play' && pct <= 0.22);
+    if (low !== wasLow) {
+      elGripOuter.classList.toggle('low', low);
+      elVig.classList.toggle('danger', low);
+      wasLow = low;
+    }
+
+    var msg = '', urgent = false;
+    if (state === 'play') {
+      if (!hands[0].hold || !hands[1].hold) { msg = 'Hand off the wall — place it'; urgent = true; }
+      else if (noMoveT > 0.35) msg = 'No holds in reach…';
+    }
+    if (msg !== lastMsg) { elWarn.textContent = msg; lastMsg = msg; }
+    if (urgent !== wasUrgent) { elWarn.classList.toggle('urgent', urgent); wasUrgent = urgent; }
+  }
+
+  // ---------------------------------------------------------------- loop
+  var lastT = 0;
+  function frame(ts) {
+    if (!lastT) lastT = ts;
+    var dt = Math.min(0.05, (ts - lastT) / 1000);
+    lastT = ts;
+    now += dt;
+    update(dt);
+    render();
+    renderHud();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------------------------------------------------------------- flow
+  var startScreen = document.getElementById('startScreen');
+  var overScreen = document.getElementById('overScreen');
+
+  function startGame() {
+    resize();
+    reset();
+    state = 'play';
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+  }
+
+  function bindTap(el, fn) {
+    var fired = false;
+    el.addEventListener('pointerup', function (e) { e.preventDefault(); fired = true; fn(); });
+    el.addEventListener('click', function (e) { e.preventDefault(); if (!fired) fn(); fired = false; });
+    el.addEventListener('touchend', function (e) {
+      if (window.PointerEvent) return;
+      e.preventDefault(); fired = true; fn();
+    }, { passive: false });
+  }
+  bindTap(document.getElementById('startBtn'), startGame);
+  bindTap(document.getElementById('retryBtn'), startGame);
+
+  loadBest();
+  document.getElementById('bestStart').textContent = bestScore;
+  reset();           // build a backdrop for the start screen
+  state = 'start';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

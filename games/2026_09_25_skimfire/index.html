@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Skimfire</title>
+<style>
+  :root {
+    --ink:    #06070d;
+    --ink-2:  #0b0e1a;
+    --mint:   #5ff2c0;
+    --ice:    #a9ecff;
+    --amber:  #ffc94a;
+    --coral:  #ff6a55;
+    --violet: #b467f0;
+    --text:   #e9ecf6;
+    --muted:  #838ba4;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--ink); color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden; overscroll-behavior: none;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #wrap { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 13px; padding: 24px 22px 90px 22px;
+    text-align: center;
+    background:
+      radial-gradient(120% 70% at 50% 30%, rgba(95,242,192,0.07), transparent 62%),
+      linear-gradient(180deg, rgba(6,7,13,0.90) 0%, rgba(6,7,13,0.96) 55%, rgba(6,7,13,0.99) 100%);
+    animation: fadeIn 260ms ease-out both;
+  }
+  .screen.hidden { display: none; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(95,242,192,0.30), 0 10px 30px -12px rgba(95,242,192,0.55); }
+    50%      { box-shadow: 0 0 0 11px rgba(95,242,192,0.00), 0 10px 30px -12px rgba(95,242,192,0.55); }
+  }
+
+  /* decorative skim-ring mark: the game's core idea as a logo */
+  .mark {
+    position: relative; width: 78px; height: 78px; margin-bottom: 2px;
+    animation: rise 380ms ease-out both;
+  }
+  .mark::before {
+    content: ""; position: absolute; inset: 0;
+    border: 1.5px dashed rgba(95,242,192,0.55); border-radius: 50%;
+    animation: spin 11s linear infinite;
+  }
+  .mark::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 0; height: 0; transform: translate(-50%, -52%);
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-bottom: 17px solid var(--mint);
+    filter: drop-shadow(0 0 7px rgba(95,242,192,0.75));
+  }
+
+  h1 {
+    margin: 0; font-size: clamp(34px, 12vw, 46px); font-weight: 800;
+    letter-spacing: 0.18em; text-indent: 0.18em;
+    background: linear-gradient(180deg, #ffffff 0%, var(--mint) 88%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 18px rgba(95,242,192,0.35));
+    animation: rise 420ms ease-out both;
+  }
+  h2 {
+    margin: 0; font-size: 26px; font-weight: 800;
+    letter-spacing: 0.22em; text-indent: 0.22em; color: var(--coral);
+    text-shadow: 0 0 22px rgba(255,106,85,0.45);
+    animation: rise 380ms ease-out both;
+  }
+  .rule {
+    width: 132px; height: 1px; border: 0; margin: 2px 0 6px;
+    background: linear-gradient(90deg, transparent, rgba(95,242,192,0.6), transparent);
+  }
+  p {
+    font-size: 15px; line-height: 1.5; margin: 0; max-width: 330px; color: #c2c7d8;
+    animation: rise 460ms ease-out both;
+  }
+  p b { color: var(--amber); font-weight: 600; }
+  p b.mint { color: var(--mint); }
+  .btn {
+    margin-top: 14px;
+    min-width: 200px; min-height: 64px;
+    padding: 18px 30px;
+    font-family: var(--sans);
+    font-size: 18px; font-weight: 800; letter-spacing: 0.16em; text-indent: 0.16em;
+    color: #04211a;
+    background: linear-gradient(180deg, #8dfbd4 0%, var(--mint) 55%, #34d9a4 100%);
+    border: none; border-radius: 999px;
+    cursor: pointer; touch-action: manipulation;
+    transition: transform 110ms ease, filter 110ms ease;
+    animation: breathe 2.8s ease-in-out infinite;
+  }
+  .btn:active { transform: scale(0.965); filter: brightness(1.12); }
+  .stat {
+    font-family: var(--mono); font-size: 13px; color: var(--muted);
+    letter-spacing: 0.04em; line-height: 1.7; max-width: 320px;
+    animation: rise 500ms ease-out both;
+  }
+  .stat strong { color: var(--text); font-weight: 700; }
+  #finalScore {
+    font-size: 40px; font-weight: 700; color: var(--ice); letter-spacing: 0.02em;
+    text-shadow: 0 0 26px rgba(169,236,255,0.35);
+  }
+  .tiny {
+    font-size: 11px; color: #6e7590; letter-spacing: 0.24em; text-indent: 0.24em;
+    text-transform: uppercase; margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cvs"></canvas>
+
+  <div id="startScreen" class="screen">
+    <div class="mark" aria-hidden="true"></div>
+    <h1>SKIMFIRE</h1>
+    <hr class="rule">
+    <p><b class="mint">Hold and drag</b> anywhere to fly. Bullets that <b>just barely miss you</b> are caught as orbs.</p>
+    <p>Each orb blocks one hit. <b class="mint">Lift your finger to fire every orb</b> &mdash; but you can't move while your finger is off.</p>
+    <p class="tiny">Your shield is your only ammo</p>
+    <button id="startBtn" class="btn">START</button>
+  </div>
+
+  <div id="overScreen" class="screen hidden">
+    <h2>WRECKED</h2>
+    <hr class="rule">
+    <div class="stat tiny" style="margin:0">Final score</div>
+    <div class="stat" id="finalScore">0</div>
+    <div class="stat" id="finalStats">Wave 1 &middot; 0 skims</div>
+    <button id="againBtn" class="btn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var cvs = document.getElementById("cvs");
+  var ctx = cvs.getContext("2d");
+  var startScreen = document.getElementById("startScreen");
+  var overScreen = document.getElementById("overScreen");
+  var startBtn = document.getElementById("startBtn");
+  var againBtn = document.getElementById("againBtn");
+  var finalScore = document.getElementById("finalScore");
+  var finalStats = document.getElementById("finalStats");
+
+  var W = 360, H = 640, DPR = 1;
+
+  // ------------------------------------------------------- palette (visual only)
+  var C = {
+    ink:      "#06070d",
+    mint:     "#5ff2c0",
+    mintDim:  "rgba(95,242,192,",
+    ice:      "#a9ecff",
+    amber:    "#ffc94a",
+    amberHot: "#fff3cf",
+    spent:    "#39405a",
+    spentRim: "#7d87a6",
+    coral:    "#ff6a55",
+    violet:   "#b467f0",
+    text:     "#e9ecf6",
+    muted:    "#838ba4"
+  };
+
+  // starfield + glow backdrop, rebuilt on resize (no images, pure canvas)
+  var bgCanvas = document.createElement("canvas");
+  var bgCtx = bgCanvas.getContext("2d");
+  var glowGrad = null, vignette = null, topScrim = null;
+  var bgT = 0;
+
+  function buildBackdrop() {
+    var w = Math.max(1, Math.round(W)), h = Math.max(1, Math.round(H));
+    bgCanvas.width = w;
+    bgCanvas.height = h;
+    bgCtx.clearRect(0, 0, w, h);
+    var n = Math.min(220, Math.round((w * h) / 7000));
+    for (var i = 0; i < n; i++) {
+      var s = Math.random();
+      bgCtx.globalAlpha = 0.10 + s * 0.30;
+      bgCtx.fillStyle = s > 0.88 ? C.ice : (s > 0.62 ? "#8f9ac2" : "#5c657f");
+      bgCtx.beginPath();
+      bgCtx.arc(Math.random() * w, Math.random() * h, s > 0.88 ? 1.7 : 1.0, 0, 6.2832);
+      bgCtx.fill();
+    }
+    bgCtx.globalAlpha = 1;
+
+    glowGrad = ctx.createRadialGradient(W * 0.5, H * 0.24, 0, W * 0.5, H * 0.30, Math.max(W, H) * 0.85);
+    glowGrad.addColorStop(0, "rgba(58,92,140,0.30)");
+    glowGrad.addColorStop(0.45, "rgba(30,44,80,0.16)");
+    glowGrad.addColorStop(1, "rgba(6,7,13,0)");
+
+    vignette = ctx.createRadialGradient(W * 0.5, H * 0.5, Math.min(W, H) * 0.34, W * 0.5, H * 0.5, Math.max(W, H) * 0.76);
+    vignette.addColorStop(0, "rgba(6,7,13,0)");
+    vignette.addColorStop(1, "rgba(3,4,8,0.78)");
+
+    topScrim = ctx.createLinearGradient(0, 0, 0, 118);
+    topScrim.addColorStop(0, "rgba(6,7,13,0.78)");
+    topScrim.addColorStop(1, "rgba(6,7,13,0)");
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cvs.clientWidth || window.innerWidth;
+    H = cvs.clientHeight || window.innerHeight;
+    cvs.width = Math.round(W * DPR);
+    cvs.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildBackdrop();
+    if (G.state !== "play") drawFrame(0);
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 250); });
+
+  // ---------------------------------------------------------------- tuning
+  var HULL_R = 8;          // lethal radius of the ship
+  var GRAZE_R = 34;        // skim radius: bullets inside this (but outside hull) are caught
+  var ORB_MAX = 5;
+  var SKIMS_PER_ORB = 3;
+  var ORB_ORBIT_R = 30;
+  var SHOT_SPEED = 430;
+  var SHIP_LERP = 14;      // per-second approach rate
+  var BLOCK_INVULN = 0.55;
+  var BLOCK_CLEAR_R = 70;  // bullets cleared when an orb blocks a hit
+  var WAVE_TIME = 18;      // seconds per difficulty step
+  var START_GRACE = 1.8;   // calm beat before the first enemy appears
+  var BULLET_SPEED_BASE = 95;
+  var BULLET_SPEED_PER_WAVE = 9;
+  var BULLET_SPEED_CAP = 165;   // soft ceiling so late-game bullets stay dodgeable
+
+  // ---------------------------------------------------------------- state
+  var G = {
+    state: "start",      // start | play | over
+    t: 0,
+    wave: 1,
+    waveTimer: WAVE_TIME,
+    score: 0,
+    skims: 0,
+    kills: 0,
+    charge: 0,
+    invuln: 0,
+    spawnTimer: START_GRACE,
+    shake: 0,
+    ship: { x: 180, y: 460, tx: 180, ty: 460 },
+    orbs: [],
+    bullets: [],
+    shots: [],
+    enemies: [],
+    fx: [],
+    ptrId: null,
+    offX: 0,
+    offY: 0,
+    fireFlash: 0
+  };
+
+  function reset() {
+    G.t = 0;
+    G.wave = 1;
+    G.waveTimer = WAVE_TIME;
+    G.score = 0;
+    G.skims = 0;
+    G.kills = 0;
+    G.charge = 0;
+    G.invuln = 0;
+    G.spawnTimer = START_GRACE;
+    G.shake = 0;
+    G.ship.x = G.ship.tx = W / 2;
+    G.ship.y = G.ship.ty = H * 0.74;
+    G.orbs.length = 0;
+    G.bullets.length = 0;
+    G.shots.length = 0;
+    G.enemies.length = 0;
+    G.fx.length = 0;
+    G.ptrId = null;
+    G.fireFlash = 0;
+    addOrb(); addOrb();   // start with a small shield so the first mistake isn't fatal
+  }
+
+  // ---------------------------------------------------------------- input
+  function localPoint(e) {
+    var r = cvs.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function onDown(e) {
+    if (G.state !== "play") return;
+    if (G.ptrId !== null) return;            // one control finger at a time
+    var p = localPoint(e);
+    G.ptrId = e.pointerId;
+    var dx = G.ship.x - p.x, dy = G.ship.y - p.y;
+    if (dx * dx + dy * dy < 110 * 110) {
+      // grabbed near the ship: keep the relative offset so it doesn't jump
+      G.offX = dx; G.offY = dy;
+    } else {
+      // grabbed far away: park the ship a thumb's height above the finger
+      G.offX = 0; G.offY = -64;
+    }
+    setTarget(p);
+    if (cvs.setPointerCapture) { try { cvs.setPointerCapture(e.pointerId); } catch (err) {} }
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (G.state !== "play" || e.pointerId !== G.ptrId) return;
+    setTarget(localPoint(e));
+    e.preventDefault();
+  }
+
+  function onUp(e) {
+    if (e.pointerId !== G.ptrId) return;
+    G.ptrId = null;
+    if (G.state === "play") fireOrbs();
+    e.preventDefault();
+  }
+
+  function setTarget(p) {
+    G.ship.tx = clamp(p.x + G.offX, HULL_R + 2, W - HULL_R - 2);
+    G.ship.ty = clamp(p.y + G.offY, HULL_R + 2, H - HULL_R - 2);
+  }
+
+  cvs.addEventListener("pointerdown", onDown, { passive: false });
+  cvs.addEventListener("pointermove", onMove, { passive: false });
+  cvs.addEventListener("pointerup", onUp, { passive: false });
+  cvs.addEventListener("pointercancel", onUp, { passive: false });
+  cvs.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+  cvs.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+  cvs.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  function startGame() {
+    resize();
+    reset();
+    G.state = "play";
+    startScreen.classList.add("hidden");
+    overScreen.classList.add("hidden");
+  }
+
+  function bindBtn(btn, fn) {
+    var fired = false;
+    btn.addEventListener("pointerup", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      fired = true; fn();
+      setTimeout(function () { fired = false; }, 400);
+    }, { passive: false });
+    btn.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (!fired) fn();
+    });
+  }
+  bindBtn(startBtn, startGame);
+  bindBtn(againBtn, startGame);
+
+  // ---------------------------------------------------------------- helpers
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function addBullet(x, y, vx, vy, r) {
+    G.bullets.push({ x: x, y: y, vx: vx, vy: vy, r: r || 5, skimmed: false });
+  }
+
+  function burst(x, y, n, color, speed) {
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var s = rand(speed * 0.3, speed);
+      G.fx.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, 0.55), max: 0.55, c: color });
+    }
+  }
+
+  // ---------------------------------------------------------------- enemies
+  function spawnEnemy() {
+    var ring = Math.random() < Math.min(0.5, 0.08 + G.wave * 0.07);
+    var tY = rand(95, Math.max(120, H * 0.34));
+    // keep-out: when an enemy will hover near the HUD scrim band, don't let it
+    // settle over the top-left score/wave/hint text (roughly x<160, y<120,
+    // accounting for enemy radius up to 18px reaching above its hover point)
+    var minX = tY < 120 ? 160 : 45;
+    var e = {
+      x: rand(minX, W - 45),
+      y: -30,
+      tY: tY,
+      vx: rand(25, 50) * (Math.random() < 0.5 ? -1 : 1),
+      r: ring ? 18 : 15,
+      hp: (ring ? 3 : 2) + Math.min(5, Math.floor((G.wave - 1) / 3)),
+      type: ring ? "ring" : "spit",
+      cool: rand(1.0, 2.0),
+      life: 20,
+      leaving: false,
+      hitFlash: 0
+    };
+    e.maxhp = e.hp;
+    G.enemies.push(e);
+  }
+
+  function enemyFire(e) {
+    var bs = Math.min(BULLET_SPEED_CAP, BULLET_SPEED_BASE + G.wave * BULLET_SPEED_PER_WAVE);
+    if (e.type === "ring") {
+      var n = 6 + Math.min(4, Math.floor(G.wave / 2));
+      var off = Math.random() * Math.PI * 2;
+      for (var i = 0; i < n; i++) {
+        var a = off + (Math.PI * 2 * i) / n;
+        addBullet(e.x, e.y, Math.cos(a) * bs * 0.82, Math.sin(a) * bs * 0.82, 5);
+      }
+      e.cool = rand(2.6, 3.8) - Math.min(1.2, G.wave * 0.13);
+    } else {
+      var dx = G.ship.x - e.x, dy = G.ship.y - e.y;
+      var d = Math.hypot(dx, dy) || 1;
+      var shots = G.wave >= 6 ? 2 : 1;
+      for (var k = 0; k < shots; k++) {
+        var sp = (Math.random() - 0.5) * 0.22 * (shots - 1);
+        var ca = Math.cos(sp), sa = Math.sin(sp);
+        var nx = (dx / d) * bs, ny = (dy / d) * bs;
+        addBullet(e.x, e.y, nx * ca - ny * sa, nx * sa + ny * ca, 5);
+      }
+      e.cool = rand(1.5, 2.6) - Math.min(1.0, G.wave * 0.11);
+    }
+    if (e.cool < 0.5) e.cool = 0.5;
+  }
+
+  // ---------------------------------------------------------------- orbs
+  function addOrb() {
+    if (G.orbs.length >= ORB_MAX) return;
+    var a = G.orbs.length ? G.orbs[G.orbs.length - 1].a + 1.3 : Math.random() * 6.28;
+    G.orbs.push({ a: a, r: 6 });
+  }
+
+  function fireOrbs() {
+    if (!G.orbs.length) return;
+    for (var i = 0; i < G.orbs.length; i++) {
+      var target = nearestEnemy();
+      var ang;
+      if (target) {
+        ang = Math.atan2(target.y - G.ship.y, target.x - G.ship.x);
+        ang += (i - (G.orbs.length - 1) / 2) * 0.07;
+      } else {
+        ang = -Math.PI / 2 + (i - (G.orbs.length - 1) / 2) * 0.12;
+      }
+      G.shots.push({
+        x: G.ship.x + Math.cos(G.orbs[i].a) * ORB_ORBIT_R,
+        y: G.ship.y + Math.sin(G.orbs[i].a) * ORB_ORBIT_R,
+        vx: Math.cos(ang) * SHOT_SPEED,
+        vy: Math.sin(ang) * SHOT_SPEED,
+        r: 6
+      });
+    }
+    G.orbs.length = 0;
+    G.fireFlash = 0.2;
+    G.shake = Math.max(G.shake, 4);
+  }
+
+  function nearestEnemy() {
+    var best = null, bd = Infinity;
+    for (var i = 0; i < G.enemies.length; i++) {
+      var e = G.enemies[i];
+      var d = (e.x - G.ship.x) * (e.x - G.ship.x) + (e.y - G.ship.y) * (e.y - G.ship.y);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  // ---------------------------------------------------------------- update
+  function update(dt) {
+    G.t += dt;
+    if (G.fireFlash > 0) G.fireFlash -= dt;
+    if (G.invuln > 0) G.invuln -= dt;
+    if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 22);
+
+    // difficulty steps
+    G.waveTimer -= dt;
+    if (G.waveTimer <= 0) { G.wave++; G.waveTimer = WAVE_TIME; }
+
+    // ship: only tracks the finger while a finger is down
+    if (G.ptrId !== null) {
+      var k = 1 - Math.exp(-SHIP_LERP * dt);
+      G.ship.x += (G.ship.tx - G.ship.x) * k;
+      G.ship.y += (G.ship.ty - G.ship.y) * k;
+    } else {
+      G.ship.tx = G.ship.x; G.ship.ty = G.ship.y;
+    }
+    G.ship.x = clamp(G.ship.x, HULL_R, W - HULL_R);
+    G.ship.y = clamp(G.ship.y, HULL_R, H - HULL_R);
+
+    // orbs spin
+    for (var i = 0; i < G.orbs.length; i++) G.orbs[i].a += dt * 2.4;
+
+    // spawning
+    G.spawnTimer -= dt;
+    var maxE = Math.min(6, Math.floor(1 + G.wave * 0.7));
+    if (G.spawnTimer <= 0 && G.enemies.length < maxE) {
+      spawnEnemy();
+      G.spawnTimer = Math.max(0.9, 3.2 - G.wave * 0.25);
+    } else if (G.spawnTimer <= 0) {
+      G.spawnTimer = 0.6;
+    }
+
+    // enemies
+    for (var i = G.enemies.length - 1; i >= 0; i--) {
+      var e = G.enemies[i];
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      if (e.leaving) {
+        e.y -= 170 * dt;
+        if (e.y < -50) G.enemies.splice(i, 1);
+        continue;
+      }
+      if (e.y < e.tY) {
+        e.y += 70 * dt;
+      } else {
+        e.x += e.vx * dt;
+        if (e.x < 30 + e.r) { e.x = 30 + e.r; e.vx = Math.abs(e.vx); }
+        if (e.x > W - 30 - e.r) { e.x = W - 30 - e.r; e.vx = -Math.abs(e.vx); }
+        e.life -= dt;
+        e.cool -= dt;
+        if (e.cool <= 0) enemyFire(e);
+        if (e.life <= 0) e.leaving = true;
+      }
+    }
+
+    // enemy bullets
+    for (var i = G.bullets.length - 1; i >= 0; i--) {
+      var b = G.bullets[i];
+      if (!b) continue;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (b.x < -40 || b.x > W + 40 || b.y < -60 || b.y > H + 60) { G.bullets.splice(i, 1); continue; }
+
+      var dx = b.x - G.ship.x, dy = b.y - G.ship.y;
+      var d = Math.hypot(dx, dy);
+      if (d <= HULL_R + b.r) {
+        if (G.invuln > 0) continue;
+        if (G.orbs.length > 0) {
+          G.orbs.pop();
+          G.invuln = BLOCK_INVULN;
+          G.shake = 8;
+          burst(G.ship.x, G.ship.y, 12, "#a9ecff", 190);
+          // shockwave: clear nearby bullets so a block isn't instantly punished
+          for (var j = G.bullets.length - 1; j >= 0; j--) {
+            var o = G.bullets[j];
+            if (Math.hypot(o.x - G.ship.x, o.y - G.ship.y) < BLOCK_CLEAR_R) G.bullets.splice(j, 1);
+          }
+          i = Math.min(i, G.bullets.length); // indices shifted by the shockwave
+          continue;
+        }
+        gameOver();
+        return;
+      } else if (!b.skimmed && d <= GRAZE_R + b.r) {
+        b.skimmed = true;
+        G.skims++;
+        G.score += 2;
+        G.charge++;
+        if (G.charge >= SKIMS_PER_ORB) {
+          G.charge = 0;
+          if (G.orbs.length < ORB_MAX) addOrb();
+          else G.score += 5; // overflow bonus
+        }
+      }
+    }
+
+    // player shots
+    for (var i = G.shots.length - 1; i >= 0; i--) {
+      var s = G.shots[i];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      if (s.x < -30 || s.x > W + 30 || s.y < -30 || s.y > H + 30) { G.shots.splice(i, 1); continue; }
+      var hit = false;
+      for (var j = G.enemies.length - 1; j >= 0; j--) {
+        var e2 = G.enemies[j];
+        if (Math.hypot(s.x - e2.x, s.y - e2.y) <= e2.r + s.r) {
+          e2.hp--;
+          e2.hitFlash = 0.12;
+          hit = true;
+          burst(s.x, s.y, 5, "#5ff2c0", 130);
+          if (e2.hp <= 0) {
+            G.enemies.splice(j, 1);
+            G.kills++;
+            G.score += 40 + G.wave * 5;
+            G.shake = 6;
+            burst(e2.x, e2.y, 18, "#ffc94a", 240);
+          }
+          break;
+        }
+      }
+      if (hit) G.shots.splice(i, 1);
+    }
+
+    // particles
+    for (var i = G.fx.length - 1; i >= 0; i--) {
+      var p = G.fx[i];
+      p.life -= dt;
+      if (p.life <= 0) { G.fx.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+    }
+  }
+
+  function gameOver() {
+    G.state = "over";
+    G.ptrId = null;
+    burst(G.ship.x, G.ship.y, 26, "#ff6a55", 280);
+    finalScore.textContent = "" + G.score;
+    finalStats.innerHTML = "WAVE <strong>" + G.wave + "</strong> &nbsp;·&nbsp; <strong>" + G.skims +
+      "</strong> SKIMS &nbsp;·&nbsp; <strong>" + G.kills + "</strong> KILLED";
+    overScreen.classList.remove("hidden");
+  }
+
+  // ---------------------------------------------------------------- render
+  var MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
+  var SANS = 'system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+
+  function drawBackdrop() {
+    ctx.fillStyle = C.ink;
+    ctx.fillRect(-40, -40, W + 80, H + 80);
+    if (glowGrad) { ctx.fillStyle = glowGrad; ctx.fillRect(-40, -40, W + 80, H + 80); }
+    // two parallax star layers drifting downward
+    var h = bgCanvas.height || 1;
+    var y1 = (bgT * 11) % h;
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(bgCanvas, 0, y1);
+    ctx.drawImage(bgCanvas, 0, y1 - h);
+    var y2 = (bgT * 30) % h;
+    ctx.globalAlpha = 0.38;
+    ctx.drawImage(bgCanvas, 0, y2 - h * 0.5);
+    ctx.drawImage(bgCanvas, 0, y2 - h * 1.5);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFrame() {
+    ctx.save();
+    if (G.shake > 0.1) ctx.translate(rand(-G.shake, G.shake), rand(-G.shake, G.shake));
+
+    drawBackdrop();
+
+    // enemies
+    for (var i = 0; i < G.enemies.length; i++) {
+      var e = G.enemies[i];
+      var isRing = e.type === "ring";
+      var base = isRing ? C.violet : C.coral;
+      var col = e.hitFlash > 0 ? "#ffffff" : base;
+
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 1.75, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = 1;
+
+      if (isRing) {
+        // radial-burst enemy reads as an open ring
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.74, 0, 6.2832); ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 0.26, 0, 6.2832); ctx.fill();
+      } else {
+        // aimed shooter reads as a solid disc with a downward muzzle notch
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = "rgba(6,7,13,0.72)";
+        ctx.beginPath();
+        ctx.moveTo(e.x - e.r * 0.52, e.y - e.r * 0.18);
+        ctx.lineTo(e.x + e.r * 0.52, e.y - e.r * 0.18);
+        ctx.lineTo(e.x, e.y + e.r * 0.72);
+        ctx.closePath(); ctx.fill();
+      }
+
+      // hp bar
+      var bw = e.r * 2, bx = e.x - e.r, by = e.y + e.r + 6;
+      ctx.fillStyle = "rgba(6,7,13,0.85)";
+      ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
+      ctx.fillStyle = e.hp / e.maxhp > 0.4 ? C.mint : C.amber;
+      ctx.fillRect(bx, by, bw * (e.hp / e.maxhp), 3);
+    }
+
+    // enemy bullets — live ones glow hot, skimmed ones go cold but stay solid
+    for (var i = 0; i < G.bullets.length; i++) {
+      var b = G.bullets[i];
+      if (b.skimmed) {
+        ctx.fillStyle = C.spent;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.fill();
+        ctx.strokeStyle = C.spentRim;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 0.2, 0, 6.2832); ctx.stroke();
+      } else {
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = C.amber;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 4.5, 0, 6.2832); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = C.amber;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = C.amberHot;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.42, 0, 6.2832); ctx.fill();
+      }
+    }
+
+    // player shots (with a short motion tail)
+    for (var i = 0; i < G.shots.length; i++) {
+      var s = G.shots[i];
+      var sp = Math.hypot(s.vx, s.vy) || 1;
+      ctx.strokeStyle = C.mintDim + "0.35)";
+      ctx.lineWidth = s.r * 1.5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x - (s.vx / sp) * 20, s.y - (s.vy / sp) * 20);
+      ctx.stroke();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = C.mint;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 4, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#e8fff6";
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.2832); ctx.fill();
+    }
+    ctx.lineCap = "butt";
+
+    // particles (additive sparks)
+    ctx.globalCompositeOperation = "lighter";
+    for (var i = 0; i < G.fx.length; i++) {
+      var p = G.fx[i];
+      var k = Math.max(0, p.life / p.max);
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.8 + k * 2.4, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+
+    if (G.state !== "over") {
+      var held = G.ptrId !== null;
+
+      // release flash: shockwave ring blooming out of the skim ring
+      if (G.fireFlash > 0) {
+        var ft = clamp(1 - G.fireFlash / 0.2, 0, 1);
+        ctx.globalAlpha = (1 - ft) * 0.75;
+        ctx.strokeStyle = C.mint;
+        ctx.lineWidth = 3 * (1 - ft) + 0.6;
+        ctx.beginPath();
+        ctx.arc(G.ship.x, G.ship.y, GRAZE_R + ft * 72, 0, 6.2832);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // skim ring: soft base ring + rotating dashed overlay
+      ctx.strokeStyle = C.mintDim + (held ? "0.30)" : "0.14)");
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(G.ship.x, G.ship.y, GRAZE_R, 0, 6.2832); ctx.stroke();
+
+      ctx.save();
+      ctx.setLineDash([7, 9]);
+      ctx.lineDashOffset = -bgT * 26;
+      ctx.strokeStyle = C.mintDim + (held ? "0.75)" : "0.32)");
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(G.ship.x, G.ship.y, GRAZE_R, 0, 6.2832); ctx.stroke();
+      ctx.restore();
+
+      // charge arc toward the next orb
+      if (G.charge > 0) {
+        ctx.strokeStyle = C.amber;
+        ctx.lineWidth = 3.4;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.arc(G.ship.x, G.ship.y, GRAZE_R, -Math.PI / 2, -Math.PI / 2 + 6.2832 * (G.charge / SKIMS_PER_ORB));
+        ctx.stroke();
+        ctx.lineCap = "butt";
+      }
+
+      // engine wash while steering
+      if (held && G.state === "play") {
+        ctx.globalAlpha = 0.5 + Math.random() * 0.3;
+        ctx.fillStyle = C.ice;
+        ctx.beginPath();
+        ctx.moveTo(G.ship.x - 3.5, G.ship.y + HULL_R - 1);
+        ctx.lineTo(G.ship.x + 3.5, G.ship.y + HULL_R - 1);
+        ctx.lineTo(G.ship.x, G.ship.y + HULL_R + 5 + Math.random() * 6);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      // hull (small and bright — the gap to the ring is the game)
+      var hullCol = G.invuln > 0 && Math.floor(G.t * 20) % 2 === 0 ? "#ffffff" : C.mint;
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = hullCol;
+      ctx.beginPath(); ctx.arc(G.ship.x, G.ship.y, HULL_R + 5, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = hullCol;
+      ctx.beginPath();
+      ctx.moveTo(G.ship.x, G.ship.y - HULL_R - 3);
+      ctx.lineTo(G.ship.x + HULL_R, G.ship.y + HULL_R);
+      ctx.lineTo(G.ship.x - HULL_R, G.ship.y + HULL_R);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(6,7,13,0.85)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // orbs
+      for (var i = 0; i < G.orbs.length; i++) {
+        var o = G.orbs[i];
+        var ox = G.ship.x + Math.cos(o.a) * ORB_ORBIT_R;
+        var oy = G.ship.y + Math.sin(o.a) * ORB_ORBIT_R;
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = C.ice;
+        ctx.beginPath(); ctx.arc(ox, oy, o.r + 4, 0, 6.2832); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = C.ice;
+        ctx.beginPath(); ctx.arc(ox, oy, o.r, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(ox - o.r * 0.25, oy - o.r * 0.25, o.r * 0.34, 0, 6.2832); ctx.fill();
+      }
+
+      // "frozen" marker when no finger is down
+      if (!held && G.state === "play") {
+        var pulse = 0.22 + 0.2 * (0.5 + 0.5 * Math.sin(bgT * 5));
+        ctx.save();
+        ctx.setLineDash([3, 6]);
+        ctx.lineDashOffset = bgT * 18;
+        ctx.strokeStyle = "rgba(255,255,255," + pulse.toFixed(3) + ")";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(G.ship.x, G.ship.y, GRAZE_R + 9, 0, 6.2832); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+
+    if (vignette) { ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H); }
+
+    // HUD (top-left; bottom-right kept clear for the site rating widget)
+    if (G.state === "play") {
+      if (topScrim) { ctx.fillStyle = topScrim; ctx.fillRect(0, 0, W, 118); }
+
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = C.text;
+      ctx.font = "700 26px " + MONO;
+      ctx.fillText("" + G.score, 14, 10);
+
+      ctx.font = "600 11px " + SANS;
+      ctx.fillStyle = C.muted;
+      ctx.fillText("W A V E   " + G.wave, 15, 42);
+
+      // orb pips
+      for (var i = 0; i < ORB_MAX; i++) {
+        var px = 21 + i * 18, py = 68;
+        if (i < G.orbs.length) {
+          ctx.globalAlpha = 0.3;
+          ctx.fillStyle = C.ice;
+          ctx.beginPath(); ctx.arc(px, py, 9, 0, 6.2832); ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = C.ice;
+          ctx.beginPath(); ctx.arc(px, py, 5.5, 0, 6.2832); ctx.fill();
+        } else {
+          ctx.strokeStyle = "rgba(169,236,255,0.22)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(px, py, 5.5, 0, 6.2832); ctx.stroke();
+        }
+      }
+
+      if (G.orbs.length > 0 && G.ptrId !== null) {
+        ctx.globalAlpha = 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(bgT * 4.2));
+        ctx.fillStyle = C.amber;
+        ctx.font = "600 11px " + SANS;
+        ctx.fillText("LIFT FINGER TO FIRE", 14, 86);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- loop
+  var last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = (ts - last) / 1000;
+    last = ts;
+    if (dt > 0.05) dt = 0.05;
+    bgT += dt;   // purely cosmetic clock (starfield drift, ring dashes, pulses)
+    if (G.state === "play") update(dt);
+    else if (G.fx.length) {
+      for (var i = G.fx.length - 1; i >= 0; i--) {
+        var p = G.fx[i];
+        p.life -= dt;
+        if (p.life <= 0) { G.fx.splice(i, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94;
+      }
+      if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 22);
+    }
+    drawFrame();
+    requestAnimationFrame(frame);
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden && G.state === "play") {
+      G.ptrId = null;   // treat a backgrounded tab as "finger lifted" (no auto-fire)
+      last = 0;
+    }
+  });
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Glowhoard</title>
+<style>
+  :root {
+    --void:   #04050b;
+    --ink:    #080a13;
+    --panel:  #0c0f1b;
+    --line:   #1c2234;
+    --text:   #dde3f2;
+    --mute:   #737b99;
+    --cold:   #6cf0c2;
+    --cold-d: #2a8f76;
+    --warm:   #ffd37a;
+    --hot:    #ff9a4d;
+    --ember:  #ff553a;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--void); color: var(--text);
+    font-family: var(--sans);
+    user-select: none; -webkit-user-select: none;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 20;
+    background: radial-gradient(130% 90% at 50% 42%, rgba(0,0,0,0) 46%, rgba(0,0,0,0.55) 100%);
+  }
+  #wrap { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+
+  /* ---------- HUD: thin mono instrument strip ---------- */
+  #hud {
+    flex: 0 0 auto; padding: 7px 12px 8px; display: flex; align-items: center; gap: 14px;
+    font-family: var(--mono); line-height: 1;
+    background: linear-gradient(180deg, #0d1120 0%, #080a13 100%);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(108,240,194,0.07), 0 6px 18px rgba(0,0,0,0.6);
+  }
+  #hud .stat { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+  #hud .lbl {
+    font-size: 8.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--mute);
+  }
+  #hud b { font-size: 17px; font-weight: 600; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+  #scoreTxt { color: var(--warm); text-shadow: 0 0 14px rgba(255,211,122,0.4); }
+  #carryTxt { color: var(--cold); text-shadow: 0 0 14px rgba(108,240,194,0.35); }
+  #hud .burn { flex: 1 1 auto; min-width: 70px; }
+  #burnWrap {
+    position: relative; height: 9px; min-width: 60px; border-radius: 99px; overflow: hidden;
+    background: #14182a; border: 1px solid #262c42;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.7);
+  }
+  #burnWrap::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 99px;
+    background: repeating-linear-gradient(90deg, rgba(0,0,0,0.55) 0 1px, rgba(0,0,0,0) 1px 11px);
+  }
+  #burnBar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #a8512b, #e08a3c);
+    transition: width 90ms linear, box-shadow 200ms ease;
+  }
+
+  #stage { flex: 1 1 auto; position: relative; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    padding: 22px 20px 74px; text-align: center; z-index: 5;
+    background:
+      radial-gradient(120% 80% at 50% 38%, rgba(16,22,38,0.82) 0%, rgba(4,5,11,0.95) 70%),
+      rgba(4,5,11,0.86);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    animation: fadeIn 260ms ease both;
+  }
+  .overlay.hidden { display: none; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .overlay h1 {
+    margin: 0; font-size: clamp(26px, 9vw, 40px); font-weight: 800;
+    letter-spacing: 0.2em; text-indent: 0.2em; color: #f2fffa;
+    text-shadow: 0 0 6px rgba(108,240,194,0.75), 0 0 26px rgba(108,240,194,0.35),
+                 0 0 60px rgba(42,143,118,0.35);
+    animation: emberBreathe 5.5s ease-in-out infinite;
+  }
+  @keyframes emberBreathe {
+    0%, 100% { text-shadow: 0 0 6px rgba(108,240,194,0.7), 0 0 26px rgba(108,240,194,0.3), 0 0 60px rgba(42,143,118,0.3); }
+    48%      { text-shadow: 0 0 8px rgba(108,240,194,0.95), 0 0 34px rgba(108,240,194,0.5), 0 0 80px rgba(42,143,118,0.45); }
+  }
+  .overlay h2 {
+    margin: 0; font-size: clamp(22px, 7.5vw, 30px); font-weight: 800;
+    letter-spacing: 0.2em; text-indent: 0.2em; color: #fff0e6;
+    text-shadow: 0 0 8px rgba(255,85,58,0.8), 0 0 30px rgba(255,85,58,0.35);
+    animation: heatPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes heatPulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.82; }
+  }
+  .tag {
+    margin: -8px 0 2px; font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--mute);
+  }
+  .panel {
+    max-width: 340px; display: flex; flex-direction: column; gap: 11px;
+    padding: 16px 18px; border-radius: 14px;
+    background: linear-gradient(180deg, rgba(14,18,32,0.9), rgba(8,10,19,0.9));
+    border: 1px solid var(--line);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.5);
+  }
+  .overlay p {
+    margin: 0; font-size: 13.5px; line-height: 1.58; color: #b9c0d4;
+  }
+  .overlay p .k { color: var(--cold); font-weight: 600; text-shadow: 0 0 12px rgba(108,240,194,0.35); }
+  .overlay p .h { color: var(--warm); font-weight: 600; text-shadow: 0 0 12px rgba(255,211,122,0.3); }
+  .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+
+  .btn {
+    margin-top: 4px; padding: 16px 36px;
+    font-family: var(--mono); font-size: 15px; font-weight: 700;
+    letter-spacing: 0.24em; text-indent: 0.24em; text-transform: uppercase;
+    color: #04120d; background: linear-gradient(180deg, #8df6d0, #4cd2a7);
+    border: none; border-radius: 99px; cursor: pointer; touch-action: manipulation;
+    min-width: 200px; min-height: 56px;
+    box-shadow: 0 0 0 1px rgba(108,240,194,0.5), 0 0 26px rgba(76,210,167,0.35),
+                0 10px 26px rgba(0,0,0,0.5);
+    transition: transform 90ms ease, box-shadow 160ms ease, filter 160ms ease;
+  }
+  .btn:active { transform: translateY(1px) scale(0.985); filter: brightness(0.92);
+    box-shadow: 0 0 0 1px rgba(108,240,194,0.6), 0 0 14px rgba(76,210,167,0.3), 0 4px 12px rgba(0,0,0,0.5); }
+  #againBtn {
+    color: #180703; background: linear-gradient(180deg, #ffc98f, #ff8a52);
+    box-shadow: 0 0 0 1px rgba(255,154,77,0.5), 0 0 26px rgba(255,138,82,0.32),
+                0 10px 26px rgba(0,0,0,0.5);
+  }
+
+  .score-line {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.26em;
+    text-transform: uppercase; color: var(--mute);
+    display: flex; align-items: baseline; justify-content: center; gap: 10px;
+  }
+  .score-line b {
+    font-size: 34px; font-weight: 700; letter-spacing: 0.02em; color: var(--warm);
+    font-variant-numeric: tabular-nums; text-shadow: 0 0 22px rgba(255,211,122,0.45);
+  }
+  #bestLine { color: var(--mute); letter-spacing: 0.26em; }
+
+  @media (max-height: 520px) {
+    .overlay { gap: 10px; padding-bottom: 60px; }
+    .panel { gap: 8px; padding: 12px 14px; }
+    .overlay p { font-size: 12.5px; line-height: 1.45; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="stat"><span class="lbl">Hoard</span><b id="scoreTxt">0</b></div>
+    <div class="stat"><span class="lbl">Carry</span><b id="carryTxt">0</b></div>
+    <div class="stat burn"><span class="lbl">Burn</span>
+      <div id="burnWrap"><div id="burnBar"></div></div>
+    </div>
+  </div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+
+    <div class="overlay" id="startScreen">
+      <h1>GLOWHOARD</h1>
+      <div class="tag">Steal light &middot; stay dark</div>
+      <div class="panel">
+        <p>You are a shy shadow-creature. <span class="k">Touch and hold anywhere</span> (or click-drag) to glide toward your finger.</p>
+        <div class="rule"></div>
+        <p>Grab <span class="k">glowing motes</span> off the lit floor and carry them home to your <span class="k">dark den</span> to bank them.</p>
+        <div class="rule"></div>
+        <p>The twist: every mote you carry <span class="h">makes you glow</span>. Light burns you, so the richer you are the faster you cook &mdash; but banking <span class="k">several motes at once</span> is worth far more points.</p>
+      </div>
+      <button class="btn" id="startBtn">Start</button>
+    </div>
+
+    <div class="overlay hidden" id="overScreen">
+      <h2>SCORCHED</h2>
+      <div class="panel">
+        <p id="overMsg">The light caught you.</p>
+        <div class="rule"></div>
+        <div class="score-line">Hoard <b id="finalScore">0</b></div>
+        <div class="score-line" id="bestLine">BEST 0</div>
+      </div>
+      <button class="btn" id="againBtn">Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  // ---------- constants ----------
+  var VW = 400, VH = 600;          // virtual arena size (all logic lives in these units)
+  var TAU = Math.PI * 2;
+  var MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';   // canvas type stack
+
+  var PLAYER_R        = 10;
+  var PLAYER_ACCEL    = 900;       // px/s^2
+  var PLAYER_MAXSPD   = 172;       // px/s
+  var PLAYER_FRICTION = 7.5;       // per second
+
+  var MAX_CARRY   = 6;
+  var MOTE_R      = 7;
+  var MOTE_COUNT  = 3;
+  var MOTE_LIFE   = 13;            // seconds before an uncollected mote relocates
+  var MOTE_GLOW   = 0.105;         // self-light added per carried mote
+
+  var SAFE_LIGHT  = 0.10;          // light level below which you take no burn
+  var BURN_RATE   = 0.46;          // burn/sec per unit of light above SAFE_LIGHT
+  var COOL_RATE   = 0.30;          // burn recovery/sec in darkness
+  var NEST_COOL   = 1.05;          // burn recovery/sec inside a charged den
+
+  var NEST_DRAIN  = 0.17;          // den charge spent per second while sheltering
+  var NEST_REGEN  = 0.085;         // den charge regained per second while outside
+  var NEST_DEPOSIT_REFILL = 0.22;  // den charge restored per deposit
+
+  var AMBIENT_BASE = 0.030;
+  var AMBIENT_RAMP = 0.0012;       // per second
+  var AMBIENT_MAX  = 0.170;
+
+  var LIGHT_SPD_RAMP = 0.0075;     // lamp speed multiplier growth per second
+  var LIGHT_SPD_MAX  = 1.9;
+
+  var CORNER_KEEPOUT = 74;         // bottom-right strip reserved for the host page overlay
+
+  var NEST = { x: 82, y: 522, r: 30 };
+
+  var PILLARS = [
+    { x: 118, y: 148, r: 30 },
+    { x: 292, y: 206, r: 26 },
+    { x: 200, y: 332, r: 34 },
+    { x:  86, y: 406, r: 24 },
+    { x: 316, y: 452, r: 28 },
+    { x: 236, y: 548, r: 20 }
+  ];
+
+  // Lamps orbit a centre point. unlock: score at which the lamp switches on.
+  var LIGHT_DEFS = [
+    { cx: 150, cy: 170, orb: 112, ang: 0.4, spd:  0.52, range: 212, unlock: 0 },
+    { cx: 268, cy: 404, orb: 120, ang: 2.6, spd: -0.44, range: 220, unlock: 0 },
+    { cx: 205, cy: 118, orb: 155, ang: 1.1, spd:  0.37, range: 196, unlock: 20 },
+    { cx: 128, cy: 470, orb: 128, ang: 4.0, spd: -0.33, range: 196, unlock: 60 }
+  ];
+
+  // ---------- dom ----------
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var scoreTxt = document.getElementById("scoreTxt");
+  var carryTxt = document.getElementById("carryTxt");
+  var burnBar  = document.getElementById("burnBar");
+  var startScreen = document.getElementById("startScreen");
+  var overScreen  = document.getElementById("overScreen");
+  var overMsg = document.getElementById("overMsg");
+  var startBtn = document.getElementById("startBtn");
+  var againBtn = document.getElementById("againBtn");
+  var finalScore = document.getElementById("finalScore");
+  var bestLine = document.getElementById("bestLine");
+
+  // Light mask buffer (half resolution: soft/cheap; the burn math is exact & separate).
+  var LS = 0.5;
+  var ob = document.createElement("canvas");
+  ob.width = Math.round(VW * LS);
+  ob.height = Math.round(VH * LS);
+  var octx = ob.getContext("2d");
+
+  // ---------- view / letterbox ----------
+  var view = { scale: 1, offX: 0, offY: 0, dpr: 1 };
+
+  function resize() {
+    var r = cv.parentNode.getBoundingClientRect();
+    var w = Math.max(80, r.width), h = Math.max(80, r.height);
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    var s = Math.min(w / VW, h / VH);
+    view.scale = s;
+    view.dpr = dpr;
+    view.offX = (w - VW * s) / 2;
+    view.offY = (h - VH * s) / 2;
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", resize);
+
+  function toVirtual(clientX, clientY) {
+    var r = cv.getBoundingClientRect();
+    return {
+      x: (clientX - r.left - view.offX) / view.scale,
+      y: (clientY - r.top - view.offY) / view.scale
+    };
+  }
+
+  // ---------- state ----------
+  var S = null;
+  var best = 0;
+  var pointer = { active: false, x: 0, y: 0, id: null };
+  var popups = [];
+
+  // ---------- cosmetic-only fx state (never read by any rule) ----------
+  var rings = [];   // expanding shockwaves on pickup / deposit
+  var trail = [];   // creature afterimages
+  var shake = 0;    // screen-shake magnitude, decays every frame
+  var fxT = 0;      // decorative clock (runs even on the start/over screens)
+
+  function addRing(x, y, r, life, warm) {
+    rings.push({ x: x, y: y, r0: 6, r1: r, life: life, max: life, warm: !!warm });
+  }
+
+  // ---------- tiny WebAudio blips (purely decorative) ----------
+  var AC = null;
+  function audio() {
+    if (AC === null) {
+      try { AC = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { AC = false; }
+    }
+    if (AC && AC.state === "suspended") { try { AC.resume(); } catch (e) {} }
+    return AC || null;
+  }
+  function blip(freq, dur, vol, type, slideTo) {
+    var ac = audio();
+    if (!ac) return;
+    try {
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = type || "sine";
+      var t0 = ac.currentTime;
+      o.frequency.setValueAtTime(freq, t0);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+
+  function newState() {
+    return {
+      t: 0,
+      over: false,
+      score: 0,
+      carry: 0,
+      burn: 0,
+      lastLight: 0,
+      nestCharge: 1,
+      px: NEST.x, py: NEST.y, vx: 0, vy: 0,
+      lights: LIGHT_DEFS.map(function (d) {
+        return {
+          cx: d.cx, cy: d.cy, orb: d.orb, ang: d.ang, spd: d.spd,
+          range: d.range, unlock: d.unlock,
+          x: d.cx + Math.cos(d.ang) * d.orb,
+          y: d.cy + Math.sin(d.ang) * d.orb,
+          on: d.unlock <= 0
+        };
+      }),
+      motes: []
+    };
+  }
+
+  // ---------- geometry ----------
+  function distPointSeg(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var len2 = dx * dx + dy * dy;
+    var t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    var cx = ax + dx * t, cy = ay + dy * t;
+    return Math.hypot(px - cx, py - cy);
+  }
+
+  // true if any pillar blocks the straight line lamp -> point
+  function occluded(lx, ly, px, py) {
+    for (var i = 0; i < PILLARS.length; i++) {
+      var p = PILLARS[i];
+      if (distPointSeg(p.x, p.y, lx, ly, px, py) < p.r) return true;
+    }
+    return false;
+  }
+
+  function lightAt(x, y, lights) {
+    var sum = 0;
+    for (var i = 0; i < lights.length; i++) {
+      var L = lights[i];
+      if (!L.on) continue;
+      var d = Math.hypot(x - L.x, y - L.y);
+      if (d >= L.range) continue;
+      if (occluded(L.x, L.y, x, y)) continue;
+      var f = 1 - d / L.range;
+      sum += f * f;
+    }
+    return sum;
+  }
+
+  function ambientNow(t) {
+    return Math.min(AMBIENT_MAX, AMBIENT_BASE + AMBIENT_RAMP * t);
+  }
+
+  function insidePillar(x, y, pad) {
+    for (var i = 0; i < PILLARS.length; i++) {
+      var p = PILLARS[i];
+      if (Math.hypot(x - p.x, y - p.y) < p.r + (pad || 0)) return true;
+    }
+    return false;
+  }
+
+  // ---------- motes ----------
+  function placeMote(st, mote) {
+    var pick = null, bestScore = -1;
+    for (var tries = 0; tries < 40; tries++) {
+      var x = 26 + Math.random() * (VW - 52);
+      var y = 26 + Math.random() * (VH - 52);
+      if (insidePillar(x, y, MOTE_R + 4)) continue;
+      if (x > VW - CORNER_KEEPOUT && y > VH - CORNER_KEEPOUT) continue;  // keep motes out of the host page's rating-widget corner
+      if (Math.hypot(x - NEST.x, y - NEST.y) < NEST.r + 55) continue;
+      if (Math.hypot(x - st.px, y - st.py) < 70) continue;
+      var lv = lightAt(x, y, st.lights);
+      if (lv > bestScore) { bestScore = lv; pick = { x: x, y: y }; }
+      if (lv > 0.28) break;   // lit enough to be a real dare: take it
+    }
+    if (!pick) pick = { x: VW * 0.5, y: VH * 0.35 };
+    mote.x = pick.x;
+    mote.y = pick.y;
+    mote.life = MOTE_LIFE;
+    return mote;
+  }
+
+  function seedMotes(st) {
+    st.motes = [];
+    for (var i = 0; i < MOTE_COUNT; i++) {
+      st.motes.push(placeMote(st, { x: 0, y: 0, life: MOTE_LIFE }));
+    }
+  }
+
+  function addPopup(x, y, text) {
+    popups.push({ x: x, y: y, text: text, life: 1.1 });
+  }
+
+  // ---------- flow ----------
+  function startGame() {
+    S = newState();
+    seedMotes(S);
+    popups = [];
+    rings = []; trail = []; shake = 0;
+    audio();
+    pointer.active = false;
+    pointer.id = null;
+    startScreen.classList.add("hidden");
+    overScreen.classList.add("hidden");
+    syncHud();
+  }
+
+  function gameOver(msg) {
+    if (!S || S.over) return;
+    S.over = true;
+    if (S.score > best) best = S.score;
+    finalScore.textContent = S.score;
+    bestLine.textContent = "BEST " + best;
+    overMsg.textContent = msg;
+    overScreen.classList.remove("hidden");
+    shake = 10;
+    addRing(S.px, S.py, 150, 0.9, true);
+    blip(220, 0.55, 0.07, "sawtooth", 60);
+  }
+
+  startBtn.addEventListener("click", startGame);
+  againBtn.addEventListener("click", startGame);
+
+  // ---------- input: pointer events cover touch + mouse through one path ----------
+  function onDown(e) {
+    if (!S || S.over) return;
+    if (pointer.id !== null && e.pointerId !== pointer.id) return;  // ignore extra fingers
+    pointer.id = e.pointerId;
+    pointer.active = true;
+    var v = toVirtual(e.clientX, e.clientY);
+    pointer.x = v.x; pointer.y = v.y;
+    if (cv.setPointerCapture) { try { cv.setPointerCapture(e.pointerId); } catch (err) {} }
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!pointer.active || e.pointerId !== pointer.id) return;
+    var v = toVirtual(e.clientX, e.clientY);
+    pointer.x = v.x; pointer.y = v.y;
+    e.preventDefault();
+  }
+  function onUp(e) {
+    if (pointer.id !== null && e.pointerId !== pointer.id) return;
+    pointer.active = false;
+    pointer.id = null;
+    e.preventDefault();
+  }
+  cv.addEventListener("pointerdown", onDown);
+  cv.addEventListener("pointermove", onMove);
+  cv.addEventListener("pointerup", onUp);
+  cv.addEventListener("pointercancel", onUp);
+  // keep the page from scrolling / zooming while dragging over the arena
+  cv.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+  cv.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
+  // mouse users who release outside the window shouldn't get a stuck held pointer
+  window.addEventListener("blur", function () { pointer.active = false; pointer.id = null; });
+
+  // ---------- update ----------
+  function update(dt) {
+    var st = S;
+    st.t += dt;
+
+    // lamp unlocks + speed ramp
+    var mult = Math.min(LIGHT_SPD_MAX, 1 + LIGHT_SPD_RAMP * st.t);
+    for (var i = 0; i < st.lights.length; i++) {
+      var L = st.lights[i];
+      if (!L.on && st.score >= L.unlock) L.on = true;
+      if (!L.on) continue;
+      L.ang += L.spd * mult * dt;
+      L.x = L.cx + Math.cos(L.ang) * L.orb;
+      L.y = L.cy + Math.sin(L.ang) * L.orb;
+    }
+
+    // glide toward the held pointer
+    if (pointer.active) {
+      var dx = pointer.x - st.px, dy = pointer.y - st.py;
+      var d = Math.hypot(dx, dy);
+      if (d > 1.5) {
+        st.vx += (dx / d) * PLAYER_ACCEL * dt;
+        st.vy += (dy / d) * PLAYER_ACCEL * dt;
+      }
+    }
+    var fr = Math.max(0, 1 - PLAYER_FRICTION * dt);
+    st.vx *= fr; st.vy *= fr;
+    var sp = Math.hypot(st.vx, st.vy);
+    if (sp > PLAYER_MAXSPD) {
+      st.vx = st.vx / sp * PLAYER_MAXSPD;
+      st.vy = st.vy / sp * PLAYER_MAXSPD;
+    }
+    st.px += st.vx * dt;
+    st.py += st.vy * dt;
+
+    // walls
+    if (st.px < PLAYER_R) { st.px = PLAYER_R; st.vx = 0; }
+    if (st.px > VW - PLAYER_R) { st.px = VW - PLAYER_R; st.vx = 0; }
+    if (st.py < PLAYER_R) { st.py = PLAYER_R; st.vy = 0; }
+    if (st.py > VH - PLAYER_R) { st.py = VH - PLAYER_R; st.vy = 0; }
+
+    // pillars are solid
+    for (var pi = 0; pi < PILLARS.length; pi++) {
+      var p = PILLARS[pi];
+      var ddx = st.px - p.x, ddy = st.py - p.y;
+      var dd = Math.hypot(ddx, ddy);
+      var minD = p.r + PLAYER_R;
+      if (dd < minD) {
+        if (dd < 0.0001) { ddx = 1; ddy = 0; dd = 1; }
+        var nx = ddx / dd, ny = ddy / dd;
+        st.px = p.x + nx * minD;
+        st.py = p.y + ny * minD;
+        var dot = st.vx * nx + st.vy * ny;
+        if (dot < 0) { st.vx -= dot * nx; st.vy -= dot * ny; }
+      }
+    }
+
+    // motes: age out, get picked up
+    for (var mi = 0; mi < st.motes.length; mi++) {
+      var m = st.motes[mi];
+      m.life -= dt;
+      if (m.life <= 0) { placeMote(st, m); continue; }
+      if (st.carry < MAX_CARRY &&
+          Math.hypot(st.px - m.x, st.py - m.y) < PLAYER_R + MOTE_R) {
+        st.carry++;
+        addPopup(m.x, m.y, "+1");
+        addRing(m.x, m.y, 30, 0.42, false);
+        blip(560 + st.carry * 90, 0.1, 0.045, "triangle");
+        placeMote(st, m);
+      }
+    }
+
+    // den: bank the hoard, then shelter
+    var inNest = Math.hypot(st.px - NEST.x, st.py - NEST.y) < NEST.r;
+    if (inNest && st.carry > 0) {
+      var gain = st.carry * st.carry;
+      st.score += gain;
+      addPopup(NEST.x, NEST.y - NEST.r - 12, "+" + gain);
+      addRing(NEST.x, NEST.y, 48 + gain * 2.2, 0.75, false);
+      shake = Math.max(shake, 1.4 + Math.min(3.2, gain * 0.14));
+      blip(330, 0.14, 0.05, "sine");
+      blip(495, 0.26, 0.045, "sine");
+      st.carry = 0;
+      st.nestCharge = Math.min(1, st.nestCharge + NEST_DEPOSIT_REFILL);
+    }
+
+    // light exposure -> burn
+    var selfGlow = st.carry * MOTE_GLOW;
+    var total = lightAt(st.px, st.py, st.lights) + ambientNow(st.t) + selfGlow;
+    st.lastLight = total;
+
+    var sheltered = inNest && st.nestCharge > 0;
+    if (sheltered) {
+      st.nestCharge = Math.max(0, st.nestCharge - NEST_DRAIN * dt);
+      st.burn -= NEST_COOL * dt;
+    } else {
+      st.nestCharge = Math.min(1, st.nestCharge + NEST_REGEN * dt);
+      if (total > SAFE_LIGHT) st.burn += (total - SAFE_LIGHT) * BURN_RATE * dt;
+      else st.burn -= COOL_RATE * dt;
+    }
+    if (st.burn < 0) st.burn = 0;
+    if (st.burn >= 1) {
+      st.burn = 1;
+      gameOver("The light cooked you" + (st.carry > 0 ? " with " + st.carry + " unbanked mote" + (st.carry > 1 ? "s" : "") + "." : "."));
+    }
+
+    // floating score popups
+    for (var qi = popups.length - 1; qi >= 0; qi--) {
+      popups[qi].life -= dt;
+      popups[qi].y -= 18 * dt;
+      if (popups[qi].life <= 0) popups.splice(qi, 1);
+    }
+  }
+
+  // ---------- draw ----------
+  function shadowPoly(c, L, p) {
+    var dx = p.x - L.x, dy = p.y - L.y;
+    var d = Math.hypot(dx, dy);
+    if (d <= p.r) return;   // lamp sitting inside a pillar: no usable umbra
+    var theta = Math.atan2(dy, dx);
+    var alpha = Math.asin(Math.min(1, p.r / d));
+    var tl = Math.sqrt(Math.max(0, d * d - p.r * p.r));
+    var far = 1400;
+    var a1 = theta + alpha, a2 = theta - alpha;
+    c.beginPath();
+    c.moveTo(L.x + Math.cos(a1) * tl, L.y + Math.sin(a1) * tl);
+    c.lineTo(L.x + Math.cos(a1) * far, L.y + Math.sin(a1) * far);
+    c.lineTo(L.x + Math.cos(a2) * far, L.y + Math.sin(a2) * far);
+    c.lineTo(L.x + Math.cos(a2) * tl, L.y + Math.sin(a2) * tl);
+    c.closePath();
+    c.fill();
+  }
+
+  function drawLight(L) {
+    octx.setTransform(1, 0, 0, 1, 0, 0);
+    octx.globalCompositeOperation = "source-over";
+    octx.clearRect(0, 0, ob.width, ob.height);
+    octx.scale(LS, LS);
+
+    var g = octx.createRadialGradient(L.x, L.y, 0, L.x, L.y, L.range);
+    g.addColorStop(0, "rgba(255,240,200,1)");
+    g.addColorStop(0.5, "rgba(255,201,124,0.25)");
+    g.addColorStop(1, "rgba(255,166,78,0)");
+    octx.fillStyle = g;
+    octx.beginPath();
+    octx.arc(L.x, L.y, L.range, 0, TAU);
+    octx.fill();
+
+    octx.globalCompositeOperation = "destination-out";
+    octx.fillStyle = "#000";
+    for (var i = 0; i < PILLARS.length; i++) {
+      var p = PILLARS[i];
+      shadowPoly(octx, L, p);
+      octx.beginPath();
+      octx.arc(p.x, p.y, p.r, 0, TAU);
+      octx.fill();
+    }
+
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(ob, 0, 0, ob.width, ob.height, 0, 0, VW, VH);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // cached decorative gradients (virtual-space coords, so reuse is safe)
+  var gFloor = null, gVign = null;
+  function floorGrad() {
+    if (!gFloor) {
+      gFloor = ctx.createLinearGradient(0, 0, VW * 0.4, VH);
+      gFloor.addColorStop(0, "#141829");
+      gFloor.addColorStop(0.55, "#0e1120");
+      gFloor.addColorStop(1, "#080a14");
+    }
+    return gFloor;
+  }
+  function vignGrad() {
+    if (!gVign) {
+      gVign = ctx.createRadialGradient(VW * 0.5, VH * 0.5, VH * 0.28, VW * 0.5, VH * 0.5, VH * 0.8);
+      gVign.addColorStop(0, "rgba(0,0,0,0)");
+      gVign.addColorStop(1, "rgba(0,0,0,0.5)");
+    }
+    return gVign;
+  }
+
+  function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#04050b";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    var sx = 0, sy = 0;
+    if (shake > 0.02) {
+      sx = (Math.random() * 2 - 1) * shake;
+      sy = (Math.random() * 2 - 1) * shake;
+    }
+    ctx.setTransform(view.dpr, 0, 0, view.dpr,
+      (view.offX + sx) * view.dpr, (view.offY + sy) * view.dpr);
+    ctx.scale(view.scale, view.scale);
+
+    // arena floor: cold stone gradient + faint flagstone grid + edge vignette
+    ctx.fillStyle = floorGrad();
+    ctx.fillRect(0, 0, VW, VH);
+    ctx.strokeStyle = "rgba(130,165,210,0.04)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var gx = 40; gx < VW; gx += 40) { ctx.moveTo(gx, 0); ctx.lineTo(gx, VH); }
+    for (var gy = 40; gy < VH; gy += 40) { ctx.moveTo(0, gy); ctx.lineTo(VW, gy); }
+    ctx.stroke();
+    ctx.fillStyle = vignGrad();
+    ctx.fillRect(0, 0, VW, VH);
+
+    var st = S;
+    if (st) {
+      for (var i = 0; i < st.lights.length; i++) {
+        if (st.lights[i].on) drawLight(st.lights[i]);
+      }
+      var amb = ambientNow(st.t);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255,218,160," + (amb * 0.9).toFixed(3) + ")";
+      ctx.fillRect(0, 0, VW, VH);
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // pillars: cold stone columns with a soft occlusion skirt
+    for (var pi = 0; pi < PILLARS.length; pi++) {
+      var p = PILLARS[pi];
+      var cs = ctx.createRadialGradient(p.x, p.y, p.r * 0.85, p.x, p.y, p.r * 1.35);
+      cs.addColorStop(0, "rgba(2,3,8,0.3)");
+      cs.addColorStop(1, "rgba(2,3,8,0)");
+      ctx.fillStyle = cs;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.35, 0, TAU); ctx.fill();
+
+      var pg = ctx.createLinearGradient(p.x, p.y - p.r, p.x, p.y + p.r);
+      pg.addColorStop(0, "#272e46");
+      pg.addColorStop(0.6, "#171c2c");
+      pg.addColorStop(1, "#0f131f");
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(156,180,220,0.2)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r - 0.75, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 0.56, 0, TAU); ctx.stroke();
+    }
+
+    // den: a cold dark well with a charge ring
+    var dg = ctx.createRadialGradient(NEST.x, NEST.y, 2, NEST.x, NEST.y, NEST.r);
+    dg.addColorStop(0, "#020306");
+    dg.addColorStop(0.72, "#050711");
+    dg.addColorStop(1, "#0b1220");
+    ctx.fillStyle = dg;
+    ctx.beginPath(); ctx.arc(NEST.x, NEST.y, NEST.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(86,128,166,0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(NEST.x, NEST.y, NEST.r, 0, TAU); ctx.stroke();
+    if (st) {
+      var chg = Math.max(0.0001, st.nestCharge);
+      ctx.save();
+      ctx.strokeStyle = chg > 0.25 ? "#7fe9ff" : "#ff8d5c";
+      ctx.shadowColor = chg > 0.25 ? "rgba(127,233,255,0.8)" : "rgba(255,141,92,0.8)";
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(NEST.x, NEST.y, NEST.r - 4.5, -Math.PI / 2, -Math.PI / 2 + TAU * chg);
+      ctx.stroke();
+      ctx.restore();
+
+      // breathing invitation glow
+      var halo = 0.1 + 0.05 * Math.sin(fxT * 1.8);
+      var hg = ctx.createRadialGradient(NEST.x, NEST.y, NEST.r * 0.5, NEST.x, NEST.y, NEST.r * 2.1);
+      hg.addColorStop(0, "rgba(100,200,255," + halo.toFixed(3) + ")");
+      hg.addColorStop(1, "rgba(100,200,255,0)");
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(NEST.x, NEST.y, NEST.r * 2.1, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+
+      ctx.fillStyle = "rgba(142,178,208,0.75)";
+      ctx.font = "600 8px " + MONO;
+      ctx.textAlign = "center";
+      ctx.fillText("D E N", NEST.x, NEST.y + 3);
+    }
+
+    if (!st) { ctx.setTransform(1, 0, 0, 1, 0, 0); return; }
+
+    // lamps: faint orbit trace + flickering filament
+    for (var li = 0; li < st.lights.length; li++) {
+      var L = st.lights[li];
+      if (!L.on) continue;
+      ctx.strokeStyle = "rgba(255,210,130,0.055)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(L.cx, L.cy, L.orb, 0, TAU); ctx.stroke();
+
+      var fl = 0.86 + 0.14 * Math.sin(fxT * (7 + li * 2.3) + li) + 0.04 * Math.sin(fxT * 23 + li);
+      ctx.globalCompositeOperation = "lighter";
+      var lg = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, 26);
+      lg.addColorStop(0, "rgba(255,244,205," + (0.55 * fl).toFixed(3) + ")");
+      lg.addColorStop(1, "rgba(255,196,110,0)");
+      ctx.fillStyle = lg;
+      ctx.beginPath(); ctx.arc(L.x, L.y, 26, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+
+      ctx.fillStyle = "#fffaea";
+      ctx.beginPath(); ctx.arc(L.x, L.y, 5.4 * fl, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(255,214,140," + (0.5 * fl).toFixed(2) + ")";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(L.x, L.y, 10.5, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,214,140,0.16)";
+      ctx.beginPath(); ctx.arc(L.x, L.y, 15.5, 0, TAU); ctx.stroke();
+    }
+
+    // motes
+    for (var mi = 0; mi < st.motes.length; mi++) {
+      var m = st.motes[mi];
+      var fade = m.life < 2.5 ? (0.35 + 0.65 * Math.abs(Math.sin(m.life * 7))) : 1;
+      var puls = 1 + 0.12 * Math.sin(fxT * 3.4 + mi * 2.1);
+      ctx.globalAlpha = fade;
+      ctx.globalCompositeOperation = "lighter";
+      var mg = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 22 * puls);
+      mg.addColorStop(0, "rgba(190,255,232,0.9)");
+      mg.addColorStop(0.35, "rgba(120,245,200,0.35)");
+      mg.addColorStop(1, "rgba(90,230,185,0)");
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 22 * puls, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "#cffff0";
+      ctx.beginPath(); ctx.arc(m.x, m.y, MOTE_R * (0.92 + 0.08 * puls), 0, TAU); ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(m.x - 1.4, m.y - 1.6, 1.9, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // pickup / deposit shockwaves
+    ctx.globalCompositeOperation = "lighter";
+    for (var ri = 0; ri < rings.length; ri++) {
+      var rg = rings[ri];
+      var k = 1 - rg.life / rg.max;
+      var rr = rg.r0 + (rg.r1 - rg.r0) * (1 - Math.pow(1 - k, 2.4));
+      ctx.globalAlpha = Math.max(0, 1 - k) * 0.7;
+      ctx.strokeStyle = rg.warm ? "rgba(255,120,80,0.9)" : "rgba(140,250,210,0.9)";
+      ctx.lineWidth = Math.max(0.5, 2.6 * (1 - k));
+      ctx.beginPath(); ctx.arc(rg.x, rg.y, rr, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalCompositeOperation = "source-over";
+
+    // creature afterimages
+    for (var ti = 0; ti < trail.length; ti++) {
+      var tr = trail[ti];
+      var ta = Math.max(0, tr.life / 0.3) * 0.3;
+      ctx.globalAlpha = ta;
+      ctx.fillStyle = "#1b2a3d";
+      ctx.beginPath(); ctx.arc(tr.x, tr.y, PLAYER_R * (0.45 + 0.5 * (tr.life / 0.3)), 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // self-glow grows with the hoard you are carrying
+    if (st.carry > 0) {
+      var gr = 16 + st.carry * 11;
+      ctx.globalCompositeOperation = "lighter";
+      var pg2 = ctx.createRadialGradient(st.px, st.py, 0, st.px, st.py, gr);
+      pg2.addColorStop(0, "rgba(160,255,215," + Math.min(0.8, 0.22 + st.carry * 0.1).toFixed(2) + ")");
+      pg2.addColorStop(1, "rgba(110,250,195,0)");
+      ctx.fillStyle = pg2;
+      ctx.beginPath(); ctx.arc(st.px, st.py, gr, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    // player body: ink blob with a rim light, tinting hot as burn rises
+    var bm = Math.min(1, st.burn);
+    var bodyG = ctx.createRadialGradient(st.px - 2.5, st.py - 3, 1, st.px, st.py, PLAYER_R);
+    bodyG.addColorStop(0, "rgb(" + Math.round(70 + 185 * bm) + "," +
+                                   Math.round(110 + 20 * (1 - bm)) + "," +
+                                   Math.round(165 - 95 * bm) + ")");
+    bodyG.addColorStop(1, "rgb(" + Math.round(22 + 150 * bm) + "," +
+                                   Math.round(30 + 12 * (1 - bm)) + "," +
+                                   Math.round(56 - 30 * bm) + ")");
+    ctx.fillStyle = bodyG;
+    ctx.beginPath(); ctx.arc(st.px, st.py, PLAYER_R, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(" + Math.round(190 + 65 * bm) + "," +
+                                Math.round(240 - 90 * bm) + "," +
+                                Math.round(225 - 110 * bm) + ",0.8)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(st.px, st.py, PLAYER_R - 0.6, 0, TAU); ctx.stroke();
+    // two shy eye-glints that fade as it cooks
+    ctx.fillStyle = "rgba(240,255,250," + (0.85 - 0.5 * bm).toFixed(2) + ")";
+    ctx.beginPath(); ctx.arc(st.px - 3.1, st.py - 1.6, 1.5, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(st.px + 3.1, st.py - 1.6, 1.5, 0, TAU); ctx.fill();
+
+    // carried pips
+    ctx.save();
+    ctx.shadowColor = "rgba(140,250,210,0.9)";
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = "#d4fff0";
+    for (var ci = 0; ci < st.carry; ci++) {
+      var a = -Math.PI / 2 + ci * (TAU / MAX_CARRY) + fxT * 0.55;
+      ctx.beginPath();
+      ctx.arc(st.px + Math.cos(a) * (PLAYER_R + 6.5), st.py + Math.sin(a) * (PLAYER_R + 6.5), 2.5, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // held-pointer marker
+    if (pointer.active) {
+      ctx.strokeStyle = "rgba(170,230,255,0.28)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(pointer.x, pointer.y, 13, fxT * 1.6, fxT * 1.6 + 2.1);
+      ctx.arc(pointer.x, pointer.y, 13, fxT * 1.6 + Math.PI, fxT * 1.6 + Math.PI + 2.1);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(170,230,255,0.4)";
+      ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 1.6, 0, TAU); ctx.fill();
+    }
+
+    // popups
+    ctx.textAlign = "center";
+    for (var qi = 0; qi < popups.length; qi++) {
+      var q = popups[qi];
+      var big = q.text !== "+1";
+      ctx.globalAlpha = Math.max(0, Math.min(1, q.life));
+      ctx.font = (big ? "700 16px " : "700 12px ") + MONO;
+      ctx.save();
+      ctx.shadowColor = big ? "rgba(255,211,122,0.8)" : "rgba(140,250,210,0.8)";
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = big ? "#ffe3a3" : "#cffff0";
+      ctx.fillText(q.text, q.x, q.y);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    // heat haze as the burn meter climbs
+    if (bm > 0.5) {
+      var hk = (bm - 0.5) / 0.5;
+      var pulse = 0.55 + 0.45 * Math.sin(fxT * (5 + 7 * hk));
+      var hv = ctx.createRadialGradient(VW * 0.5, VH * 0.5, VH * 0.2, VW * 0.5, VH * 0.5, VH * 0.72);
+      hv.addColorStop(0, "rgba(255,70,40,0)");
+      hv.addColorStop(1, "rgba(255,70,40," + (0.3 * hk * pulse).toFixed(3) + ")");
+      ctx.fillStyle = hv;
+      ctx.fillRect(0, 0, VW, VH);
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  function syncHud() {
+    if (!S) return;
+    scoreTxt.textContent = S.score;
+    carryTxt.textContent = S.carry + "/" + MAX_CARRY;
+    var pct = Math.round(Math.min(1, S.burn) * 100);
+    burnBar.style.width = pct + "%";
+    if (pct > 70) {
+      burnBar.style.background = "linear-gradient(90deg, #ff7a3c, #ff4330)";
+      burnBar.style.boxShadow = "0 0 12px rgba(255,67,48,0.85)";
+    } else if (pct > 35) {
+      burnBar.style.background = "linear-gradient(90deg, #c96b2d, #ffa348)";
+      burnBar.style.boxShadow = "0 0 8px rgba(255,163,72,0.45)";
+    } else {
+      burnBar.style.background = "linear-gradient(90deg, #7a4b2a, #c9772f)";
+      burnBar.style.boxShadow = "none";
+    }
+  }
+
+  // ---------- loop ----------
+  var last = 0;
+  function frame(ts) {
+    if (!last) last = ts;
+    var dt = (ts - last) / 1000;
+    last = ts;
+    if (dt > 0.05) dt = 0.05;
+    if (dt < 0) dt = 0;
+
+    // ---- decorative timers (no rule reads any of these) ----
+    fxT += dt;
+    if (shake > 0) shake = Math.max(0, shake - (shake * 9 + 0.6) * dt);
+    for (var ri = rings.length - 1; ri >= 0; ri--) {
+      rings[ri].life -= dt;
+      if (rings[ri].life <= 0) rings.splice(ri, 1);
+    }
+    for (var ti = trail.length - 1; ti >= 0; ti--) {
+      trail[ti].life -= dt;
+      if (trail[ti].life <= 0) trail.splice(ti, 1);
+    }
+    if (S && !S.over) {
+      var lastT = trail.length ? trail[trail.length - 1] : null;
+      if (!lastT || Math.hypot(S.px - lastT.x, S.py - lastT.y) > 4.5) {
+        trail.push({ x: S.px, y: S.py, life: 0.3 });
+        if (trail.length > 26) trail.shift();
+      }
+    }
+
+    if (S && !S.over) { update(dt); syncHud(); }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  // frozen arena behind the start screen so the layout reads before play
+  S = newState();
+  seedMotes(S);
+  S.over = true;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

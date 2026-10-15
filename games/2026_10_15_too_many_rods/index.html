@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1418">
+<title>Too Many Rods</title>
+<style>
+  /* ---------------------------------------------------------------
+     "Harbor patina" dusk palette — weathered dock at last light.
+       ink    #0b1418   night air
+       deep   #081d23   water floor
+       water  #123a42   water surface
+       wood   #241a13   dock plank
+       cream  #f1e7d6   type / bobber belly
+       muted  #8aa09f   secondary type
+       amber  #f2a93b   lantern: bites, attention
+       rust   #d2543a   danger: tension, mistakes
+       glass  #5fcfae   sea glass: your hand, landed fish
+     --------------------------------------------------------------- */
+  :root {
+    --ink:   #0b1418;
+    --deep:  #081d23;
+    --water: #123a42;
+    --wood:  #241a13;
+    --cream: #f1e7d6;
+    --muted: #8aa09f;
+    --amber: #f2a93b;
+    --rust:  #d2543a;
+    --glass: #5fcfae;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: var(--ink); color: var(--cream);
+    font-family: var(--sans);
+    overflow: hidden; touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  #c { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px 20px 140px 20px; /* bottom pad keeps panel clear of bottom-right widget */
+    background:
+      radial-gradient(120% 70% at 50% 0%, rgba(18, 58, 66, 0.55) 0%, rgba(8, 16, 20, 0.92) 55%, rgba(6, 12, 15, 0.97) 100%);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    text-align: center; z-index: 10;
+    overflow-y: auto; touch-action: pan-y; /* instructions stay reachable on short screens */
+    animation: fade 0.45s ease both;
+  }
+  .overlay.hidden { display: none; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  .panel {
+    width: 100%; max-width: 360px;
+    padding: 26px 22px 24px;
+    border: 1px solid rgba(241, 231, 214, 0.10);
+    border-top: 1px solid rgba(242, 169, 59, 0.38);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(18, 42, 48, 0.72) 0%, rgba(9, 20, 25, 0.80) 100%);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(241, 231, 214, 0.05);
+    animation: rise 0.5s cubic-bezier(.2, .8, .25, 1) both;
+  }
+  @keyframes rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  .overlay h1 {
+    margin: 0; font-family: var(--serif); font-weight: 600;
+    font-size: clamp(27px, 9vw, 36px); line-height: 1.05;
+    letter-spacing: 0.055em; text-transform: uppercase; color: var(--cream);
+    text-shadow: 0 0 26px rgba(242, 169, 59, 0.22);
+  }
+  .overlay h2 {
+    margin: 0; font-family: var(--serif); font-weight: 600;
+    font-size: clamp(22px, 7.5vw, 28px); letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--cream);
+  }
+  .kicker {
+    margin: 9px 0 0; font-size: 10.5px; letter-spacing: 0.26em;
+    text-transform: uppercase; color: var(--amber); opacity: 0.85;
+  }
+  .rule {
+    width: 46px; height: 1px; margin: 15px auto 16px;
+    background: linear-gradient(90deg, transparent, rgba(242, 169, 59, 0.75), transparent);
+  }
+  .overlay p { margin: 8px 0; font-size: 14.5px; line-height: 1.5; color: #c3d2d0; }
+  .overlay p.lede { color: var(--cream); font-size: 15.5px; }
+  .overlay p.rules { text-align: left; margin: 2px 0 4px; }
+  .overlay p.rules > span { display: block; padding: 5px 0 5px 15px; position: relative; }
+  .overlay p.rules > span::before {
+    content: ""; position: absolute; left: 0; top: 12px;
+    width: 5px; height: 5px; border-radius: 50%; background: rgba(95, 207, 174, 0.75);
+  }
+  .overlay b { color: var(--cream); font-weight: 600; }
+  .overlay .hl-amber { color: var(--amber); font-weight: 700; letter-spacing: 0.05em; }
+  .overlay .hl-rust { color: var(--rust); }
+  .closer { margin-top: 14px !important; color: var(--muted) !important; font-size: 13.5px !important; }
+
+  .stats { margin: 16px 0 2px; display: flex; flex-direction: column; gap: 1px; }
+  .stat {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; padding: 9px 2px;
+    border-bottom: 1px solid rgba(241, 231, 214, 0.07);
+    font-size: 13px;
+  }
+  .stat .k { letter-spacing: 0.17em; text-transform: uppercase; color: var(--muted); font-size: 10.5px; }
+  .stat .v { font-family: var(--serif); font-size: 21px; color: var(--cream); }
+  .stat.hero .v { color: var(--amber); font-size: 27px; }
+  .reason {
+    margin: 15px 0 0 !important; font-size: 11.5px !important;
+    letter-spacing: 0.15em; text-transform: uppercase; color: var(--rust) !important;
+  }
+
+  .btn {
+    margin-top: 22px; width: 100%; max-width: 260px; min-height: 58px;
+    font-family: var(--sans); font-size: 15px; font-weight: 700;
+    letter-spacing: 0.17em; text-transform: uppercase;
+    color: #1b1206; background: linear-gradient(180deg, #ffc661 0%, var(--amber) 100%);
+    border: 0; border-radius: 11px;
+    box-shadow: 0 0 0 1px rgba(255, 213, 140, 0.35), 0 10px 26px rgba(242, 169, 59, 0.22);
+    touch-action: manipulation; cursor: pointer;
+    transition: transform 0.09s ease, box-shadow 0.25s ease, filter 0.12s ease;
+    animation: lantern 3.6s ease-in-out infinite;
+  }
+  @keyframes lantern {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(255, 213, 140, 0.35), 0 10px 26px rgba(242, 169, 59, 0.18); }
+    50%      { box-shadow: 0 0 0 1px rgba(255, 213, 140, 0.55), 0 12px 34px rgba(242, 169, 59, 0.34); }
+  }
+  .btn:active { transform: translateY(2px) scale(0.985); filter: brightness(0.94); animation: none; }
+
+  .ghost {
+    margin-top: 14px; padding: 9px 14px; min-height: 36px;
+    font-family: var(--sans); font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.19em; text-transform: uppercase;
+    color: var(--muted); background: transparent;
+    border: 1px solid rgba(241, 231, 214, 0.14); border-radius: 8px;
+    touch-action: manipulation; cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .ghost:active { color: var(--cream); border-color: rgba(241, 231, 214, 0.3); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="startScreen" class="overlay">
+  <div class="panel">
+    <h1>Too Many<br>Rods</h1>
+    <p class="kicker">One hand &middot; Five lines</p>
+    <div class="rule"></div>
+    <p class="lede">You have several lines in the water and only <b>one hand</b>.</p>
+    <p class="rules">
+      <span>A bobber flashes <span class="hl-amber">BITE!</span> &mdash; <b>swipe up</b> on that line to set the hook.</span>
+      <span>Then <b>press and hold</b> that line to reel. Holding raises <b>tension</b> &mdash; let go before the line snaps.</span>
+      <span>Leave a hooked fish alone too long and it spits the hook.</span>
+      <span>Slide your finger sideways to move your hand between lines.</span>
+    </p>
+    <p class="closer">Land fish for points. <span class="hl-rust">Three mistakes</span> and you're done.</p>
+    <button id="startBtn" class="btn">Start Fishing</button>
+    <button id="soundBtn" class="ghost">Sound: On</button>
+  </div>
+</div>
+
+<div id="overScreen" class="overlay hidden">
+  <div class="panel">
+    <h2>Lines Down</h2>
+    <p class="kicker">The dock goes quiet</p>
+    <div class="rule"></div>
+    <div class="stats">
+      <div class="stat hero"><span class="k">Score</span><span class="v" id="finalScore">0</span></div>
+      <div class="stat"><span class="k">Fish landed</span><span class="v" id="finalFish">0</span></div>
+      <div class="stat"><span class="k">Best</span><span class="v" id="bestScore">0</span></div>
+    </div>
+    <p class="reason" id="overReason">You ran out of hands.</p>
+    <button id="againBtn" class="btn">Fish Again</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- constants (pacing numbers are placeholders for the balancer) ----------
+  var MAX_LINES   = 5;
+  var MAX_STRIKES = 3;
+  var RECOVER     = 0.75;   // tension lost per second while NOT reeling
+  var SLACK_DECAY = 2.0;    // slack worked off per second while reeling (NOT an instant
+                            // reset: a fish you only tap at keeps drifting toward spitting,
+                            // so you cannot round-robin every line with one-frame touches)
+  var FLICK_PX    = 26;     // upward travel needed to set a hook
+  var UNLOCK_AT   = [0, 0, 2, 9, 16]; // fish landed needed before line i is cast
+  var RAMP_FISH   = 18;     // fish landed to reach full difficulty() (was 16)
+  var OD_SPAN     = 32;     // fish landed, past RAMP_FISH, for overdrive() to reach 1.0 (was 30)
+
+  var TIERS = [
+    { name: "small",  sec: 1.10, pull: 0.70, pat: 1.90, w: 1.4 },
+    { name: "medium", sec: 1.80, pull: 0.82, pat: 1.60, w: 3.1 },
+    { name: "big",    sec: 2.50, pull: 0.92, pat: 1.30, w: 6.2 }
+  ];
+
+  // ---------- palette (presentation only) ----------
+  var C = {
+    ink:    "#0b1418",
+    deep:   "#081d23",
+    water:  "#123a42",
+    wood:   "#241a13",
+    woodHi: "#3b2c20",
+    cream:  "#f1e7d6",
+    muted:  "#8aa09f",
+    dim:    "#55696c",
+    amber:  "#f2a93b",
+    amberHi:"#ffc661",
+    rust:   "#d2543a",
+    glass:  "#5fcfae",
+    track:  "rgba(241,231,214,0.10)"
+  };
+  var SANS  = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  var SERIF = 'ui-serif, "Iowan Old Style", Palatino, Georgia, serif';
+
+  // ---------- canvas / layout ----------
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var W = 0, H = 0;
+  var headerH = 58, bottomPad = 124;
+  var waterTop = 0, waterBot = 0, rodY = 0, bobberY = 0;
+  var marginX = 10, colW = 0;
+  var gSky = null, gWater = null, gVig = null, gDeck = null;
+
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = canvas.clientWidth || window.innerWidth;
+    H = canvas.clientHeight || window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    waterTop = headerH + 6;
+    waterBot = Math.max(waterTop + 180, H - bottomPad);
+    rodY = waterTop + 10;
+    bobberY = waterTop + Math.max(60, (waterBot - waterTop) * 0.26);
+    marginX = 10;
+    colW = (W - marginX * 2) / MAX_LINES;
+
+    // cached gradients (cosmetic)
+    gSky = ctx.createLinearGradient(0, 0, 0, waterTop);
+    gSky.addColorStop(0, "#091217");
+    gSky.addColorStop(0.55, "#0e1c22");
+    gSky.addColorStop(1, "#1b2e31");
+
+    gWater = ctx.createLinearGradient(0, waterTop, 0, waterBot);
+    gWater.addColorStop(0, "#19454d");
+    gWater.addColorStop(0.35, C.water);
+    gWater.addColorStop(1, C.deep);
+
+    gDeck = ctx.createLinearGradient(0, waterBot, 0, H);
+    gDeck.addColorStop(0, "#2a1e16");
+    gDeck.addColorStop(0.18, C.wood);
+    gDeck.addColorStop(1, "#140e0a");
+
+    gVig = ctx.createRadialGradient(W / 2, H * 0.46, Math.min(W, H) * 0.32,
+                                    W / 2, H * 0.46, Math.max(W, H) * 0.78);
+    gVig.addColorStop(0, "rgba(0,0,0,0)");
+    gVig.addColorStop(1, "rgba(0,0,0,0.5)");
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", resize);
+
+  // ---------- game state ----------
+  var phase = "start"; // "start" | "play" | "over"
+  var lines = [];
+  var score = 0, landed = 0, strikes = 0, streak = 0, best = 0;
+  var nextBite = 0;
+  var lastReason = "";
+
+  try { best = parseInt(window.localStorage.getItem("tmr_best") || "0", 10) || 0; } catch (e) { best = 0; }
+
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  // Smoothstep-eased ramp: flat (easy, forgiving) near landed=0, flat again as it
+  // nears RAMP_FISH (so the hand-off into overdrive has no seam), steepest through
+  // the middle. Same 0..1 endpoints as a plain linear ramp, just a smoother curve
+  // between them -- no jarring steps for the player to feel.
+  function difficulty() {
+    var x = clamp(landed / RAMP_FISH, 0, 1);
+    return x * x * (3 - 2 * x);
+  }
+
+  // past the main ramp the pressure keeps creeping up forever, so a skilled run
+  // still ends instead of plateauing
+  function overdrive() { return Math.max(0, (landed - RAMP_FISH) / OD_SPAN); }
+
+  function nibbleWindow() {
+    return Math.max(0.55, 1.6 - 0.75 * difficulty() - 0.20 * overdrive());
+  }
+
+  // Bites arrive at a rate tied to difficulty only. Extra rods deliberately do NOT
+  // speed this up: they are parallel slots to juggle, and one hand servicing more
+  // slots at once is the escalation. (Early on, arrivals sit well under what one
+  // hand can land; by the end of the ramp they overrun it.)
+  function biteInterval() {
+    var base = (2.6 - 1.3 * difficulty()) / (1 + 0.35 * overdrive());
+    return Math.max(0.90, base) * rnd(0.8, 1.2);
+  }
+
+  function makeFish() {
+    var d = difficulty();
+    var r = Math.random();
+    var tier;
+    if (r < 0.05 + 0.30 * d) tier = TIERS[2];
+    else if (r < 0.45 + 0.25 * d) tier = TIERS[1];
+    else tier = TIERS[0];
+    return {
+      name: tier.name,
+      sec:  tier.sec  * (0.90 + 0.25 * d),
+      pull: tier.pull * (0.80 + 0.35 * d + 0.12 * overdrive()),
+      pat:  Math.max(0.7, tier.pat * (1.15 - 0.30 * d) - 0.15 * overdrive()),
+      w:    tier.w    * rnd(0.8, 1.3)
+    };
+  }
+
+  function makeLine() {
+    return {
+      state: "closed",  // closed | idle | nibble | hooked | cool
+      timer: 0,
+      fish: null,
+      reel: 0, tension: 0, slack: 0, nibMax: 1,
+      flash: "", flashT: 0
+    };
+  }
+
+  // ---------- cosmetic fx layer (never read by update(); purely decorative) ----------
+  var fx = { shake: 0, ripples: [], parts: [], flashA: 0, flashCol: C.rust };
+
+  function colCx(i) { return marginX + colW * (i + 0.5); }
+  function fxShake(a) { if (a > fx.shake) fx.shake = a; }
+  function fxFlash(col, a) { fx.flashCol = col; if (a > fx.flashA) fx.flashA = a; }
+  function fxRipple(x, y, max, col) {
+    if (fx.ripples.length > 36) return;
+    fx.ripples.push({ x: x, y: y, r: 3, max: max, col: col, life: 1 });
+  }
+  function fxBurst(x, y, n, col, spd) {
+    for (var i = 0; i < n; i++) {
+      if (fx.parts.length > 110) return;
+      var a = rnd(-Math.PI, 0);
+      var s = spd * rnd(0.4, 1.1);
+      fx.parts.push({
+        x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: 1, dec: rnd(1.1, 2.0), r: rnd(1.2, 2.8), col: col
+      });
+    }
+  }
+  function updateFx(dt) {
+    fx.shake = Math.max(0, fx.shake - dt * 42);
+    fx.flashA = Math.max(0, fx.flashA - dt * 1.3);
+    var i;
+    for (i = fx.ripples.length - 1; i >= 0; i--) {
+      var R = fx.ripples[i];
+      R.r += dt * R.max * 1.5;
+      R.life -= dt * 1.4;
+      if (R.life <= 0 || R.r > R.max) fx.ripples.splice(i, 1);
+    }
+    for (i = fx.parts.length - 1; i >= 0; i--) {
+      var P = fx.parts[i];
+      P.x += P.vx * dt; P.y += P.vy * dt;
+      P.vy += 190 * dt;
+      P.life -= dt * P.dec;
+      if (P.life <= 0) fx.parts.splice(i, 1);
+    }
+  }
+
+  // ---------- cosmetic audio (tiny WebAudio blips, lazily created on first tap) ----------
+  var AC = null, soundOn = true;
+  function audioCtx() {
+    if (AC) return AC;
+    try {
+      var K = window.AudioContext || window.webkitAudioContext;
+      if (K) AC = new K();
+    } catch (e) { AC = null; }
+    return AC;
+  }
+  function tone(freq, dur, vol, type, slideTo, delay) {
+    if (!soundOn) return;
+    var ac = audioCtx();
+    if (!ac) return;
+    try {
+      if (ac.state === "suspended" && ac.resume) ac.resume();
+      var t0 = ac.currentTime + (delay || 0);
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = type || "sine";
+      o.frequency.setValueAtTime(freq, t0);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t0); o.stop(t0 + dur + 0.03);
+    } catch (e) {}
+  }
+  var sfx = {
+    bite:  function () { tone(1180, 0.07, 0.05, "triangle"); tone(1480, 0.06, 0.04, "triangle", 0, 0.09); },
+    hook:  function () { tone(420, 0.14, 0.06, "triangle", 760); },
+    land:  function () { tone(660, 0.12, 0.06, "sine", 0); tone(990, 0.22, 0.05, "sine", 0, 0.08); },
+    bad:   function () { tone(210, 0.26, 0.07, "sawtooth", 70); },
+    rod:   function () { tone(520, 0.1, 0.05, "sine"); tone(780, 0.16, 0.045, "sine", 0, 0.1); },
+    spook: function () { tone(300, 0.08, 0.035, "sine", 180); }
+  };
+
+  function updateUnlocks() {
+    for (var i = 0; i < MAX_LINES; i++) {
+      if (lines[i].state === "closed" && landed >= UNLOCK_AT[i]) {
+        lines[i].state = "cool";
+        lines[i].timer = (landed === 0) ? 0.6 : 1.2;
+        if (landed > 0) {
+          lines[i].flash = "NEW ROD"; lines[i].flashT = 1.8;
+          fxRipple(colCx(i), bobberY, colW * 0.55, C.amber);
+          sfx.rod();
+        }
+      }
+    }
+  }
+
+  function resetLines() {
+    lines = [];
+    for (var i = 0; i < MAX_LINES; i++) lines.push(makeLine());
+  }
+
+  function newGame() {
+    resetLines();
+    score = 0; landed = 0; strikes = 0; streak = 0;
+    lastReason = "";
+    gesture.active = false; gesture.id = null; gesture.line = -1; gesture.resolved = false;
+    updateUnlocks();
+    nextBite = 1.0;
+    phase = "play";
+    fx.ripples.length = 0; fx.parts.length = 0; fx.shake = 0; fx.flashA = 0;
+    startScreen.classList.add("hidden");
+    overScreen.classList.add("hidden");
+  }
+
+  function multiplier() { return 1 + Math.min(4, Math.floor(streak / 3)) * 0.5; }
+
+  function strike(i, msg) {
+    if (phase !== "play") return;
+    strikes++;
+    streak = 0;
+    lines[i].flash = msg;
+    lines[i].flashT = 1.8;
+    lastReason = msg;
+    fxShake(9);
+    fxFlash(C.rust, 0.42);
+    fxBurst(colCx(i), bobberY, 10, C.rust, 130);
+    sfx.bad();
+    if (strikes >= MAX_STRIKES) gameOver();
+  }
+
+  function land(i) {
+    if (phase !== "play") return;
+    var L = lines[i];
+    var pts = Math.max(1, Math.round(L.fish.w * 10 * multiplier()));
+    score += pts;
+    landed++;
+    streak++;
+    L.flash = "+" + pts;
+    L.flashT = 1.8;
+    L.state = "cool"; L.timer = 0.7;
+    L.fish = null; L.reel = 0; L.tension = 0; L.slack = 0;
+    fxBurst(colCx(i), bobberY, 14, C.glass, 150);
+    fxRipple(colCx(i), bobberY, colW * 0.6, C.glass);
+    fxShake(3);
+    sfx.land();
+    updateUnlocks();
+  }
+
+  function gameOver() {
+    phase = "over";
+    if (score > best) {
+      best = score;
+      try { window.localStorage.setItem("tmr_best", String(best)); } catch (e) {}
+    }
+    document.getElementById("finalScore").textContent = String(score);
+    document.getElementById("finalFish").textContent = String(landed);
+    document.getElementById("bestScore").textContent = String(best);
+    document.getElementById("overReason").textContent =
+      lastReason ? ("Last mistake: " + lastReason) : "You ran out of hands.";
+    overScreen.classList.remove("hidden");
+  }
+
+  // ---------- input (pointer events: one unified path for touch + mouse) ----------
+  var gesture = { active: false, id: null, line: -1, startY: 0, resolved: false };
+
+  // Which rod column is this x over? (y is deliberately ignored during a drag so an
+  // upward flick can never slide out of its own hit zone.)
+  function colAt(x) {
+    var idx = Math.floor((x - marginX) / colW);
+    idx = clamp(idx, 0, MAX_LINES - 1);
+    if (lines[idx].state === "closed") return -1;
+    return idx;
+  }
+
+  function localPos(e) {
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function trySetHook(i) {
+    if (i < 0) return;
+    var L = lines[i];
+    if (L.state === "nibble") {
+      L.state = "hooked";
+      L.reel = 0; L.tension = 0; L.slack = 0;
+      L.flash = "HOOKED!"; L.flashT = 1.0;
+      fxBurst(colCx(i), bobberY, 9, C.amberHi, 140);
+      fxRipple(colCx(i), bobberY, colW * 0.5, C.amber);
+      fxShake(4);
+      sfx.hook();
+    } else if (L.state === "idle") {
+      // yanking an empty line scares the fish off for a moment (costs no mistake)
+      L.state = "cool"; L.timer = 1.4;
+      L.flash = "SPOOKED"; L.flashT = 1.2;
+      fxRipple(colCx(i), bobberY, colW * 0.4, C.dim);
+      sfx.spook();
+    }
+  }
+
+  function onDown(e) {
+    if (phase !== "play") return;
+    e.preventDefault();
+    var p = localPos(e);
+    // newest contact takes over "the hand" (identical for touch and mouse)
+    gesture.active = true;
+    gesture.id = e.pointerId;
+    gesture.startY = p.y;
+    gesture.resolved = false;
+    // the header strip and the bottom strip are dead zones for *starting* a grab,
+    // which keeps the reserved bottom-right corner free of essential controls
+    gesture.line = (p.y > headerH && p.y <= waterBot) ? colAt(p.x) : -1;
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
+  }
+
+  function onMove(e) {
+    if (phase !== "play" || !gesture.active || e.pointerId !== gesture.id) return;
+    e.preventDefault();
+    var p = localPos(e);
+    var idx = colAt(p.x);
+    if (idx !== gesture.line) {
+      // the hand slid onto a different line: re-arm the flick from here
+      gesture.line = idx;
+      gesture.startY = p.y;
+      gesture.resolved = false;
+      return;
+    }
+    if (p.y > gesture.startY) {
+      // moving back down re-arms the flick, so a player who never lifts their finger
+      // can still hook a fresh bite on the line they are already holding
+      gesture.startY = p.y;
+      gesture.resolved = false;
+    }
+    if (!gesture.resolved && gesture.startY - p.y >= FLICK_PX) {
+      gesture.resolved = true;
+      trySetHook(gesture.line);
+    }
+  }
+
+  function onUp(e) {
+    if (!gesture.active || e.pointerId !== gesture.id) return;
+    gesture.active = false;
+    gesture.id = null;
+    gesture.line = -1;
+    gesture.resolved = false;
+  }
+
+  canvas.addEventListener("pointerdown", onDown, { passive: false });
+  canvas.addEventListener("pointermove", onMove, { passive: false });
+  canvas.addEventListener("pointerup", onUp);
+  canvas.addEventListener("pointercancel", onUp);
+  window.addEventListener("blur", function () {
+    gesture.active = false; gesture.id = null; gesture.line = -1; gesture.resolved = false;
+  });
+  // belt-and-braces scroll suppression over the play surface only, so the
+  // start/game-over overlays can still be scrolled on short screens
+  document.addEventListener("touchmove", function (e) {
+    if (e.target === canvas) e.preventDefault();
+  }, { passive: false });
+
+  var startScreen = document.getElementById("startScreen");
+  var overScreen = document.getElementById("overScreen");
+
+  function bindButton(el, fn) {
+    var fired = false;
+    el.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      fired = true;
+      fn();
+      setTimeout(function () { fired = false; }, 400);
+    }, { passive: false });
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (!fired) fn();   // fallback for environments without pointer events
+    });
+  }
+  bindButton(document.getElementById("startBtn"), newGame);
+  bindButton(document.getElementById("againBtn"), newGame);
+
+  // cosmetic-only control: mutes the decorative blips, touches no game state
+  var soundBtn = document.getElementById("soundBtn");
+  bindButton(soundBtn, function () {
+    soundOn = !soundOn;
+    soundBtn.textContent = "Sound: " + (soundOn ? "On" : "Off");
+    if (soundOn) sfx.spook();
+  });
+
+  // ---------- update ----------
+  function update(dt) {
+    if (phase !== "play") return;
+
+    nextBite -= dt;
+    if (nextBite <= 0) {
+      var idleIdx = [];
+      for (var k = 0; k < MAX_LINES; k++) if (lines[k].state === "idle") idleIdx.push(k);
+      if (idleIdx.length) {
+        var pick = idleIdx[Math.floor(Math.random() * idleIdx.length)];
+        lines[pick].state = "nibble";
+        lines[pick].timer = nibbleWindow();
+        lines[pick].nibMax = lines[pick].timer;
+        lines[pick].fish = makeFish();
+        nextBite = biteInterval();
+        fxRipple(colCx(pick), bobberY, colW * 0.46, C.amber);
+        sfx.bite();
+      } else {
+        nextBite = 0.35;
+      }
+    }
+
+    for (var i = 0; i < MAX_LINES; i++) {
+      var L = lines[i];
+      if (L.flashT > 0) L.flashT -= dt;
+
+      if (L.state === "cool") {
+        L.timer -= dt;
+        if (L.timer <= 0) { L.state = "idle"; L.timer = 0; }
+      } else if (L.state === "nibble") {
+        L.timer -= dt;
+        if (L.timer <= 0) {
+          L.state = "cool"; L.timer = 0.9; L.fish = null;
+          strike(i, "GOT AWAY");
+        }
+      } else if (L.state === "hooked") {
+        var reeling = gesture.active && gesture.line === i;
+        if (reeling) {
+          L.reel += dt;
+          L.tension += L.fish.pull * dt;
+          L.slack = Math.max(0, L.slack - SLACK_DECAY * dt);
+        } else {
+          L.tension = Math.max(0, L.tension - RECOVER * dt);
+          L.slack += dt;
+        }
+        if (L.tension >= 1) {
+          L.state = "cool"; L.timer = 1.3; L.fish = null; L.reel = 0; L.tension = 0; L.slack = 0;
+          strike(i, "LINE SNAPPED");
+        } else if (L.slack >= L.fish.pat) {
+          L.state = "cool"; L.timer = 1.0; L.fish = null; L.reel = 0; L.tension = 0; L.slack = 0;
+          strike(i, "SPIT THE HOOK");
+        } else if (L.reel >= L.fish.sec) {
+          land(i);
+        }
+      }
+    }
+  }
+
+  // ---------- draw ----------
+  var t = 0;
+
+  function rrect(x, y, w, h, r) {
+    var rr = Math.min(r, h / 2, w / 2);
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rr); return; }
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y); ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr); ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr); ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  function ls(v) { try { ctx.letterSpacing = v; } catch (e) {} }
+
+  function label(text, x, y, col, size) {
+    ctx.fillStyle = col;
+    ctx.font = "600 " + (size || 9) + "px " + SANS;
+    ls("0.14em");
+    ctx.fillText(text, x, y);
+    ls("0px");
+  }
+
+  function bar(x, y, w, h, frac, fill, glow) {
+    ctx.fillStyle = C.track;
+    rrect(x, y, w, h, h / 2); ctx.fill();
+    var fw = w * clamp(frac, 0, 1);
+    if (fw > 0.6) {
+      if (glow) { ctx.save(); ctx.shadowColor = fill; ctx.shadowBlur = 8; }
+      ctx.fillStyle = fill;
+      rrect(x, y, Math.max(h, fw), h, h / 2); ctx.fill();
+      if (glow) ctx.restore();
+    }
+  }
+
+  function drawBobber(cx, y, r, topCol, glow) {
+    if (glow) { ctx.save(); ctx.shadowColor = topCol; ctx.shadowBlur = glow; }
+    ctx.fillStyle = "#e6dac2";
+    ctx.beginPath(); ctx.arc(cx, y, r, 0, Math.PI); ctx.fill();
+    ctx.fillStyle = topCol;
+    ctx.beginPath(); ctx.arc(cx, y, r, Math.PI, Math.PI * 2); ctx.fill();
+    if (glow) ctx.restore();
+    ctx.strokeStyle = "rgba(6,14,18,0.55)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, y, r, 0, Math.PI * 2); ctx.stroke();
+    // waterline smear
+    ctx.strokeStyle = "rgba(230,218,194,0.14)";
+    ctx.beginPath(); ctx.ellipse(cx, y + r * 0.55, r * 1.9, r * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  function drawScene() {
+    // sky / night air
+    ctx.fillStyle = gSky || C.ink;
+    ctx.fillRect(0, 0, W, waterTop);
+
+    // water
+    ctx.fillStyle = gWater || C.water;
+    ctx.fillRect(0, waterTop, W, waterBot - waterTop);
+
+    // drifting swell lines
+    var wh = waterBot - waterTop;
+    ctx.lineWidth = 1;
+    for (var n = 0; n < 7; n++) {
+      var p = (n + 1) / 8;
+      var y = waterTop + wh * p;
+      ctx.strokeStyle = "rgba(241,231,214," + (0.045 - p * 0.028).toFixed(3) + ")";
+      ctx.beginPath();
+      for (var x = 0; x <= W; x += 14) {
+        var yy = y + Math.sin(x * 0.018 + t * (0.5 + p) + n) * (2.2 + p * 2.4);
+        if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+
+    // slow motes drifting in the deep (12 deterministic specks, keeps the lower
+    // half of the water from reading as a flat void)
+    for (var mo = 0; mo < 12; mo++) {
+      var seed = mo * 97.13;
+      var mx = ((Math.sin(seed) * 0.5 + 0.5) * W + Math.sin(t * 0.17 + seed) * 16 + W) % W;
+      var my = waterTop + wh * (0.42 + ((mo * 0.0837 + Math.sin(seed * 1.7) * 0.5 + 0.5) % 1) * 0.55)
+               + Math.sin(t * 0.23 + seed) * 7;
+      var ma = 0.05 + 0.05 * (0.5 + 0.5 * Math.sin(t * 0.6 + seed));
+      ctx.fillStyle = "rgba(190,224,220," + ma.toFixed(3) + ")";
+      ctx.beginPath(); ctx.arc(mx, my, 1.2 + (mo % 3) * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // horizon haze just under the gunwale
+    var hz = ctx.createLinearGradient(0, waterTop, 0, waterTop + 42);
+    hz.addColorStop(0, "rgba(242,169,59,0.10)");
+    hz.addColorStop(1, "rgba(242,169,59,0)");
+    ctx.fillStyle = hz;
+    ctx.fillRect(0, waterTop, W, 42);
+
+    // gunwale / rod rail
+    ctx.fillStyle = C.wood;
+    ctx.fillRect(0, waterTop - 7, W, 9);
+    ctx.fillStyle = C.woodHi;
+    ctx.fillRect(0, waterTop - 7, W, 2);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0, waterTop + 2, W, 2);
+
+    // dock plank we stand on
+    ctx.fillStyle = gDeck || C.wood;
+    ctx.fillRect(0, waterBot, W, H - waterBot);
+    ctx.fillStyle = "rgba(241,231,214,0.07)";
+    ctx.fillRect(0, waterBot, W, 1);
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    for (var pl = 1; pl < 4; pl++) {
+      var py = waterBot + (H - waterBot) * (pl / 4);
+      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+    }
+  }
+
+  function drawHeader() {
+    ctx.textBaseline = "middle";
+
+    // score
+    ctx.textAlign = "left";
+    ctx.fillStyle = C.cream;
+    ctx.font = "600 23px " + SERIF;
+    ctx.fillText(String(score), 13, 23);
+    label("SCORE", 13, 42, C.muted, 9);
+
+    // streak multiplier
+    var m = multiplier();
+    var hot = m > 1;
+    ctx.textAlign = "center";
+    ctx.fillStyle = hot ? C.glass : C.dim;
+    ctx.font = "600 19px " + SERIF;
+    if (hot) { ctx.save(); ctx.shadowColor = C.glass; ctx.shadowBlur = 10; }
+    ctx.fillText("×" + m.toFixed(1), W / 2, 23);
+    if (hot) ctx.restore();
+    label("STREAK " + streak, W / 2, 42, hot ? C.muted : C.dim, 9);
+
+    // mistake pips
+    ctx.textAlign = "right";
+    var rad = 5, gap = 15, right = W - 14;
+    for (var s = 0; s < MAX_STRIKES; s++) {
+      var cx = right - rad - (MAX_STRIKES - 1 - s) * gap;
+      var used = s < strikes;
+      ctx.beginPath(); ctx.arc(cx, 22, rad, 0, Math.PI * 2);
+      if (used) {
+        ctx.fillStyle = C.rust;
+        if (strikes >= MAX_STRIKES - 1) { ctx.save(); ctx.shadowColor = C.rust; ctx.shadowBlur = 9; ctx.fill(); ctx.restore(); }
+        else ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(241,231,214,0.3)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+    }
+    label("MISTAKES", right, 42, (strikes >= MAX_STRIKES - 1) ? C.rust : C.muted, 9);
+  }
+
+  function drawColumn(i) {
+    var L = lines[i];
+    var cx = colCx(i);
+    var held = gesture.active && gesture.line === i;
+
+    // --- column tints -------------------------------------------------------
+    // the held column is the player's only "where is my hand" feedback: load-bearing
+    if (held) {
+      var g = ctx.createLinearGradient(0, waterTop, 0, waterBot);
+      g.addColorStop(0, "rgba(95,207,174,0.20)");
+      g.addColorStop(1, "rgba(95,207,174,0.04)");
+      ctx.fillStyle = g;
+      ctx.fillRect(marginX + colW * i, waterTop, colW, waterBot - waterTop);
+      ctx.strokeStyle = "rgba(95,207,174,0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(marginX + colW * i + 0.5, waterTop); ctx.lineTo(marginX + colW * i + 0.5, waterBot);
+      ctx.moveTo(marginX + colW * (i + 1) - 0.5, waterTop); ctx.lineTo(marginX + colW * (i + 1) - 0.5, waterBot);
+      ctx.stroke();
+      // bright grip marker on the rail
+      ctx.fillStyle = C.glass;
+      ctx.fillRect(marginX + colW * i + 2, waterTop - 7, colW - 4, 3);
+      ctx.save();
+      ctx.shadowColor = C.glass; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, waterTop + 11); ctx.lineTo(cx + 5, waterTop + 11); ctx.lineTo(cx, waterTop + 5);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    } else if (L.state === "nibble") {
+      var pulse = 0.05 + 0.05 * (0.5 + 0.5 * Math.sin(t * 9 + i));
+      ctx.fillStyle = "rgba(242,169,59," + pulse.toFixed(3) + ")";
+      ctx.fillRect(marginX + colW * i, waterTop, colW, waterBot - waterTop);
+    }
+
+    ctx.textAlign = "center";
+
+    // --- locked slot --------------------------------------------------------
+    if (L.state === "closed") {
+      ctx.strokeStyle = "rgba(241,231,214,0.07)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(cx, rodY); ctx.lineTo(cx, bobberY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(241,231,214,0.14)";
+      ctx.beginPath(); ctx.arc(cx, bobberY, 7, 0, Math.PI * 2); ctx.stroke();
+      label("ROD " + (i + 1), cx, bobberY + 24, "rgba(138,160,159,0.5)", 9);
+      label("AT " + UNLOCK_AT[i] + " FISH", cx, bobberY + 38, "rgba(138,160,159,0.32)", 8);
+      return;
+    }
+
+    // --- rod butt on the rail ----------------------------------------------
+    ctx.strokeStyle = held ? C.glass : "rgba(241,231,214,0.22)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 7, waterTop - 10); ctx.lineTo(cx, rodY - 2);
+    ctx.stroke();
+    ctx.fillStyle = held ? C.glass : "rgba(241,231,214,0.3)";
+    ctx.beginPath(); ctx.arc(cx, rodY - 1, 2.6, 0, Math.PI * 2); ctx.fill();
+
+    // --- line + bobber ------------------------------------------------------
+    var bobY = bobberY, bobR = 8, topCol = "#9fb2b1", glow = 0, sway = 0;
+    if (L.state === "nibble") {
+      topCol = C.amber; bobR = 10.5; glow = 16;
+      bobY = bobberY + Math.sin(t * 22 + i) * 5;
+      sway = Math.sin(t * 19 + i) * 4;
+    } else if (L.state === "hooked") {
+      topCol = C.rust; bobR = 9.5; glow = L.tension > 0.75 ? 16 : 9;
+      bobY = bobberY + Math.sin(t * 9 + i) * 3;
+      sway = Math.sin(t * 7.5 + i * 2) * (3 + L.tension * 7);
+    } else if (L.state === "cool") {
+      topCol = "#51666a"; bobR = 7;
+    }
+
+    var taut = (L.state === "hooked" && gesture.active && gesture.line === i);
+    ctx.strokeStyle = taut ? "rgba(241,231,214,0.68)" : "rgba(241,231,214,0.32)";
+    ctx.lineWidth = taut ? 1.8 : 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx, rodY);
+    ctx.quadraticCurveTo(cx + sway * (taut ? 0.4 : 1), (rodY + bobY) / 2 + (taut ? -2 : 4), cx + sway * 0.5, bobY);
+    ctx.stroke();
+
+    drawBobber(cx + sway * 0.5, bobY, bobR, topCol, glow);
+
+    // --- per-state readouts -------------------------------------------------
+    if (L.state === "nibble") {
+      var k = 0.5 + 0.5 * Math.sin(t * 13 + i);
+      ctx.save();
+      ctx.shadowColor = C.amber; ctx.shadowBlur = 10 + k * 8;
+      ctx.fillStyle = C.amberHi;
+      ctx.font = "800 13px " + SANS;
+      ls("0.1em");
+      ctx.fillText("BITE!", cx, bobberY - 30);
+      ls("0px");
+      ctx.restore();
+
+      ctx.fillStyle = "rgba(255,198,97," + (0.55 + 0.45 * k).toFixed(2) + ")";
+      ctx.font = "15px " + SANS;
+      ctx.fillText("↑", cx, bobberY - 48 - k * 4);
+
+      // halo ring around the bobber
+      ctx.strokeStyle = "rgba(242,169,59," + (0.5 - k * 0.3).toFixed(2) + ")";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(cx + sway * 0.5, bobY, bobR + 5 + k * 6, 0, Math.PI * 2); ctx.stroke();
+
+      bar(cx - colW * 0.37, bobberY + 24, colW * 0.74, 5,
+          L.timer / Math.max(0.01, L.nibMax), C.amber, true);
+    } else if (L.state === "hooked") {
+      var bw = colW * 0.74, bx = cx - bw / 2;
+
+      label("REEL", cx, bobberY + 22, C.muted, 8.5);
+      bar(bx, bobberY + 28, bw, 7, L.reel / L.fish.sec, C.glass, taut);
+
+      var hotT = L.tension > 0.75;
+      var jit = hotT ? (Math.random() * 2 - 1) * 1.2 : 0;
+      label("TENSION", cx, bobberY + 48, hotT ? C.rust : C.muted, 8.5);
+      bar(bx + jit, bobberY + 54, bw, 7, L.tension, hotT ? C.rust : C.amber, hotT);
+
+      if (L.slack / L.fish.pat > 0.45) {
+        var sp = 0.5 + 0.5 * Math.sin(t * 15 + i);
+        ctx.fillStyle = "rgba(210,84,58," + (0.6 + 0.4 * sp).toFixed(2) + ")";
+        ctx.font = "800 10.5px " + SANS;
+        ls("0.12em");
+        ctx.fillText("REEL IT!", cx, bobberY + 74);
+        ls("0px");
+      }
+      ctx.fillStyle = "rgba(241,231,214,0.8)";
+      ctx.font = "600 11px " + SERIF;
+      ctx.fillText(L.fish.w.toFixed(1) + " lb", cx, bobberY + 93);
+    } else if (L.state === "idle") {
+      label("WAITING", cx, bobberY + 26, "rgba(138,160,159,0.45)", 8.5);
+    } else if (L.state === "cool") {
+      label("RECASTING", cx, bobberY + 26, "rgba(138,160,159,0.3)", 8.5);
+    }
+
+    // --- flash chip ---------------------------------------------------------
+    if (L.flashT > 0 && L.flash) {
+      var a = clamp(L.flashT, 0, 1);
+      var good = L.flash.charAt(0) === "+";
+      var warm = (L.flash === "HOOKED!" || L.flash === "NEW ROD");
+      var fc = good ? C.glass : warm ? C.amber : C.rust;
+      // a neighboring column's chip can be active at the same time and would
+      // otherwise overlap near waterBot; stagger alternating columns
+      // vertically (even columns up, odd columns down) only when that
+      // collision risk actually exists, so a lone chip is unaffected.
+      var neighborFlashing = (i > 0 && lines[i - 1].flash && lines[i - 1].flashT > 0) ||
+                              (i < MAX_LINES - 1 && lines[i + 1].flash && lines[i + 1].flashT > 0);
+      var stagger = neighborFlashing ? (i % 2 === 0 ? -11 : 11) : 0;
+      var fy = waterBot - 16 - (1 - a) * 10 + stagger;
+      ctx.globalAlpha = a;
+      ctx.font = "800 11px " + SANS;
+      ls("0.1em");
+      var tw = ctx.measureText(L.flash).width + 16;
+      var fcx = clamp(cx, tw / 2 + 4, W - tw / 2 - 4);   // keep the chip on screen
+      ctx.fillStyle = "rgba(8,16,20,0.6)";
+      rrect(fcx - tw / 2, fy - 9, tw, 18, 9); ctx.fill();
+      ctx.strokeStyle = fc; ctx.lineWidth = 1;
+      ctx.globalAlpha = a * 0.5;
+      rrect(fcx - tw / 2, fy - 9, tw, 18, 9); ctx.stroke();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = fc;
+      ctx.fillText(L.flash, fcx, fy);
+      ls("0px");
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawFx() {
+    var i;
+    for (i = 0; i < fx.ripples.length; i++) {
+      var R = fx.ripples[i];
+      ctx.globalAlpha = clamp(R.life, 0, 1) * 0.45;
+      ctx.strokeStyle = R.col;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(R.x, R.y, R.r, R.r * 0.42, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (i = 0; i < fx.parts.length; i++) {
+      var P = fx.parts[i];
+      ctx.globalAlpha = clamp(P.life, 0, 1) * 0.85;
+      ctx.fillStyle = P.col;
+      ctx.beginPath(); ctx.arc(P.x, P.y, P.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    ctx.fillStyle = C.ink;
+    ctx.fillRect(0, 0, W, H);
+
+    var sx = 0, sy = 0;
+    if (fx.shake > 0.2) {
+      sx = (Math.random() * 2 - 1) * fx.shake;
+      sy = (Math.random() * 2 - 1) * fx.shake * 0.6;
+    }
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    drawScene();
+    drawHeader();
+
+    // clip decorations to the water so nothing spills into the dead strips
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, waterTop, W, waterBot - waterTop);
+    ctx.clip();
+    drawFx();
+    ctx.restore();
+
+    for (var i = 0; i < MAX_LINES; i++) drawColumn(i);
+
+    ctx.restore();
+
+    // bottom hint strip (non-essential text; bottom-right corner left empty)
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(241,231,214,0.42)";
+    ctx.font = "11px " + SANS;
+    ls("0.04em");
+    ctx.fillText("Swipe ↑ on a BITE to hook  ·  hold a line to reel", W / 2, H - 92);
+    ctx.fillStyle = "rgba(241,231,214,0.26)";
+    ctx.fillText("slide sideways to move your hand", W / 2, H - 74);
+    ls("0px");
+
+    // vignette + damage flash
+    if (gVig) { ctx.fillStyle = gVig; ctx.fillRect(0, 0, W, H); }
+    if (fx.flashA > 0.01) {
+      // an edge pulse rather than a full wash, so the read of the board is never lost
+      var fg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.18,
+                                        W / 2, H / 2, Math.max(W, H) * 0.62);
+      fg.addColorStop(0, "rgba(210,84,58,0)");
+      fg.addColorStop(1, fx.flashCol);
+      ctx.globalAlpha = Math.min(0.45, fx.flashA);
+      ctx.fillStyle = fg;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- loop ----------
+  var prev = 0;
+  function frame(ts) {
+    if (!prev) prev = ts;
+    var dt = (ts - prev) / 1000;
+    prev = ts;
+    if (dt > 0.1) dt = 0.1;  // avoid huge steps after a tab switch
+    t += dt;
+    update(dt);
+    updateFx(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  resetLines();
+  updateUnlocks();   // draw the two starting rods behind the start screen
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

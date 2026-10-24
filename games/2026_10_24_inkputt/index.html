@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Inkputt</title>
+<style>
+  :root { --paper:#efe7d6; --paper2:#e4d9c2; --ink:#1c1f3a; --clay:#c9653e; --mustard:#e8b04a; --muted:#6b6455; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none; }
+  body { background: radial-gradient(ellipse at 50% 0%, #f6f0e2 0%, var(--paper) 55%, var(--paper2) 100%); }
+  #app { display: flex; flex-direction: column; align-items: center; height: 100%; }
+  #hud { width: 100%; max-width: 480px; box-sizing: border-box; padding: 8px 10px 6px; display: flex;
+    align-items: center; gap: 10px; font-size: 14px; }
+  #hud .info { flex: 1; line-height: 1.35; text-align: right; font-variant-numeric: tabular-nums; }
+  #hudHole { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 17px; font-weight: 700; letter-spacing: .01em; }
+  #hudStrokes { color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+  #washBtn { font: 600 14px system-ui, -apple-system, sans-serif; padding: 10px 14px; min-height: 44px;
+    border: 2px solid var(--ink); border-radius: 999px; background: transparent; color: var(--ink);
+    transition: background .15s, color .15s, opacity .2s, transform .1s; }
+  #washBtn:not(:disabled):active { transform: scale(.96); background: var(--ink); color: var(--paper); }
+  @media (hover: hover) { #washBtn:not(:disabled):hover { background: var(--ink); color: var(--paper); } }
+  #washBtn:disabled { opacity: 0.3; }
+  #wrap { flex: 1; width: 100%; display: flex; justify-content: center; align-items: flex-start; }
+  canvas { display: block; touch-action: none; border-radius: 14px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 6px 18px rgba(60,45,20,.18), 0 1px 3px rgba(60,45,20,.2); }
+  .overlay { position: fixed; inset: 0; background: rgba(28,31,58,0.42); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box;
+    animation: fadeIn .25s ease-out; }
+  .overlay > * { position: relative; }
+  .card { background: var(--paper); border-radius: 18px; padding: 28px 26px 26px; max-width: 340px; width: 100%;
+    box-sizing: border-box; box-shadow: 0 18px 40px rgba(20,18,40,.35); animation: rise .35s cubic-bezier(.2,.9,.3,1.2); }
+  .overlay h1 { margin: 0 0 4px; font: 700 38px/1.1 Georgia, "Iowan Old Style", "Times New Roman", serif;
+    color: var(--ink); letter-spacing: -.01em; }
+  .overlay h1::after { content: ""; display: block; width: 56px; height: 5px; margin: 10px auto 14px;
+    border-radius: 5px; background: var(--ink); transform: rotate(-2deg); }
+  .overlay p { font-size: 15px; line-height: 1.5; margin: 8px 0; color: #3a3a4a; }
+  .overlay p b { color: var(--clay); }
+  .overlay button { margin-top: 18px; font: 700 18px system-ui, -apple-system, sans-serif; letter-spacing: .03em;
+    padding: 14px 38px; min-height: 52px; border: 0; border-radius: 999px; background: var(--ink); color: var(--paper);
+    box-shadow: 0 4px 0 #0b0c1c; transition: transform .1s, box-shadow .1s; }
+  .overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #0b0c1c; }
+  #bestText { font-weight: 700; color: var(--clay) !important; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <button id="washBtn">Wash ink (+1)</button>
+    <div class="info">
+      <div id="hudHole">Hole 1/9 &middot; Par 2</div>
+      <div id="hudStrokes">Strokes 0 &middot; Total E</div>
+    </div>
+  </div>
+  <div id="wrap"><canvas id="cv"></canvas></div>
+</div>
+
+<div id="startScreen" class="overlay">
+  <div class="card">
+  <h1>Inkputt</h1>
+  <p>Drag anywhere and release to putt (pull back like a slingshot). Sink the ball in the cup in as few strokes as possible.</p>
+  <p><b>Twist:</b> every roll leaves an ink trail that hardens into a wall. Use your old trails as bank rails &mdash; or box yourself in. Washing all ink costs 1 stroke.</p>
+  <button id="startBtn">Start</button>
+  </div>
+</div>
+
+<div id="holeScreen" class="overlay hidden">
+  <div class="card">
+  <h1 id="holeTitle">Hole 1</h1>
+  <p id="holeText"></p>
+  <button id="nextBtn">Next hole</button>
+  </div>
+</div>
+
+<div id="endScreen" class="overlay hidden">
+  <div class="card">
+  <h1>Round over</h1>
+  <p id="endText"></p>
+  <p id="bestText"></p>
+  <button id="againBtn">Play again</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- Constants ----
+  const W = 360, H = 560;          // logical course size
+  const R = 6;                     // ball radius
+  const CUP_R = 11;                // cup radius
+  const SINK_SPEED = 380;          // max speed (units/s) to drop in the cup (final-hole value)
+  const SINK_SPEED_EASY = 520;     // hole 1 value; ramps linearly down to SINK_SPEED by the last hole
+  function sinkSpeed() { return SINK_SPEED_EASY + (SINK_SPEED - SINK_SPEED_EASY) * (holeIdx / (HOLES.length - 1)); }
+  const MAX_V = 950;               // max launch speed
+  const MAX_DRAG = 130;            // CSS px of drag for full power
+  const MIN_DRAG = 10;             // CSS px; shorter drags are ignored
+  const FR_LIN = 90, FR_EXP = 0.9; // friction
+  const STOP_SPEED = 6;
+  const RESTITUTION = 0.78;
+  const INK_PAD = 2;               // half-thickness of hardened ink
+  const INK_STEP = 8;              // trail sampling distance
+  const CAP_OVER_PAR = 4;          // pick up at par + 4
+
+  // Holes: tee, cup, par, walls [x,y,w,h], water [x,y,w,h]
+  const HOLES = [
+    { par: 3, tee: [180, 490], cup: [180, 100], walls: [[100, 280, 160, 20]], water: [] },
+    { par: 3, tee: [60, 500], cup: [300, 80], walls: [[10, 200, 240, 18], [110, 360, 240, 18]], water: [] },
+    { par: 3, tee: [180, 500], cup: [180, 75],
+      walls: [[110, 10, 18, 140], [232, 10, 18, 140], [130, 260, 100, 18]], water: [] },
+    { par: 3, tee: [60, 500], cup: [300, 260], walls: [[171, 120, 18, 430]], water: [] },
+    { par: 3, tee: [180, 500], cup: [180, 90],
+      walls: [[160, 170, 40, 14]], water: [[10, 260, 140, 60], [210, 260, 140, 60]] },
+    { par: 4, tee: [60, 510], cup: [60, 80],
+      walls: [[10, 150, 250, 18], [100, 290, 250, 18], [10, 430, 250, 18]], water: [] },
+    { par: 4, tee: [180, 515], cup: [180, 60],
+      walls: [[70, 140, 20, 20], [170, 140, 20, 20], [270, 140, 20, 20],
+              [120, 230, 20, 20], [220, 230, 20, 20],
+              [70, 320, 20, 20], [170, 320, 20, 20], [270, 320, 20, 20],
+              [120, 410, 20, 20], [220, 410, 20, 20]], water: [] },
+    { par: 4, tee: [300, 500], cup: [90, 110],
+      walls: [[40, 60, 18, 110], [40, 60, 110, 18], [40, 152, 110, 18]],
+      water: [[100, 280, 160, 80]] },
+    { par: 4, tee: [330, 510], cup: [180, 300],
+      walls: [[60, 140, 240, 16], [60, 140, 16, 300], [60, 424, 240, 16], [284, 220, 16, 220],
+              [120, 240, 120, 16]],
+      water: [[10, 470, 120, 40]] }
+  ];
+
+  // ---- DOM ----
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const washBtn = document.getElementById('washBtn');
+  const hudHole = document.getElementById('hudHole');
+  const hudStrokes = document.getElementById('hudStrokes');
+  const startScreen = document.getElementById('startScreen');
+  const holeScreen = document.getElementById('holeScreen');
+  const endScreen = document.getElementById('endScreen');
+
+  let scale = 1, dpr = 1;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const wrap = document.getElementById('wrap');
+    const availW = wrap.clientWidth;
+    const availH = window.innerHeight - document.getElementById('hud').offsetHeight - 4;
+    scale = Math.max(0.3, Math.min(availW / W, availH / H));
+    cv.style.width = (W * scale) + 'px';
+    cv.style.height = (H * scale) + 'px';
+    cv.width = Math.round(W * scale * dpr);
+    cv.height = Math.round(H * scale * dpr);
+  }
+  window.addEventListener('resize', resize);
+
+  // ---- Game state ----
+  // state: 'start' | 'aim' | 'roll' | 'sinking' | 'holeDone' | 'end'
+  let state = 'start';
+  let holeIdx = 0;
+  let strokes = 0;
+  let scores = [];        // strokes per completed hole
+  let hole = null;
+  let staticSegs = [];    // boundary + wall segments
+  let inkSegs = [];       // hardened ink segments
+  let trail = [];         // current shot's trail points
+  let ball = { x: 0, y: 0, vx: 0, vy: 0 };
+  let shotStart = { x: 0, y: 0 };
+  let sinkT = 0;
+  let drag = null;        // {id, sx, sy, cx, cy}
+  let splashMsgT = 0;
+
+  function rectSegs(x, y, w, h, pad) {
+    return [
+      { ax: x, ay: y, bx: x + w, by: y, pad },
+      { ax: x + w, ay: y, bx: x + w, by: y + h, pad },
+      { ax: x + w, ay: y + h, bx: x, by: y + h, pad },
+      { ax: x, ay: y + h, bx: x, by: y, pad }
+    ];
+  }
+
+  function loadHole(i) {
+    holeIdx = i;
+    hole = HOLES[i];
+    strokes = 0;
+    staticSegs = rectSegs(10, 10, W - 20, H - 20, 0);
+    hole.walls.forEach(r => { staticSegs = staticSegs.concat(rectSegs(r[0], r[1], r[2], r[3], 0)); });
+    inkSegs = [];
+    trail = [];
+    ball.x = hole.tee[0]; ball.y = hole.tee[1]; ball.vx = 0; ball.vy = 0;
+    drag = null;
+    state = 'aim';
+    updateHud();
+  }
+
+  function totalRelPar() {
+    let s = 0;
+    for (let i = 0; i < scores.length; i++) s += scores[i] - HOLES[i].par;
+    return s;
+  }
+  function fmtRel(n) { return n === 0 ? 'E' : (n > 0 ? '+' + n : String(n)); }
+
+  function updateHud() {
+    hudHole.textContent = 'Hole ' + (holeIdx + 1) + '/' + HOLES.length + ' · Par ' + hole.par;
+    hudStrokes.textContent = 'Strokes ' + strokes + ' · Total ' + fmtRel(totalRelPar());
+    washBtn.disabled = !(state === 'aim' && inkSegs.length > 0);
+  }
+
+  // ---- Geometry ----
+  function closestOnSeg(px, py, s) {
+    const dx = s.bx - s.ax, dy = s.by - s.ay;
+    const l2 = dx * dx + dy * dy;
+    let t = l2 > 0 ? ((px - s.ax) * dx + (py - s.ay) * dy) / l2 : 0;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    return [s.ax + dx * t, s.ay + dy * t];
+  }
+
+  function collideSegs(segs) {
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const q = closestOnSeg(ball.x, ball.y, s);
+      const dx = ball.x - q[0], dy = ball.y - q[1];
+      const rr = R + s.pad;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < rr * rr && d2 > 1e-9) {
+        const d = Math.sqrt(d2);
+        const nx = dx / d, ny = dy / d;
+        ball.x += nx * (rr - d);
+        ball.y += ny * (rr - d);
+        const vn = ball.vx * nx + ball.vy * ny;
+        if (vn < 0) {
+          ball.vx -= (1 + RESTITUTION) * vn * nx;
+          ball.vy -= (1 + RESTITUTION) * vn * ny;
+        }
+      }
+    }
+  }
+
+  function inWater(x, y) {
+    for (const w of hole.water) {
+      if (x > w[0] && x < w[0] + w[2] && y > w[1] && y < w[1] + w[3]) return true;
+    }
+    return false;
+  }
+
+  // ---- Shot lifecycle ----
+  function shoot(dxPx, dyPx) {
+    const len = Math.hypot(dxPx, dyPx);
+    if (len < MIN_DRAG) return;
+    const power = Math.min(len / MAX_DRAG, 1);
+    // pull back: shot goes opposite to drag
+    ball.vx = -dxPx / len * power * MAX_V;
+    ball.vy = -dyPx / len * power * MAX_V;
+    shotStart.x = ball.x; shotStart.y = ball.y;
+    trail = [{ x: ball.x, y: ball.y }];
+    strokes++;
+    state = 'roll';
+    updateHud();
+  }
+
+  function hardenTrail() {
+    if (trail.length >= 1) {
+      const last = trail[trail.length - 1];
+      if (Math.hypot(last.x - ball.x, last.y - ball.y) > 0.5) trail.push({ x: ball.x, y: ball.y });
+    }
+    const minD = R + INK_PAD + 3;
+    for (let i = 1; i < trail.length; i++) {
+      const s = { ax: trail[i - 1].x, ay: trail[i - 1].y, bx: trail[i].x, by: trail[i].y, pad: INK_PAD };
+      const q = closestOnSeg(ball.x, ball.y, s);
+      // skip any segment touching the ball's resting spot so it isn't stuck inside its own ink
+      if (Math.hypot(ball.x - q[0], ball.y - q[1]) < minD) continue;
+      inkSegs.push(s);
+    }
+    trail = [];
+  }
+
+  function checkCap() {
+    if (strokes >= hole.par + CAP_OVER_PAR) {
+      finishHole(true);
+      return true;
+    }
+    return false;
+  }
+
+  function onBallStopped() {
+    ball.vx = 0; ball.vy = 0;
+    if (Math.hypot(hole.cup[0] - ball.x, hole.cup[1] - ball.y) < CUP_R) {
+      state = 'sinking'; sinkT = 0; trail = [];
+      return;
+    }
+    hardenTrail();
+    state = 'aim';
+    if (!checkCap()) updateHud();
+  }
+
+  function onSplash() {
+    strokes++; // penalty
+    trail = [];
+    ball.x = shotStart.x; ball.y = shotStart.y; ball.vx = 0; ball.vy = 0;
+    splashMsgT = 1.2;
+    state = 'aim';
+    if (!checkCap()) updateHud();
+  }
+
+  function finishHole(pickedUp) {
+    const sc = pickedUp ? hole.par + CAP_OVER_PAR : strokes;
+    scores.push(sc);
+    drag = null;
+    if (holeIdx >= HOLES.length - 1) {
+      state = 'end';
+      updateHud();
+      showEnd();
+      return;
+    }
+    state = 'holeDone';
+    updateHud();
+    const rel = sc - hole.par;
+    document.getElementById('holeTitle').textContent = 'Hole ' + (holeIdx + 1) + (pickedUp ? ' - picked up' : '');
+    document.getElementById('holeText').textContent =
+      sc + ' strokes (par ' + hole.par + ', ' + fmtRel(rel) + '). Total: ' + fmtRel(totalRelPar());
+    holeScreen.classList.remove('hidden');
+  }
+
+  function showEnd() {
+    const total = scores.reduce((a, b) => a + b, 0);
+    const par = HOLES.reduce((a, h) => a + h.par, 0);
+    const rel = total - par;
+    document.getElementById('endText').textContent =
+      'Total ' + total + ' strokes (par ' + par + ', ' + fmtRel(rel) + ').';
+    let best = null;
+    try { best = localStorage.getItem('inkputt_best'); } catch (e) {}
+    best = best === null ? null : parseInt(best, 10);
+    let msg;
+    if (best === null || isNaN(best) || total < best) {
+      msg = 'New best!';
+      try { localStorage.setItem('inkputt_best', String(total)); } catch (e) {}
+    } else {
+      msg = 'Best: ' + best + ' strokes';
+    }
+    document.getElementById('bestText').textContent = msg;
+    endScreen.classList.remove('hidden');
+  }
+
+  function wash() {
+    if (state !== 'aim' || inkSegs.length === 0) return;
+    inkSegs = [];
+    strokes++;
+    if (!checkCap()) updateHud();
+  }
+
+  // ---- Physics step ----
+  function physics(dt) {
+    if (state === 'sinking') {
+      sinkT += dt;
+      ball.x += (hole.cup[0] - ball.x) * Math.min(1, dt * 12);
+      ball.y += (hole.cup[1] - ball.y) * Math.min(1, dt * 12);
+      if (sinkT > 0.5) finishHole(false);
+      return;
+    }
+    if (state !== 'roll') return;
+
+    let sp = Math.hypot(ball.vx, ball.vy);
+    const steps = Math.max(1, Math.ceil(sp * dt / (R * 0.5)));
+    const h = dt / steps;
+    for (let k = 0; k < steps; k++) {
+      ball.x += ball.vx * h;
+      ball.y += ball.vy * h;
+      collideSegs(staticSegs);
+      collideSegs(inkSegs);
+
+      // trail recording
+      const lp = trail[trail.length - 1];
+      if (!lp || Math.hypot(ball.x - lp.x, ball.y - lp.y) >= INK_STEP) trail.push({ x: ball.x, y: ball.y });
+
+      if (inWater(ball.x, ball.y)) { onSplash(); return; }
+
+      // cup
+      const cdx = hole.cup[0] - ball.x, cdy = hole.cup[1] - ball.y;
+      const cd = Math.hypot(cdx, cdy);
+      sp = Math.hypot(ball.vx, ball.vy);
+      if (cd < CUP_R) {
+        if (sp < sinkSpeed()) {
+          state = 'sinking'; sinkT = 0; ball.vx = 0; ball.vy = 0; trail = [];
+          return;
+        }
+        // lip: pull toward center a bit
+        if (cd > 0.01) {
+          ball.vx += cdx / cd * 2200 * h;
+          ball.vy += cdy / cd * 2200 * h;
+        }
+      }
+    }
+
+    // friction
+    sp = Math.hypot(ball.vx, ball.vy);
+    const nsp = Math.max(0, sp - (FR_LIN + sp * FR_EXP) * dt);
+    if (nsp < STOP_SPEED) { onBallStopped(); return; }
+    ball.vx *= nsp / sp; ball.vy *= nsp / sp;
+  }
+
+  // ---- Rendering (cosmetic only) ----
+  const C = {
+    margin: '#e4d9c2', marginEdge: '#cdbf9f', green: '#86b46f', stripe: '#7eab67', greenEdge: '#5f8a4c',
+    clay: '#c9653e', clayTop: '#de7f56', clayShadow: 'rgba(70,40,20,0.28)',
+    water: '#5ea3b5', waterDeep: '#468a9e', waterLine: 'rgba(255,255,255,0.55)',
+    cup: '#20232b', cupRim: '#5f8a4c', ink: '#1c1f3a', inkWet: 'rgba(28,31,58,0.38)', inkHi: 'rgba(140,150,230,0.35)',
+    ball: '#fbfaf5', ballShade: '#d9d4c4', aim: '#e8b04a', aimHot: '#d9483b', flag: '#d9483b'
+  };
+  const inkBorn = new WeakMap();   // seg -> time first drawn (for harden flash)
+  const fx = { parts: [], rings: [], shake: 0, t: 0 };
+  let prevBall = { x: 0, y: 0 }, prevSplash = 0, prevState = 'start';
+
+  // tiny WebAudio blips (cosmetic)
+  let actx = null;
+  function audio() {
+    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = false; } }
+    if (actx && actx.state === 'suspended') actx.resume();
+    return actx || null;
+  }
+  function blip(freq, dur, type, vol, slide) {
+    const a = actx; if (!a) return;
+    const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+    o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+    g.gain.setValueAtTime(vol || 0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(dur, vol) {
+    const a = actx; if (!a) return;
+    const n = Math.floor(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = a.createBufferSource(), g = a.createGain(), f = a.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 900; src.buffer = buf; g.gain.value = vol || 0.12;
+    src.connect(f); f.connect(g); g.connect(a.destination); src.start();
+  }
+  window.addEventListener('pointerdown', audio, true);
+
+  function puff(x, y, n, col, sp) {
+    for (let i = 0; i < n; i++) {
+      const an = Math.random() * Math.PI * 2, v = (0.4 + Math.random()) * (sp || 60);
+      fx.parts.push({ x, y, vx: Math.cos(an) * v, vy: Math.sin(an) * v, life: 0.5 + Math.random() * 0.3, t: 0, col, r: 1 + Math.random() * 1.6 });
+    }
+  }
+  function ring(x, y, col, maxR, dur) { fx.rings.push({ x, y, col, maxR, dur, t: 0 }); }
+
+  // called around physics() each frame: observes state changes to trigger juice
+  function fxBefore() { prevBall.x = ball.x; prevBall.y = ball.y; prevBall.vx = ball.vx; prevBall.vy = ball.vy; prevState = state; prevSplash = splashMsgT; }
+  function fxAfter(dt) {
+    fx.t += dt;
+    if (prevState === 'aim' && state === 'roll') { blip(520, 0.07, 'triangle', 0.09, 300); puff(ball.x, ball.y, 5, 'rgba(255,255,255,0.8)', 40); }
+    if (state === 'roll' && prevState === 'roll') {
+      const s0 = Math.hypot(prevBall.vx, prevBall.vy), s1 = Math.hypot(ball.vx, ball.vy);
+      if (s0 > 60 && s1 > 1) {
+        const dot = (prevBall.vx * ball.vx + prevBall.vy * ball.vy) / (s0 * s1);
+        if (dot < 0.8) {
+          const k = Math.min(1, s0 / 700);
+          blip(180 + k * 160, 0.05, 'square', 0.025 + k * 0.04);
+          puff(ball.x, ball.y, 3 + Math.round(k * 4), 'rgba(28,31,58,0.55)', 30 + k * 50);
+          fx.shake = Math.max(fx.shake, k * 2.2);
+        }
+      }
+    }
+    if (prevState === 'roll' && state === 'aim' && splashMsgT <= prevSplash) { blip(330, 0.09, 'sine', 0.05, 220); }
+    if (splashMsgT > prevSplash + 0.5) {
+      ring(prevBall.x, prevBall.y, 'rgba(255,255,255,0.9)', 26, 0.7);
+      ring(prevBall.x, prevBall.y, 'rgba(255,255,255,0.6)', 16, 0.5);
+      puff(prevBall.x, prevBall.y, 14, 'rgba(220,240,250,0.95)', 90);
+      fx.shake = 5; noise(0.35, 0.14);
+    }
+    if (state === 'sinking' && prevState !== 'sinking') {
+      ring(hole.cup[0], hole.cup[1], 'rgba(232,176,74,0.95)', 30, 0.6);
+      blip(660, 0.12, 'sine', 0.08); setTimeout(() => blip(990, 0.22, 'sine', 0.07), 90);
+    }
+    for (let i = fx.parts.length - 1; i >= 0; i--) {
+      const q = fx.parts[i]; q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9;
+      if (q.t > q.life) fx.parts.splice(i, 1);
+    }
+    for (let i = fx.rings.length - 1; i >= 0; i--) { fx.rings[i].t += dt; if (fx.rings[i].t > fx.rings[i].dur) fx.rings.splice(i, 1); }
+    fx.shake = Math.max(0, fx.shake - dt * 18);
+  }
+
+  function rrect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function draw() {
+    const now = performance.now() / 1000;
+    let sx = 0, sy = 0;
+    if (fx.shake > 0) { sx = (Math.random() - 0.5) * fx.shake; sy = (Math.random() - 0.5) * fx.shake; }
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, sx * scale * dpr, sy * scale * dpr);
+    ctx.fillStyle = C.margin;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+    if (!hole) return;
+    // green + mow stripes
+    ctx.fillStyle = C.greenEdge; rrect(8, 8, W - 16, H - 16, 6); ctx.fill();
+    ctx.save(); rrect(10, 10, W - 20, H - 20, 5); ctx.clip();
+    ctx.fillStyle = C.green; ctx.fillRect(10, 10, W - 20, H - 20);
+    ctx.fillStyle = C.stripe;
+    for (let y = 10; y < H; y += 56) ctx.fillRect(10, y, W - 20, 28);
+    // water
+    hole.water.forEach(w => {
+      ctx.fillStyle = C.waterDeep; rrect(w[0], w[1], w[2], w[3], 8); ctx.fill();
+      ctx.fillStyle = C.water; rrect(w[0] + 2, w[1] + 2, w[2] - 4, w[3] - 4, 7); ctx.fill();
+      ctx.save(); rrect(w[0] + 2, w[1] + 2, w[2] - 4, w[3] - 4, 7); ctx.clip();
+      ctx.strokeStyle = C.waterLine; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+      for (let yy = w[1] + 12; yy < w[1] + w[3] - 4; yy += 14) {
+        const off = ((now * 10 + yy * 1.7) % 40);
+        ctx.beginPath();
+        for (let xx = w[0] - 40 + off; xx < w[0] + w[2]; xx += 40) { ctx.moveTo(xx, yy); ctx.quadraticCurveTo(xx + 5, yy - 3, xx + 10, yy); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+    // wall shadows, then walls
+    ctx.fillStyle = C.clayShadow;
+    hole.walls.forEach(r => { rrect(r[0] + 2, r[1] + 3, r[2], r[3], 3); ctx.fill(); });
+    hole.walls.forEach(r => {
+      ctx.fillStyle = C.clay; rrect(r[0], r[1], r[2], r[3], 3); ctx.fill();
+      ctx.fillStyle = C.clayTop; rrect(r[0] + 2, r[1] + 2, Math.max(1, r[2] - 4), Math.max(1, r[3] - 5), 2); ctx.fill();
+    });
+    ctx.restore();
+    // tee marker: two small dots
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(hole.tee[0] - 10, hole.tee[1], 2.2, 0, Math.PI * 2); ctx.arc(hole.tee[0] + 10, hole.tee[1], 2.2, 0, Math.PI * 2); ctx.fill();
+    // cup
+    const cx = hole.cup[0], cy = hole.cup[1];
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(cx, cy, CUP_R + 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = C.cup;
+    ctx.beginPath(); ctx.arc(cx, cy, CUP_R, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.arc(cx, cy + 2, CUP_R - 3, 0, Math.PI * 2); ctx.fill();
+    // hardened ink: soft shadow, solid body, fresh segments flash in
+    if (inkSegs.length) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(20,20,40,0.22)'; ctx.lineWidth = INK_PAD * 2 + 1;
+      ctx.beginPath(); inkSegs.forEach(s => { ctx.moveTo(s.ax + 1, s.ay + 1.5); ctx.lineTo(s.bx + 1, s.by + 1.5); }); ctx.stroke();
+      ctx.strokeStyle = C.ink; ctx.lineWidth = INK_PAD * 2;
+      ctx.beginPath(); inkSegs.forEach(s => { ctx.moveTo(s.ax, s.ay); ctx.lineTo(s.bx, s.by); }); ctx.stroke();
+      ctx.strokeStyle = C.inkHi; ctx.lineWidth = 1;
+      ctx.beginPath(); inkSegs.forEach(s => { ctx.moveTo(s.ax - 0.6, s.ay - 0.6); ctx.lineTo(s.bx - 0.6, s.by - 0.6); }); ctx.stroke();
+      let fresh = false;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      inkSegs.forEach(s => {
+        let b = inkBorn.get(s);
+        if (b === undefined) { b = now; inkBorn.set(s, b); fresh = true; }
+        const k = (now - b) / 0.45;
+        if (k < 1) {
+          ctx.globalAlpha = (1 - k) * 0.7; ctx.lineWidth = INK_PAD * 2 + 4 * (1 - k);
+          ctx.beginPath(); ctx.moveTo(s.ax, s.ay); ctx.lineTo(s.bx, s.by); ctx.stroke();
+        }
+      });
+      ctx.globalAlpha = 1;
+      if (fresh) blip(140, 0.12, 'sine', 0.06, 90);
+    }
+    // wet trail (current shot) - glossy, wobbling slightly
+    if (trail.length > 0 && state === 'roll') {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = C.inkWet; ctx.lineWidth = INK_PAD * 2 + 1;
+      ctx.beginPath(); ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.lineTo(ball.x, ball.y); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    // flag (pennant on short pole, beside the cup)
+    if (state !== 'sinking') {
+      const wave = Math.sin(now * 4) * 1.5;
+      ctx.strokeStyle = '#3b3a36'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 26); ctx.stroke();
+      ctx.fillStyle = C.flag;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 26); ctx.lineTo(cx + 13, cy - 22 + wave); ctx.lineTo(cx, cy - 17); ctx.closePath(); ctx.fill();
+    }
+    // rings
+    fx.rings.forEach(g => {
+      const k = g.t / g.dur;
+      ctx.strokeStyle = g.col; ctx.globalAlpha = 1 - k; ctx.lineWidth = 2 * (1 - k) + 0.5;
+      ctx.beginPath(); ctx.arc(g.x, g.y, 4 + g.maxR * (1 - Math.pow(1 - k, 2)), 0, Math.PI * 2); ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    // ball + shadow
+    const br = state === 'sinking' ? R * Math.max(0, 1 - sinkT * 2) : R;
+    if (br > 0) {
+      ctx.fillStyle = 'rgba(30,30,20,0.25)';
+      ctx.beginPath(); ctx.ellipse(ball.x + 1.5, ball.y + 2.5, br, br * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.ballShade;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, br, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.ball;
+      ctx.beginPath(); ctx.arc(ball.x - br * 0.18, ball.y - br * 0.18, br * 0.8, 0, Math.PI * 2); ctx.fill();
+    }
+    // idle pulse around ball when ready to putt
+    if (state === 'aim' && !drag) {
+      const k = (now * 0.9) % 1;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.5 * (1 - k)) + ')'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(ball.x, ball.y, R + 3 + k * 9, 0, Math.PI * 2); ctx.stroke();
+    }
+    // particles
+    fx.parts.forEach(q => {
+      ctx.fillStyle = q.col; ctx.globalAlpha = Math.max(0, 1 - q.t / q.life);
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    // aim: dotted guide that grows and warms with power
+    if (drag && state === 'aim') {
+      const dx = drag.cx - drag.sx, dy = drag.cy - drag.sy;
+      const len = Math.hypot(dx, dy);
+      if (len >= MIN_DRAG) {
+        const p = Math.min(len / MAX_DRAG, 1);
+        const ux = -dx / len, uy = -dy / len;
+        const L = 20 + p * 110;
+        const col = p < 0.75 ? C.aim : C.aimHot;
+        ctx.fillStyle = col;
+        for (let d = R + 6, i = 0; d < L; d += 9, i++) {
+          const rr = 2.6 - (d / L) * 1.4;
+          ctx.globalAlpha = 1 - (d / L) * 0.6;
+          ctx.beginPath(); ctx.arc(ball.x + ux * d, ball.y + uy * d, rr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // power pill (top-left)
+        ctx.fillStyle = 'rgba(28,31,58,0.82)'; rrect(16, 16, 74, 20, 10); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; rrect(20, 23, 44, 6, 3); ctx.fill();
+        ctx.fillStyle = col; rrect(20, 23, Math.max(3, 44 * p), 6, 3); ctx.fill();
+        ctx.fillStyle = '#efe7d6'; ctx.font = '600 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+        ctx.fillText(Math.round(p * 100) + '%', 67, 26.5); ctx.textBaseline = 'alphabetic';
+      }
+    }
+    if (splashMsgT > 0) {
+      const k = Math.min(1, (1.2 - splashMsgT) * 6), a = Math.min(1, splashMsgT * 3);
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'center';
+      ctx.font = '700 ' + Math.round(16 + 6 * k) + 'px Georgia, "Times New Roman", serif';
+      const tw = ctx.measureText('Splash!  +1 stroke').width + 28;
+      ctx.fillStyle = 'rgba(28,31,58,0.85)'; rrect(W / 2 - tw / 2, H / 2 - 22, tw, 36, 18); ctx.fill();
+      ctx.fillStyle = '#efe7d6'; ctx.fillText('Splash!  +1 stroke', W / 2, H / 2 + 3);
+      ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---- Input (pointer events: touch + mouse) ----
+  function onDown(e) {
+    if (state !== 'aim' || drag) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY };
+  }
+  function onMove(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.preventDefault();
+    drag.cx = e.clientX; drag.cy = e.clientY;
+  }
+  function onUp(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.preventDefault();
+    drag.cx = e.clientX; drag.cy = e.clientY;
+    const d = drag; drag = null;
+    if (state === 'aim') shoot(d.cx - d.sx, d.cy - d.sy);
+  }
+  function onCancel(e) {
+    if (drag && e.pointerId === drag.id) drag = null;
+  }
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onCancel);
+  // Allow drags that start on the canvas to finish anywhere
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onCancel);
+
+  washBtn.addEventListener('click', wash);
+  document.getElementById('startBtn').addEventListener('click', () => {
+    startScreen.classList.add('hidden');
+    scores = [];
+    loadHole(0);
+  });
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    if (state !== 'holeDone') return;
+    holeScreen.classList.add('hidden');
+    loadHole(holeIdx + 1);
+  });
+  document.getElementById('againBtn').addEventListener('click', () => {
+    endScreen.classList.add('hidden');
+    scores = [];
+    loadHole(0);
+  });
+
+  // ---- Loop ----
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (splashMsgT > 0) splashMsgT -= dt;
+    fxBefore();
+    physics(dt);
+    fxAfter(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  hole = HOLES[0];
+  ball.x = hole.tee[0]; ball.y = hole.tee[1];
+  updateHud();
+  washBtn.disabled = true;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

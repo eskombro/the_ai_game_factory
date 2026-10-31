@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Loopsnare</title>
+<style>
+  :root { --ink:#0b0d17; --ink2:#141828; --thread:#f3e9d2; --amber:#ffc857; --mint:#5ef2c2; --coral:#ff5a6e; --mute:#7a8099; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--ink); color: var(--thread);
+    font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #game { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #vignette { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%); }
+  #hud { position: fixed; top: 8px; left: 12px; pointer-events: none; display: flex; gap: 18px; align-items: flex-start;
+    font-variant-numeric: tabular-nums; }
+  #hud .stat { display: flex; flex-direction: column; line-height: 1; }
+  #hud .lbl { font-size: 10px; letter-spacing: 0.18em; color: var(--mute); text-transform: uppercase; margin-bottom: 4px; }
+  #hud .val { font-size: 22px; font-weight: 700; }
+  #hud #score { color: var(--thread); display: inline-block; transition: transform 0.12s ease-out; }
+  #hud #score.pop { transform: scale(1.25); color: var(--mint); }
+  #hud #best { color: var(--mute); font-size: 16px; }
+  #hud .lives { display: flex; align-items: center; gap: 5px; height: 22px; }
+  #hud #lives { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #pips i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%;
+    background: var(--amber); box-shadow: 0 0 8px rgba(255,200,87,0.6); transition: all 0.25s; }
+  #pips i.gone { background: transparent; box-shadow: none; outline: 1.5px solid #3a3f55; outline-offset: -1.5px; }
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; background: rgba(11,13,23,0.72); text-align: center; padding: 24px; box-sizing: border-box;
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: fadeIn 0.35s ease-out; }
+  .overlay.hidden { display: none; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .overlay > * { animation: rise 0.45s ease-out both; }
+  .overlay > *:nth-child(2) { animation-delay: 0.06s; } .overlay > *:nth-child(3) { animation-delay: 0.12s; }
+  .overlay > *:nth-child(4) { animation-delay: 0.18s; } .overlay > *:nth-child(5) { animation-delay: 0.24s; }
+  .logo { width: 84px; height: 84px; margin-bottom: 6px; }
+  .logo path { stroke-dasharray: 260; stroke-dashoffset: 260; animation: draw 1.6s 0.2s ease-in-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .overlay h1 { margin: 0 0 14px; font-size: 40px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--thread); text-shadow: 0 0 18px rgba(255,200,87,0.35); }
+  .overlay h1 span { color: var(--amber); }
+  #overScreen h1 { color: var(--coral); text-shadow: 0 0 18px rgba(255,90,110,0.4); }
+  .overlay p { max-width: 330px; font-size: 15px; line-height: 1.5; margin: 6px 0; color: #c9c3b3; }
+  .overlay p b.g { color: var(--mint); } .overlay p b.m { color: var(--coral); }
+  .scores { display: flex; gap: 28px; margin: 6px 0 4px; }
+  .scores div { display: flex; flex-direction: column; }
+  .scores small { font-size: 11px; letter-spacing: 0.2em; color: var(--mute); text-transform: uppercase; }
+  .scores span { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #finalBest { color: var(--amber); }
+  .overlay button { margin-top: 24px; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    padding: 16px 40px; min-width: 200px; border: 2px solid var(--mint); background: rgba(94,242,194,0.08); color: var(--mint);
+    border-radius: 999px; touch-action: manipulation; cursor: pointer;
+    box-shadow: 0 0 22px rgba(94,242,194,0.25), inset 0 0 12px rgba(94,242,194,0.12);
+    transition: transform 0.12s, background 0.15s, color 0.15s; }
+  .overlay button:hover { background: var(--mint); color: var(--ink); }
+  .overlay button:active { transform: scale(0.96); }
+  @media (prefers-reduced-motion: reduce) { .overlay, .overlay > *, .logo path { animation: none !important; stroke-dashoffset: 0; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="hud">
+  <div class="stat"><span class="lbl">Score</span><span class="val"><span id="score">0</span></span></div>
+  <div class="stat"><span class="lbl">Lives</span><span class="lives"><span id="pips"></span><span id="lives">3</span></span></div>
+  <div class="stat"><span class="lbl">Best</span><span class="val"><span id="best">0</span></span></div>
+</div>
+
+<div id="startScreen" class="overlay">
+  <svg class="logo" viewBox="0 0 84 84" aria-hidden="true"><path d="M8 70 C 30 70, 64 62, 64 38 C 64 18, 40 14, 30 28 C 20 42, 40 58, 56 50 C 68 44, 76 30, 78 12" fill="none" stroke="#f3e9d2" stroke-width="4" stroke-linecap="round"/><circle cx="44" cy="36" r="5" fill="#5ef2c2"/></svg>
+  <h1>Loop<span>snare</span></h1>
+  <p>Hold and drag to steer. Cross your own trail to close a loop: every <b class="g">gem</b> inside is captured.</p>
+  <p>Never loop a <b class="m">mine</b>, don't let a gem expire (it costs a life), and don't bump mines head-on. More gems per loop = bigger combo.</p>
+  <button id="startBtn">Start</button>
+</div>
+
+<div id="overScreen" class="overlay hidden">
+  <h1>Snared!</h1>
+  <div class="scores"><div><small>Score</small><span id="finalScore">0</span></div><div><small>Best</small><span id="finalBest">0</span></div></div>
+  <button id="restartBtn">Play again</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const bestEl = document.getElementById('best');
+  const startScreen = document.getElementById('startScreen');
+  const overScreen = document.getElementById('overScreen');
+
+  // ---- Tunable constants ----
+  const CFG = {
+    startLives: 3,
+    speedStart: 130, speedMax: 200,        // px/s
+    turnRate: 4.2,                          // rad/s
+    bodyLenStart: 420, bodyLenMax: 600,     // px of trail
+    gemSpawnStart: 4.5, gemSpawnMin: 1.6,   // seconds between gems
+    gemLifeStart: 20, gemLifeMin: 8,      // seconds before a gem expires
+    maxGems: 8,
+    minesStart: 1, minesMax: 6,
+    mineEvery: 25,                          // seconds per extra mine
+    mineDriftAfter: 45,                     // seconds before mines start drifting
+    mineDriftSpeed: 24,
+    rampTime: 150,                          // seconds to reach max difficulty
+    gemR: 9, mineR: 11, headR: 6,
+    hudTop: 52,                             // keep spawns below HUD
+    invuln: 2,
+  };
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---- State ----
+  let state = 'start'; // 'start' | 'play' | 'over'
+  let head, angle, body, gems, mines, score, lives, elapsed, gemTimer, invuln, effects;
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('loopsnare_best') || '0', 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  const pointer = { down: false, x: 0, y: 0, id: null };
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function diff() { return Math.min(1, elapsed / CFG.rampTime); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+
+  function reset() {
+    head = { x: W / 2, y: H * 0.6 };
+    angle = -Math.PI / 2;
+    body = [{ x: head.x, y: head.y }];
+    gems = []; mines = []; effects = [];
+    score = 0; lives = CFG.startLives; elapsed = 0; gemTimer = CFG.gemSpawnStart; invuln = 0;
+    for (let i = 0; i < CFG.minesStart; i++) spawnMine();
+    spawnGem(); spawnGem();
+    gems[gems.length - 1].life = gems[gems.length - 1].maxLife = CFG.gemLifeStart + 8; // stagger expiry vs first gem
+    updateHud();
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score; livesEl.textContent = lives; bestEl.textContent = best;
+  }
+
+  function freeSpot(r, minFromHead) {
+    for (let tries = 0; tries < 40; tries++) {
+      const x = rand(r + 16, W - r - 16);
+      const y = rand(CFG.hudTop + r, H - r - 16);
+      if (dist(x, y, head.x, head.y) < minFromHead) continue;
+      let ok = true;
+      for (const m of mines) if (dist(x, y, m.x, m.y) < m.r + r + 45) { ok = false; break; }
+      if (ok) for (const g of gems) if (dist(x, y, g.x, g.y) < g.r + r + 20) { ok = false; break; }
+      if (ok) return { x, y };
+    }
+    return null;
+  }
+
+  function spawnGem() {
+    if (gems.length >= CFG.maxGems) return;
+    const p = freeSpot(CFG.gemR, 60);
+    if (!p) return;
+    const life = lerp(CFG.gemLifeStart, CFG.gemLifeMin, diff());
+    gems.push({ x: p.x, y: p.y, r: CFG.gemR, life, maxLife: life });
+  }
+
+  function spawnMine() {
+    const p = freeSpot(CFG.mineR, 140);
+    if (!p) return;
+    const a = Math.random() * Math.PI * 2;
+    mines.push({ x: p.x, y: p.y, r: CFG.mineR, vx: Math.cos(a), vy: Math.sin(a) });
+  }
+
+  // ---- Geometry ----
+  // Returns intersection point of segments p1-p2 and p3-p4, or null.
+  function segIntersect(p1, p2, p3, p4) {
+    const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+    const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+    const den = d1x * d2y - d1y * d2x;
+    if (Math.abs(den) < 1e-9) return null;
+    const ex = p3.x - p1.x, ey = p3.y - p1.y;
+    const t = (ex * d2y - ey * d2x) / den;
+    const u = (ex * d1y - ey * d1x) / den;
+    if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+    return { x: p1.x + d1x * t, y: p1.y + d1y * t };
+  }
+
+  function pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
+  function polyArea(poly) {
+    let a = 0;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) a += (poly[j].x + poly[i].x) * (poly[j].y - poly[i].y);
+    return Math.abs(a / 2);
+  }
+
+  function bodyLength() {
+    let L = 0;
+    for (let i = 1; i < body.length; i++) L += dist(body[i].x, body[i].y, body[i - 1].x, body[i - 1].y);
+    return L;
+  }
+
+  function trimBody(target) {
+    let L = bodyLength();
+    while (L > target && body.length > 2) {
+      const a = body[0], b = body[1];
+      const seg = dist(a.x, a.y, b.x, b.y);
+      const excess = L - target;
+      if (seg <= excess) { body.shift(); L -= seg; }
+      else { const t = excess / seg; a.x = lerp(a.x, b.x, t); a.y = lerp(a.y, b.y, t); L = target; }
+    }
+  }
+
+  // ---- Damage ----
+  function hurt(x, y, msg) {
+    if (invuln > 0) return false;
+    lives--; invuln = CFG.invuln;
+    effects.push({ type: 'text', x, y, text: msg, t: 1.2, color: '#f55' });
+    updateHud();
+    if (lives <= 0) gameOver();
+    return true;
+  }
+
+  // ---- Loop capture ----
+  function closeLoop(poly) {
+    if (poly.length < 3 || polyArea(poly) < 300) return;
+    const trapped = mines.filter(m => pointInPoly(m.x, m.y, poly));
+    effects.push({ type: 'poly', poly, t: 0.5, color: trapped.length ? '#f44' : '#4f8' });
+    if (trapped.length) {
+      for (const m of trapped) effects.push({ type: 'ring', x: m.x, y: m.y, t: 0.6 });
+      mines = mines.filter(m => !trapped.includes(m));
+      // Mine count is restored by the spawner in update()
+      const m0 = trapped[0];
+      // Loop with a mine: lose a life, gems inside are NOT captured (they stay)
+      if (invuln <= 0) hurt(m0.x, m0.y, 'BOOM');
+      return;
+    }
+    const caught = gems.filter(g => pointInPoly(g.x, g.y, poly));
+    if (!caught.length) return;
+    gems = gems.filter(g => !caught.includes(g));
+    const n = caught.length;
+    const pts = 10 * n * n;
+    score += pts;
+    let cx = 0, cy = 0;
+    for (const g of caught) { cx += g.x; cy += g.y; }
+    effects.push({ type: 'text', x: cx / n, y: cy / n, text: (n > 1 ? 'x' + n + ' ' : '') + '+' + pts, t: 1.0, color: '#8f8' });
+    updateHud();
+  }
+
+  // ---- Update ----
+  function update(dt) {
+    elapsed += dt;
+    if (invuln > 0) invuln -= dt;
+    const d = diff();
+    const speed = lerp(CFG.speedStart, CFG.speedMax, d);
+    const targetLen = lerp(CFG.bodyLenStart, CFG.bodyLenMax, d);
+
+    // Steering: turn toward pointer at limited rate
+    if (pointer.down) {
+      const want = Math.atan2(pointer.y - head.y, pointer.x - head.x);
+      let da = want - angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      // Don't jitter when finger sits right on the head
+      if (dist(pointer.x, pointer.y, head.x, head.y) > 8) {
+        const maxTurn = CFG.turnRate * dt;
+        angle += Math.max(-maxTurn, Math.min(maxTurn, da));
+      }
+    }
+
+    let nx = head.x + Math.cos(angle) * speed * dt;
+    let ny = head.y + Math.sin(angle) * speed * dt;
+    // Bounce off walls
+    if (nx < CFG.headR) { nx = CFG.headR; angle = Math.PI - angle; }
+    if (nx > W - CFG.headR) { nx = W - CFG.headR; angle = Math.PI - angle; }
+    if (ny < CFG.headR) { ny = CFG.headR; angle = -angle; }
+    if (ny > H - CFG.headR) { ny = H - CFG.headR; angle = -angle; }
+    const newPt = { x: nx, y: ny };
+    const last = body[body.length - 1];
+
+    // Self-crossing check: newest segment vs older segments (skip the 2 most recent)
+    let hitK = -1, hitP = null;
+    for (let k = body.length - 4; k >= 0; k--) {
+      const p = segIntersect(last, newPt, body[k], body[k + 1]);
+      if (p) { hitK = k; hitP = p; break; } // most recent crossing = tightest loop
+    }
+    if (hitK >= 0) {
+      const poly = [hitP];
+      for (let i = hitK + 1; i < body.length; i++) poly.push(body[i]);
+      body = body.slice(0, hitK + 1);
+      body.push({ x: hitP.x, y: hitP.y });
+      closeLoop(poly);
+    }
+    body.push(newPt);
+    head.x = nx; head.y = ny;
+    trimBody(targetLen);
+    if (state !== 'play') return;
+
+    // Mines: drift after a while, check head collisions
+    const drift = elapsed > CFG.mineDriftAfter ? CFG.mineDriftSpeed * Math.min(1, (elapsed - CFG.mineDriftAfter) / 60) : 0;
+    for (const m of mines) {
+      if (drift > 0) {
+        m.x += m.vx * drift * dt; m.y += m.vy * drift * dt;
+        if (m.x < m.r) { m.x = m.r; m.vx = Math.abs(m.vx); }
+        if (m.x > W - m.r) { m.x = W - m.r; m.vx = -Math.abs(m.vx); }
+        if (m.y < CFG.hudTop) { m.y = CFG.hudTop; m.vy = Math.abs(m.vy); }
+        if (m.y > H - m.r) { m.y = H - m.r; m.vy = -Math.abs(m.vy); }
+      }
+    }
+    for (let i = mines.length - 1; i >= 0; i--) {
+      const m = mines[i];
+      if (dist(m.x, m.y, head.x, head.y) < m.r + CFG.headR && invuln <= 0) {
+        mines.splice(i, 1);
+        effects.push({ type: 'ring', x: m.x, y: m.y, t: 0.6 });
+        hurt(m.x, m.y, 'OUCH');
+        if (state !== 'play') return;
+      }
+    }
+    const wantMines = Math.min(CFG.minesMax, CFG.minesStart + Math.floor(elapsed / CFG.mineEvery));
+    if (mines.length < wantMines) spawnMine();
+
+    // Gems: age and expire
+    for (let i = gems.length - 1; i >= 0; i--) {
+      const g = gems[i];
+      g.life -= dt;
+      if (g.life <= 0) {
+        gems.splice(i, 1);
+        effects.push({ type: 'ring', x: g.x, y: g.y, t: 0.6 });
+        // Expiry ignores invulnerability so a missed gem always costs a life
+        lives--; updateHud();
+        effects.push({ type: 'text', x: g.x, y: g.y, text: 'MISSED', t: 1.2, color: '#f55' });
+        if (lives <= 0) { gameOver(); return; }
+      }
+    }
+    gemTimer -= dt;
+    if (gemTimer <= 0) {
+      spawnGem();
+      gemTimer = lerp(CFG.gemSpawnStart, CFG.gemSpawnMin, d);
+    }
+    if (gems.length === 0) spawnGem();
+  }
+
+  function updateEffects(dt) {
+    if (!effects) return;
+    for (let i = effects.length - 1; i >= 0; i--) {
+      effects[i].t -= dt;
+      if (effects[i].t <= 0) effects.splice(i, 1);
+    }
+  }
+
+  // ---- Render (cosmetic only: reads state, never mutates game data) ----
+  const PAL = { ink: '#0b0d17', grid: 'rgba(122,128,153,0.13)', thread: [243, 233, 210], dim: [70, 74, 96],
+    amber: '#ffc857', mint: '#5ef2c2', coral: '#ff5a6e', lime: '#d8f25e' };
+  const FX_COLOR = { '#4f8': PAL.mint, '#f44': PAL.coral, '#8f8': PAL.mint, '#f55': PAL.coral };
+  const FONT = 'ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif';
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const pipsEl = document.getElementById('pips');
+  let gridPat = null, gridDpr = 0;
+  let parts = [], shake = 0, shownLives = -1, shownScore = -1, clock = 0, lastRT = performance.now();
+
+  // Tiny WebAudio blips (created lazily on first user gesture)
+  let actx = null;
+  function initAudio() {
+    try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) { actx = null; }
+  }
+  function blip(freq, dur, type, vol, slide) {
+    if (!actx) return;
+    try {
+      const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  document.getElementById('startBtn').addEventListener('click', initAudio);
+  document.getElementById('restartBtn').addEventListener('click', initAudio);
+
+  function burst(x, y, color, n, spd) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, v = spd * (0.4 + Math.random() * 0.8);
+      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.5 + Math.random() * 0.4, c: color });
+    }
+  }
+
+  // Notice newly-pushed effects and add purely visual juice for them
+  function scanEffects() {
+    for (const e of effects) {
+      if (e._seen) continue;
+      e._seen = true;
+      if (e.type === 'text' && e.color === '#8f8') {
+        const m = /^x(\d+)/.exec(e.text), n = m ? +m[1] : 1;
+        burst(e.x, e.y, PAL.mint, 10 + n * 6, 120 + n * 30);
+        for (let i = 0; i < Math.min(n, 5); i++) setTimeout(() => blip(660 * Math.pow(1.26, i), 0.12, 'triangle', 0.06), i * 55);
+      } else if (e.type === 'text') {
+        burst(e.x, e.y, PAL.coral, 18, 170);
+        shake = reduceMotion ? 0 : 0.35;
+        blip(180, 0.3, 'sawtooth', 0.05, 50);
+      }
+    }
+  }
+
+  function syncHud() {
+    if (lives !== shownLives && pipsEl) {
+      shownLives = lives;
+      let h = '';
+      for (let i = 0; i < CFG.startLives; i++) h += '<i class="' + (i < lives ? '' : 'gone') + '"></i>';
+      pipsEl.innerHTML = h;
+    }
+    if (score !== shownScore) {
+      if (shownScore >= 0 && score > shownScore) {
+        scoreEl.classList.add('pop'); setTimeout(() => scoreEl.classList.remove('pop'), 140);
+      }
+      shownScore = score;
+    }
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(0, 0, W, H);
+    if (!gridPat || gridDpr !== DPR) {
+      const c = document.createElement('canvas'), s = 28;
+      c.width = c.height = s * DPR;
+      const g = c.getContext('2d');
+      g.fillStyle = PAL.grid; g.beginPath(); g.arc(s * DPR / 2, s * DPR / 2, 1.1 * DPR, 0, Math.PI * 2); g.fill();
+      gridPat = ctx.createPattern(c, 'repeat'); gridDpr = DPR;
+      if (gridPat && gridPat.setTransform) gridPat.setTransform(new DOMMatrix([1 / DPR, 0, 0, 1 / DPR, 0, 0]));
+    }
+    if (gridPat) { ctx.fillStyle = gridPat; ctx.fillRect(0, 0, W, H); }
+  }
+
+  // Idle lasso doodle behind the start screen
+  function drawAttract() {
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.32;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const N = 90;
+    let prev = null;
+    for (let i = 0; i < N; i++) {
+      const u = clock * 0.9 - i * 0.03;
+      const x = cx + Math.sin(u * 1.0) * R, y = cy + Math.sin(u * 2.0 + 0.6) * R * 0.55;
+      if (prev) {
+        const k = 1 - i / N;
+        ctx.strokeStyle = 'rgba(243,233,210,' + (0.6 * k) + ')'; ctx.lineWidth = 1 + 5 * k;
+        ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(x, y); ctx.stroke();
+      }
+      prev = { x, y };
+    }
+  }
+
+  function render() {
+    const now = performance.now(), rdt = Math.min(0.05, (now - lastRT) / 1000);
+    lastRT = now; clock += rdt;
+    drawBackground();
+    if (!body) { drawAttract(); return; }
+    scanEffects();
+    syncHud();
+
+    ctx.save();
+    if (shake > 0) {
+      shake -= rdt;
+      const m = Math.max(0, shake) * 22;
+      ctx.translate((Math.random() - 0.5) * m, (Math.random() - 0.5) * m);
+    }
+
+    // Effects: loop polygons (fill + bright rim)
+    for (const e of effects) {
+      if (e.type === 'poly') {
+        const k = Math.max(0, e.t / 0.5), col = FX_COLOR[e.color] || e.color;
+        ctx.beginPath();
+        ctx.moveTo(e.poly[0].x, e.poly[0].y);
+        for (let i = 1; i < e.poly.length; i++) ctx.lineTo(e.poly[i].x, e.poly[i].y);
+        ctx.closePath();
+        ctx.globalAlpha = k * 0.22; ctx.fillStyle = col; ctx.fill();
+        ctx.globalAlpha = k * 0.9; ctx.strokeStyle = col; ctx.lineWidth = 2 + (1 - k) * 6; ctx.lineJoin = 'round'; ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Gems: diamonds with a thin countdown ring
+    for (const g of gems) {
+      const frac = Math.max(0, g.life / g.maxLife), low = frac < 0.3;
+      const col = low ? PAL.lime : PAL.mint;
+      const pulse = low ? 1 + Math.sin(clock * 18) * 0.12 : 1 + Math.sin(clock * 3 + g.x) * 0.04;
+      const r = g.r * pulse * 1.15;
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(122,128,153,0.25)';
+      ctx.beginPath(); ctx.arc(g.x, g.y, g.r + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = low ? PAL.coral : col;
+      ctx.beginPath(); ctx.arc(g.x, g.y, g.r + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
+      ctx.save();
+      ctx.translate(g.x, g.y); ctx.rotate(Math.PI / 4 + Math.sin(clock * 1.5 + g.y) * 0.15);
+      ctx.shadowColor = col; ctx.shadowBlur = 12;
+      ctx.fillStyle = col; ctx.fillRect(-r * 0.7, -r * 0.7, r * 1.4, r * 1.4);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(-r * 0.7, -r * 0.7, r * 0.6, r * 0.6);
+      ctx.restore();
+    }
+
+    // Mines: spiked coral stars, slowly spinning
+    for (const m of mines) {
+      const spin = clock * 0.8 + m.x * 0.01, sp = 8;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.r + 9 + Math.sin(clock * 4 + m.y) * 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,90,110,0.08)'; ctx.fill();
+      ctx.beginPath();
+      for (let i = 0; i < sp * 2; i++) {
+        const a = spin + i * Math.PI / sp, rr = i % 2 ? m.r * 0.8 : m.r + 5;
+        const x = m.x + Math.cos(a) * rr, y = m.y + Math.sin(a) * rr;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.shadowColor = PAL.coral; ctx.shadowBlur = 10;
+      ctx.fillStyle = PAL.coral; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = PAL.ink; ctx.beginPath(); ctx.arc(m.x, m.y, m.r * 0.38, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Snake body: tapered thread, thin/dim at the tail, thick/bright at the head
+    const blink = invuln > 0 && Math.floor(invuln * 10) % 2 === 0;
+    const base = blink ? PAL.dim : PAL.thread;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const n = body.length;
+    for (let i = 1; i < n; i++) {
+      const k = i / (n - 1);
+      const r = Math.round(lerp(40, base[0], 0.25 + 0.75 * k)), gg = Math.round(lerp(44, base[1], 0.25 + 0.75 * k)), bb = Math.round(lerp(64, base[2], 0.25 + 0.75 * k));
+      ctx.strokeStyle = 'rgb(' + r + ',' + gg + ',' + bb + ')';
+      ctx.lineWidth = 2 + 5 * k;
+      ctx.beginPath(); ctx.moveTo(body[i - 1].x, body[i - 1].y); ctx.lineTo(body[i].x, body[i].y); ctx.stroke();
+    }
+    ctx.shadowColor = PAL.amber; ctx.shadowBlur = blink ? 0 : 16;
+    ctx.fillStyle = blink ? '#7a6a3a' : PAL.amber;
+    ctx.beginPath(); ctx.arc(head.x, head.y, CFG.headR + 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath(); ctx.arc(head.x + Math.cos(angle) * 3, head.y + Math.sin(angle) * 3, 2, 0, Math.PI * 2); ctx.fill();
+
+    // Steering target marker
+    if (pointer.down && state === 'play') {
+      ctx.strokeStyle = 'rgba(255,200,87,0.45)'; ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 6]); ctx.lineDashOffset = -clock * 20;
+      ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 20, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,200,87,0.6)';
+      ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Particles (cosmetic)
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.t -= rdt; if (p.t <= 0) { parts.splice(i, 1); continue; }
+      p.x += p.vx * rdt; p.y += p.vy * rdt; p.vx *= 0.92; p.vy *= 0.92;
+      ctx.globalAlpha = Math.min(1, p.t * 2); ctx.fillStyle = p.c;
+      ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+
+    // Effects: rings + text
+    for (const e of effects) {
+      if (e.type === 'ring') {
+        const k = Math.max(0, e.t / 0.6);
+        ctx.strokeStyle = 'rgba(255,90,110,' + k + ')'; ctx.lineWidth = 1 + 3 * k;
+        ctx.beginPath(); ctx.arc(e.x, e.y, 10 + (0.6 - e.t) * 70, 0, Math.PI * 2); ctx.stroke();
+      } else if (e.type === 'text') {
+        const age = 1.2 - e.t, pop = 1 + Math.max(0, 0.25 - age) * 1.6;
+        ctx.globalAlpha = Math.min(1, e.t * 1.5);
+        ctx.font = '800 ' + Math.round(20 * pop) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const y = e.y - age * 30;
+        ctx.lineWidth = 4; ctx.strokeStyle = PAL.ink; ctx.strokeText(e.text, e.x, y);
+        ctx.fillStyle = FX_COLOR[e.color] || e.color; ctx.fillText(e.text, e.x, y);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---- Flow ----
+  function startGame() {
+    resize();
+    reset();
+    pointer.down = false; pointer.id = null;
+    state = 'play';
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+  }
+
+  function gameOver() {
+    if (state !== 'play') return;
+    state = 'over';
+    pointer.down = false; pointer.id = null;
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem('loopsnare_best', String(best)); } catch (e) {}
+    }
+    updateHud();
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalBest').textContent = best;
+    overScreen.classList.remove('hidden');
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+
+  // ---- Input: pointer events cover touch and mouse identically ----
+  function toLocal(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (state !== 'play') return;
+    if (pointer.down && pointer.id !== e.pointerId) return; // only track one finger
+    e.preventDefault();
+    const p = toLocal(e);
+    pointer.down = true; pointer.id = e.pointerId; pointer.x = p.x; pointer.y = p.y;
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!pointer.down || e.pointerId !== pointer.id) return;
+    e.preventDefault();
+    const p = toLocal(e);
+    pointer.x = p.x; pointer.y = p.y;
+  });
+  function release(e) {
+    if (e.pointerId !== pointer.id) return;
+    pointer.down = false; pointer.id = null;
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('lostpointercapture', release);
+  document.addEventListener('touchmove', e => { if (state === 'play') e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Read-only debug hook for automated QA
+  window.__loopsnare = { get state() { return state; }, get gems() { return gems; }, get mines() { return mines; }, get head() { return head; }, get score() { return score; }, get lives() { return lives; } };
+
+  // ---- Main loop ----
+  let lastT = performance.now();
+  function frame(t) {
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    if (state === 'play') update(dt);
+    updateEffects(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

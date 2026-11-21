@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rowlock</title>
+<style>
+  :root { --page: #171a1e; --well: #101317; --groove: #252b32; --steel: #8d959c; --ivory: #f1e8d6; --brass: #d8a23a; --brass-deep: #9c6f1f; --oxide: #c8603f;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--page); color: var(--ivory);
+    font-family: var(--mono); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+  #hud { flex: none; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 10px;
+    font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--steel); }
+  #hud > div { min-width: 0; }
+  #hud b { display: block; margin-top: 3px; font-size: 18px; font-weight: 600; letter-spacing: 0; color: var(--ivory); font-variant-numeric: tabular-nums; }
+  #hud #score { color: var(--brass); }
+  #next { width: 91px; height: 52px; background: var(--well); flex: none; border-radius: 3px; box-shadow: 0 0 0 1px var(--groove); }
+  /* Margin, not padding: resize() measures clientWidth, which includes padding. */
+  #wrap { flex: 1; min-height: 0; margin: 3px 7px; display: flex; align-items: center; justify-content: center; }
+  /* The frame is a shadow so the board's rect, which input maps to rows, stays exact. */
+  #board { display: block; touch-action: none; background: var(--well); border-radius: 2px;
+    box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--groove), 0 10px 26px rgba(0, 0, 0, .45); }
+  /* The right side of this bar stays empty for play.html's rating widget. */
+  #bar { flex: none; height: calc(76px + env(safe-area-inset-bottom)); padding: 8px 76px calc(8px + env(safe-area-inset-bottom)) 12px; }
+  button { font-family: var(--mono); font-weight: 700; letter-spacing: .2em; text-transform: uppercase; cursor: pointer; border: 0; border-radius: 4px;
+    color: #1b1408; background: var(--brass); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 0 var(--brass-deep);
+    transition: transform .07s ease-out, box-shadow .07s ease-out, background-color .12s; }
+  button:active { transform: translateY(3px); background: #e6b552; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 0 var(--brass-deep); }
+  button:focus-visible { outline: 2px solid var(--ivory); outline-offset: 3px; }
+  #drop { width: 100%; max-width: 300px; height: 56px; font-size: 18px; touch-action: none; }
+  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: 24px; text-align: center; background: rgba(13, 15, 18, .94); z-index: 5; animation: ov-in .22s ease-out; }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: clamp(30px, 10vw, 42px); font-weight: 700; letter-spacing: .16em; margin-right: -.16em; text-transform: uppercase; color: var(--brass); }
+  #overlay[data-phase="lost"] h1 { color: var(--oxide); }
+  #overlay[data-phase="paused"] h1 { color: var(--ivory); }
+  #overlay p { margin: 0; max-width: 330px; font-size: 14px; line-height: 1.6; color: #c9c3b5; }
+  #action { min-width: 200px; height: 58px; margin-top: 6px; font-size: 18px; }
+  /* Decorative combination-lock tumblers on the overlay. */
+  .tumblers { display: grid; gap: 3px; width: 133px; }
+  .tumblers i { display: block; height: 11px; border-radius: 1px; background-size: 38px 11px; background-repeat: repeat-x;
+    background-image: linear-gradient(90deg, var(--brass) 0 16px, transparent 16px 19px, var(--groove) 19px 35px, transparent 35px); animation: turn 3.6s cubic-bezier(.7, 0, .2, 1) infinite alternate; }
+  .tumblers i:nth-child(2) { animation-direction: alternate-reverse; animation-delay: -.5s; }
+  .tumblers i:nth-child(3) { animation-delay: -1s; }
+  @keyframes turn { from { background-position-x: 0; } to { background-position-x: 57px; } }
+  @keyframes ov-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (max-height: 520px) { .tumblers { display: none; } #overlay { gap: 10px; } #overlay p { font-size: 13px; line-height: 1.4; } }
+  @media (max-width: 350px) { #hud { font-size: 9px; letter-spacing: .08em; padding: 4px 6px; } #hud b { font-size: 16px; } }
+  @media (prefers-reduced-motion: reduce) { #overlay, .tumblers i { animation: none; } button { transition: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div>Score<b id="score">0</b></div>
+    <div>Lines<b id="lines">0/40</b></div>
+    <div>Level<b id="level">1</b></div>
+    <div>Best<b id="best">0</b></div>
+    <canvas id="next" aria-label="Next piece and the column it will fall in"></canvas>
+  </div>
+  <div id="wrap"><canvas id="board"></canvas></div>
+  <div id="bar"><button id="drop" type="button">DROP</button></div>
+</div>
+<div id="overlay">
+  <div class="tumblers" aria-hidden="true"><i></i><i></i><i></i></div>
+  <h1 id="ovTitle">Rowlock</h1>
+  <p id="ovText"></p>
+  <button id="action" type="button">Start</button>
+</div>
+
+<script>
+// ---------- Tuning ----------
+const COLS = 7;
+const ROWS = 13;
+const WIN_LINES = 40;
+const LINES_PER_LEVEL = 4;
+const START_ROWS = 3;
+const BASE_FALL_MS = 380;
+const FALL_DECAY = 0.87;
+const MIN_FALL_MS = 90;
+const LOCK_DELAY_MS = 450;
+const GARBAGE_FROM_LEVEL = 5;
+const DRAG_STEP_RATIO = 0.75; // finger travel, in cells, per one-cell row shift
+const JUNK_CELLS = 2;
+const LINE_SCORE = [0, 100, 300, 500, 800];
+const COMBO_SCORE = 50;
+const BEST_KEY = 'rowlock_best';
+
+const SHAPES = {
+  small: [
+    [[0,0]], [[0,0],[1,0]], [[0,0],[0,1]]
+  ],
+  medium: [
+    [[0,0],[1,0],[2,0]], [[0,0],[0,1],[0,2]],
+    [[0,0],[1,0],[0,1]], [[0,0],[1,0],[1,1]], [[0,0],[0,1],[1,1]], [[1,0],[0,1],[1,1]]
+  ],
+  large: [
+    [[0,0],[1,0],[0,1],[1,1]],
+    [[0,0],[1,0],[2,0],[1,1]], [[1,0],[0,1],[1,1],[2,1]],
+    [[0,0],[0,1],[1,1],[0,2]], [[1,0],[0,1],[1,1],[1,2]],
+    [[0,0],[1,0],[1,1],[2,1]], [[1,0],[2,0],[0,1],[1,1]],
+    [[0,0],[0,1],[0,2],[1,2]], [[1,0],[1,1],[0,2],[1,2]],
+    [[0,0],[1,0],[2,0],[3,0]], [[0,0],[0,1],[0,2],[0,3]]
+  ]
+};
+const COLORS = ['#d8a23a', '#c8703a', '#b5483a', '#ddd0b3', '#5fa08f', '#3f7f92', '#94668a'];
+const JUNK_COLOR = '#58616a';
+
+// ---------- State ----------
+const game = {
+  phase: 'start', // start | playing | paused | won | lost
+  grid: [],       // index 0 is the top row; each row is { cells: [], locked: bool }
+  piece: null,
+  next: null,
+  score: 0, lines: 0, level: 1, combo: 0, landings: 0,
+  fallT: 0, lockT: 0,
+  best: loadBest()
+};
+const drags = new Map(); // pointerId -> { row, anchor }
+
+function loadBest() {
+  try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; }
+}
+function saveBest() {
+  try { localStorage.setItem(BEST_KEY, String(game.best)); } catch (e) { /* storage may be blocked */ }
+}
+
+const $ = id => document.getElementById(id);
+const board = $('board'), bctx = board.getContext('2d');
+const nextC = $('next'), nctx = nextC.getContext('2d');
+const overlay = $('overlay');
+let cell = 30;
+
+// ---------- Rules ----------
+const randInt = n => Math.floor(Math.random() * n);
+const emptyRow = () => ({ cells: new Array(COLS).fill(null), locked: false });
+
+// A settled, uneven starting skyline: one empty column means no row starts full.
+function seedSkyline() {
+  const heights = Array.from({ length: COLS }, () => randInt(START_ROWS + 1));
+  const low = randInt(COLS);
+  const high = (low + 1 + randInt(COLS - 1)) % COLS;
+  heights[low] = 0;
+  heights[high] = START_ROWS;
+  heights.forEach((h, x) => {
+    for (let i = 0; i < h; i++) game.grid[ROWS - 1 - i].cells[x] = JUNK_COLOR;
+  });
+}
+
+function fallInterval() {
+  return Math.max(MIN_FALL_MS, BASE_FALL_MS * Math.pow(FALL_DECAY, game.level - 1));
+}
+
+// Grace before a grounded piece locks: full 450 ms early, shrinking as gravity speeds up.
+function lockDelay() {
+  return Math.min(LOCK_DELAY_MS, 150 + fallInterval() * 1.5);
+}
+
+function pickShape() {
+  const r = Math.random(), l = game.level;
+  let pool;
+  if (l <= 2) pool = r < 0.45 ? SHAPES.small : SHAPES.medium;
+  else if (l <= 4) pool = r < 0.2 ? SHAPES.small : r < 0.7 ? SHAPES.medium : SHAPES.large;
+  else pool = r < 0.1 ? SHAPES.small : r < 0.45 ? SHAPES.medium : SHAPES.large;
+  return pool[randInt(pool.length)];
+}
+
+function makePiece() {
+  const shape = pickShape();
+  const width = Math.max(...shape.map(c => c[0])) + 1;
+  return { shape, x: randInt(COLS - width + 1), y: 0, color: COLORS[randInt(COLORS.length)] };
+}
+
+function fits(piece, y) {
+  return piece.shape.every(([cx, cy]) => {
+    const gy = y + cy;
+    return gy < ROWS && !game.grid[gy].cells[piece.x + cx];
+  });
+}
+
+function landingY(piece) {
+  let y = piece.y;
+  while (fits(piece, y + 1)) y++;
+  return y;
+}
+
+// Rotates a row one cell, wrapping. Blocked by a lock or by the falling piece.
+function shiftRow(row, dir) {
+  if (row.locked) return false;
+  const shifted = row.cells.map((_, i) => row.cells[(i - dir + COLS) % COLS]);
+  const p = game.piece;
+  if (p) {
+    const rowY = game.grid.indexOf(row);
+    for (const [cx, cy] of p.shape) {
+      if (p.y + cy === rowY && shifted[p.x + cx]) return false;
+    }
+  }
+  row.cells = shifted;
+  return true;
+}
+
+function spawn() {
+  game.piece = game.next || makePiece();
+  game.next = makePiece();
+  game.fallT = 0;
+  game.lockT = 0;
+  if (!fits(game.piece, game.piece.y)) endGame(false);
+}
+
+function lockPiece() {
+  const p = game.piece;
+  // The previous landing's lock lifts; this landing's rows take it over.
+  game.grid.forEach(r => { r.locked = false; });
+  for (const [cx, cy] of p.shape) game.grid[p.y + cy].cells[p.x + cx] = p.color;
+  // Work out where the piece's cells end up once everything crumbles down.
+  const settled = p.shape.map(([cx, cy]) => {
+    const x = p.x + cx;
+    let y = p.y + cy;
+    for (let below = y + 1; below < ROWS; below++) if (!game.grid[below].cells[x]) y++;
+    return y;
+  });
+  settle();
+  settled.forEach(y => { game.grid[y].locked = true; });
+  game.piece = null;
+  game.landings++;
+
+  const kept = game.grid.filter(r => r.cells.some(c => !c));
+  const cleared = ROWS - kept.length;
+  if (cleared > 0) {
+    while (kept.length < ROWS) kept.unshift(emptyRow());
+    game.grid = kept;
+    for (const [id, d] of drags) if (!kept.includes(d.row)) drags.delete(id);
+    game.combo++;
+    game.lines += cleared;
+    game.score += LINE_SCORE[cleared] * game.level + COMBO_SCORE * (game.combo - 1) * game.level;
+    game.level = 1 + Math.floor(game.lines / LINES_PER_LEVEL);
+  } else {
+    game.combo = 0;
+  }
+
+  if (game.lines >= WIN_LINES) { endGame(true); return; }
+
+  if (game.level >= GARBAGE_FROM_LEVEL && game.landings % Math.max(5, 11 - game.level) === 0) {
+    if (!addJunk()) { endGame(false); return; }
+  }
+  spawn();
+  updateHud();
+}
+
+// Every column collapses downward, so no holes survive a landing.
+function settle() {
+  for (let x = 0; x < COLS; x++) {
+    let write = ROWS - 1;
+    for (let y = ROWS - 1; y >= 0; y--) {
+      const c = game.grid[y].cells[x];
+      if (!c) continue;
+      game.grid[y].cells[x] = null;
+      game.grid[write].cells[x] = c;
+      write--;
+    }
+  }
+}
+
+function columnHeight(x) {
+  for (let y = 0; y < ROWS; y++) if (game.grid[y].cells[x]) return ROWS - y;
+  return 0;
+}
+
+// Junk lands on the two tallest columns, making the skyline harder to level.
+function addJunk() {
+  const order = [...Array(COLS).keys()].sort((a, b) => columnHeight(b) - columnHeight(a) || Math.random() - .5);
+  for (const x of order.slice(0, JUNK_CELLS)) {
+    const h = columnHeight(x);
+    if (h >= ROWS) return false;
+    game.grid[ROWS - 1 - h].cells[x] = JUNK_COLOR;
+  }
+  return true;
+}
+
+function hardDrop() {
+  if (game.phase !== 'playing' || !game.piece) return;
+  game.piece.y = landingY(game.piece);
+  lockPiece();
+}
+
+function update(dt) {
+  const p = game.piece;
+  if (game.phase !== 'playing' || !p) return;
+  const interval = fallInterval();
+  if (fits(p, p.y + 1)) {
+    game.fallT += dt;
+    while (game.fallT >= interval && fits(p, p.y + 1)) {
+      p.y++;
+      game.fallT -= interval;
+      game.lockT = 0; // only real descent refills the lock timer, so it can't be stalled
+    }
+  } else {
+    // Keep gravity charged so a piece drops at once when a gap slides under it.
+    game.fallT = interval;
+    game.lockT += dt;
+    if (game.lockT >= lockDelay()) lockPiece();
+  }
+}
+
+// ---------- Flow ----------
+function startGame() {
+  game.grid = [];
+  for (let i = 0; i < ROWS; i++) game.grid.push(emptyRow());
+  seedSkyline();
+  game.score = 0; game.lines = 0; game.level = 1; game.combo = 0; game.landings = 0;
+  game.piece = null; game.next = null;
+  drags.clear();
+  game.phase = 'playing';
+  overlay.classList.add('hidden');
+  spawn();
+  updateHud();
+}
+
+function endGame(won) {
+  game.phase = won ? 'won' : 'lost';
+  drags.clear();
+  if (game.score > game.best) { game.best = game.score; saveBest(); }
+  updateHud();
+  showOverlay(won ? 'Unlocked!' : 'Jammed',
+    (won ? 'You cleared all ' + WIN_LINES + ' lines.' : 'The stack reached the top.') +
+    ' Score ' + game.score + ', lines ' + game.lines + ', best ' + game.best + '.', 'Play Again');
+}
+
+function showOverlay(title, text, label) {
+  $('ovTitle').textContent = title;
+  $('ovText').textContent = text;
+  $('action').textContent = label;
+  overlay.classList.remove('hidden');
+}
+
+function updateHud() {
+  $('score').textContent = game.score;
+  $('lines').textContent = game.lines + '/' + WIN_LINES;
+  $('level').textContent = game.level;
+  $('best').textContent = game.best;
+}
+
+// ---------- Input (Pointer Events cover touch and mouse alike) ----------
+board.addEventListener('pointerdown', e => {
+  if (game.phase !== 'playing') return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  const rect = board.getBoundingClientRect();
+  const y = Math.floor((e.clientY - rect.top) / rect.height * ROWS);
+  const rowIndex = Math.max(0, Math.min(ROWS - 1, y));
+  drags.set(e.pointerId, { row: game.grid[rowIndex], anchor: e.clientX });
+  try { board.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+});
+
+board.addEventListener('pointermove', e => {
+  const d = drags.get(e.pointerId);
+  if (!d || game.phase !== 'playing') return;
+  e.preventDefault();
+  const stepPx = cell * DRAG_STEP_RATIO;
+  let steps = Math.trunc((e.clientX - d.anchor) / stepPx);
+  const dir = Math.sign(steps);
+  while (steps !== 0) {
+    if (!shiftRow(d.row, dir)) { d.anchor = e.clientX; return; } // blocked: reversing responds at once
+    d.anchor += dir * stepPx;
+    steps -= dir;
+  }
+});
+
+function releasePointer(e) { drags.delete(e.pointerId); }
+board.addEventListener('pointerup', releasePointer);
+board.addEventListener('pointercancel', releasePointer);
+board.addEventListener('lostpointercapture', releasePointer);
+board.addEventListener('contextmenu', e => e.preventDefault());
+
+$('drop').addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  hardDrop();
+});
+$('drop').addEventListener('contextmenu', e => e.preventDefault());
+
+$('action').addEventListener('click', () => {
+  if (game.phase === 'paused') {
+    game.phase = 'playing';
+    overlay.classList.add('hidden');
+  } else {
+    startGame();
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.phase === 'playing') {
+    game.phase = 'paused';
+    drags.clear();
+    showOverlay('Paused', 'Your stack is waiting.', 'Resume');
+  }
+});
+
+// ---------- Rendering ----------
+// Everything below only reads game state. Effects are derived by comparing each
+// frame with a snapshot of the previous one, so the rules never depend on them.
+const INK = { groove: '#252b32', tick: '#3a424b', held: 'rgba(216,162,58,.13)', ivory: '#f1e8d6', brass: '#d8a23a', shade: '#0a0c0e' };
+const calmQuery = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+const SLIDE_TAU_MS = 34, CRUMBLE_MS = 150, CLEAR_HOLD_MS = 90, FLASH_MS = 300, LOCK_FADE_MS = 120;
+const view = { rows: new WeakMap(), snap: null, crumbleT: CRUMBLE_MS, kick: 0, flashes: [], lastT: performance.now() };
+
+function resize() {
+  const wrap = $('wrap');
+  cell = Math.max(10, Math.floor(Math.min(wrap.clientWidth / COLS, wrap.clientHeight / ROWS)));
+  const dpr = window.devicePixelRatio || 1;
+  board.style.width = cell * COLS + 'px';
+  board.style.height = cell * ROWS + 'px';
+  board.width = Math.round(cell * COLS * dpr);
+  board.height = Math.round(cell * ROWS * dpr);
+  bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  nextC.width = Math.round(91 * dpr);
+  nextC.height = Math.round(52 * dpr);
+  nctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function rowView(row) {
+  let v = view.rows.get(row);
+  if (!v) {
+    v = { ref: row.cells, off: 0, fall: new Array(COLS).fill(0), lock: row.locked ? 1 : 0 };
+    view.rows.set(row, v);
+  }
+  return v;
+}
+
+// Net sideways move between two versions of a row, taking the shortest way round.
+function rotationBetween(before, after) {
+  for (const k of [1, -1, 2, -2, 3, -3]) {
+    if (after.every((c, i) => c === before[(i - k + COLS * 2) % COLS])) return k;
+  }
+  return 0;
+}
+
+function pulse(el) {
+  if (el.animate && !calmQuery.matches) {
+    el.animate([{ transform: 'translateY(-2px)', opacity: .55 }, { transform: 'none', opacity: 1 }], { duration: 220, easing: 'ease-out' });
+  }
+}
+
+function startCrumble(s, gone) {
+  game.grid.forEach(r => rowView(r).fall.fill(0));
+  for (let x = 0; x < COLS; x++) {
+    let stacked = 0;
+    for (let y = ROWS - 1; y >= 0; y--) {
+      const inPiece = s.piece.shape.some(([cx, cy]) => s.piece.x + cx === x && s.piece.y + cy === y);
+      if (!s.cells[y][x] && !inPiece) continue;
+      const settled = ROWS - 1 - stacked++;
+      if (gone.includes(settled)) continue;
+      const finalY = settled + gone.filter(r => r > settled).length;
+      if (finalY < ROWS) rowView(game.grid[finalY]).fall[x] = Math.min(0, y - finalY);
+    }
+  }
+  view.crumbleT = gone.length ? -CLEAR_HOLD_MS : 0;
+}
+
+function observe(now) {
+  const dt = Math.min(100, now - view.lastT);
+  view.lastT = now;
+  const calm = calmQuery.matches, s = view.snap, grid = game.grid;
+  overlay.dataset.phase = game.phase;
+
+  if (s) {
+    if (game.landings < s.landings) view.flashes = [];
+    const landed = game.landings === s.landings + 1 && !!s.piece;
+    const gone = game.lines > s.lines ? s.rows.reduce((a, r, y) => (grid.includes(r) ? a : a.concat(y)), []) : [];
+    gone.forEach(y => view.flashes.push({ y, t: 0 }));
+    if (landed) {
+      if (!calm) { startCrumble(s, gone); view.kick = gone.length ? 3 : 1.5; }
+    }
+    if (game.score !== s.score && game.score > 0) pulse($('score'));
+    if (game.lines > s.lines) pulse($('lines'));
+    grid.forEach((row, y) => {
+      const v = rowView(row);
+      if (v.ref !== row.cells) {
+        if (!landed && !calm && s.rows[y] === row) {
+          const k = rotationBetween(s.cells[y], row.cells);
+          if (k) { v.off -= k; v.fall.fill(0); }
+        }
+        v.ref = row.cells;
+      }
+    });
+  }
+
+  const decay = Math.exp(-dt / SLIDE_TAU_MS);
+  grid.forEach(row => {
+    const v = rowView(row);
+    v.off = Math.abs(v.off) < .01 ? 0 : v.off * decay;
+    const goal = row.locked ? 1 : 0;
+    const step = calm ? 1 : dt / LOCK_FADE_MS;
+    v.lock = v.lock < goal ? Math.min(goal, v.lock + step) : Math.max(goal, v.lock - step);
+  });
+  view.crumbleT += dt;
+  view.kick = view.kick < .05 ? 0 : view.kick * Math.exp(-dt / 45);
+  view.flashes.forEach(f => { f.t += dt; });
+  view.flashes = view.flashes.filter(f => f.t < FLASH_MS);
+
+  view.snap = {
+    rows: grid.slice(), cells: grid.map(r => r.cells.slice()),
+    piece: game.piece ? { x: game.piece.x, y: game.piece.y, shape: game.piece.shape } : null,
+    landings: game.landings, lines: game.lines, score: game.score
+  };
+}
+
+// One machined tile. Junk gets a rivet, so it never relies on color alone.
+function drawTile(ctx, px, py, size, color) {
+  const gap = Math.max(1, Math.round(size * .045));
+  const x = px + gap, y = py + gap, s = size - gap * 2;
+  const edge = Math.max(1, Math.round(size * .06));
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, s, s, Math.max(1, size * .09)); else ctx.rect(x, y, s, s);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.fillRect(x + edge, y, s - edge * 2, edge);
+  ctx.fillStyle = 'rgba(0,0,0,.24)';
+  ctx.fillRect(x + edge, y + s - edge, s - edge * 2, edge);
+  if (color === JUNK_COLOR) {
+    ctx.fillStyle = 'rgba(10,12,14,.6)';
+    ctx.beginPath();
+    ctx.arc(px + size / 2, py + size / 2, Math.max(1, size * .09), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawGrooves(w, h) {
+  // Rows are the moving part, so they get full grooves; columns only get small ticks.
+  bctx.strokeStyle = INK.groove;
+  bctx.lineWidth = 1;
+  bctx.beginPath();
+  for (let y = 1; y < ROWS; y++) { bctx.moveTo(0, y * cell + .5); bctx.lineTo(w, y * cell + .5); }
+  bctx.stroke();
+  bctx.strokeStyle = INK.tick;
+  bctx.beginPath();
+  const tick = Math.max(2, cell * .09);
+  for (let x = 1; x < COLS; x++) {
+    for (let y = 0; y <= ROWS; y++) {
+      bctx.moveTo(x * cell + .5, y * cell - tick);
+      bctx.lineTo(x * cell + .5, y * cell + tick);
+    }
+  }
+  bctx.stroke();
+}
+
+function drawRowCells(row, y, v, w) {
+  const eased = Math.max(0, Math.min(1, view.crumbleT / CRUMBLE_MS));
+  const drop = 1 - eased * eased;
+  bctx.save();
+  bctx.beginPath();
+  bctx.rect(0, -cell * ROWS, w, cell * ROWS * 3);
+  bctx.clip();
+  row.cells.forEach((c, x) => {
+    if (!c) return;
+    const px = (x + v.off) * cell, py = (y + v.fall[x] * drop) * cell;
+    drawTile(bctx, px, py, cell, c);
+    // A tile sliding past one edge also appears at the other, like a real tumbler.
+    if (px < 0) drawTile(bctx, px + w, py, cell, c);
+    if (px + cell > w) drawTile(bctx, px - w, py, cell, c);
+  });
+  bctx.restore();
+}
+
+// Locked rows keep diagonal hatching so the state doesn't rely on color.
+function drawLock(y, amount, w) {
+  const top = y * cell;
+  bctx.save();
+  bctx.beginPath();
+  bctx.rect(0, top, w, cell);
+  bctx.clip();
+  bctx.globalAlpha = amount;
+  const hatch = (style, width) => {
+    bctx.strokeStyle = style;
+    bctx.lineWidth = width;
+    bctx.beginPath();
+    for (let i = -cell; i < w + cell; i += 12) { bctx.moveTo(i, top + cell); bctx.lineTo(i + cell, top); }
+    bctx.stroke();
+  };
+  hatch('rgba(10,12,14,.55)', 3.5);
+  hatch('rgba(241,232,214,.62)', 1.4);
+  bctx.globalAlpha = 1;
+  // Brass bolts slide in from both edges as the row locks.
+  const bolt = Math.max(3, cell * .14) * amount, inset = cell * .24;
+  bctx.fillStyle = INK.shade;
+  bctx.fillRect(0, top + inset - 1, bolt + 1, cell - inset * 2 + 2);
+  bctx.fillRect(w - bolt - 1, top + inset - 1, bolt + 1, cell - inset * 2 + 2);
+  bctx.fillStyle = INK.brass;
+  bctx.fillRect(0, top + inset, bolt, cell - inset * 2);
+  bctx.fillRect(w - bolt, top + inset, bolt, cell - inset * 2);
+  bctx.restore();
+}
+
+function drawHeldMarks(y, w) {
+  const mid = (y + .5) * cell, size = Math.max(3, cell * .13), edge = Math.max(3, cell * .1);
+  bctx.strokeStyle = INK.shade;
+  bctx.lineCap = 'round';
+  bctx.lineJoin = 'round';
+  for (const [style, width] of [[INK.shade, 4], [INK.ivory, 2]]) {
+    bctx.strokeStyle = style;
+    bctx.lineWidth = width;
+    bctx.beginPath();
+    bctx.moveTo(edge + size, mid - size); bctx.lineTo(edge, mid); bctx.lineTo(edge + size, mid + size);
+    bctx.moveTo(w - edge - size, mid - size); bctx.lineTo(w - edge, mid); bctx.lineTo(w - edge - size, mid + size);
+    bctx.stroke();
+  }
+  bctx.lineCap = 'butt';
+  bctx.lineJoin = 'miter';
+}
+
+function draw(now) {
+  observe(now === undefined ? performance.now() : now);
+  const w = cell * COLS, h = cell * ROWS;
+  bctx.clearRect(0, 0, w, h);
+  bctx.save();
+  bctx.translate(0, view.kick);
+  drawGrooves(w, h);
+  const held = new Set([...drags.values()].map(d => d.row));
+  const p = game.piece && game.phase !== 'start' ? game.piece : null;
+  const gy = p ? landingY(p) : 0;
+
+  if (p) {
+    // A faint channel from the piece down to where it will land.
+    bctx.fillStyle = 'rgba(241,232,214,.035)';
+    for (const x of new Set(p.shape.map(c => c[0]))) bctx.fillRect((p.x + x) * cell, 0, cell, h);
+  }
+  game.grid.forEach((row, y) => {
+    if (held.has(row)) {
+      bctx.fillStyle = INK.held;
+      bctx.fillRect(0, y * cell, w, cell);
+    }
+  });
+  game.grid.forEach((row, y) => drawRowCells(row, y, rowView(row), w));
+  game.grid.forEach((row, y) => {
+    const v = rowView(row);
+    if (v.lock > 0) drawLock(y, v.lock, w);
+    if (held.has(row) && !row.locked) drawHeldMarks(y, w);
+  });
+
+  if (p) {
+    // Landing outline: essential information, so it stays high contrast.
+    for (const [cx, cy] of p.shape) {
+      const lx = (p.x + cx) * cell, ly = (gy + cy) * cell;
+      bctx.fillStyle = 'rgba(241,232,214,.1)';
+      bctx.fillRect(lx + 3, ly + 3, cell - 6, cell - 6);
+      bctx.strokeStyle = INK.ivory;
+      bctx.lineWidth = 2;
+      bctx.strokeRect(lx + 3, ly + 3, cell - 6, cell - 6);
+    }
+    for (const [cx, cy] of p.shape) {
+      const px = (p.x + cx) * cell, py = (p.y + cy) * cell;
+      drawTile(bctx, px, py, cell, p.color);
+      bctx.strokeStyle = INK.ivory;
+      bctx.lineWidth = 1.5;
+      bctx.strokeRect(px + 2.25, py + 2.25, cell - 4.5, cell - 4.5);
+    }
+  }
+
+  for (const f of view.flashes) {
+    const k = f.t / FLASH_MS, band = cell * (1 - k * k);
+    bctx.fillStyle = 'rgba(241,232,214,' + (.95 * (1 - k)) + ')';
+    bctx.fillRect(0, (f.y + .5) * cell - band / 2, w, band);
+  }
+  bctx.restore();
+
+  nctx.clearRect(0, 0, 91, 52);
+  if (game.next) {
+    const s = 13; // 7 columns across, so the preview also shows the drop column
+    nctx.fillStyle = INK.groove;
+    nctx.fillRect(game.next.x * s, 0, (Math.max(...game.next.shape.map(c => c[0])) + 1) * s, 52);
+    for (const [cx, cy] of game.next.shape) drawTile(nctx, (game.next.x + cx) * s, cy * s, s, game.next.color);
+  }
+}
+
+// ---------- Main loop ----------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(100, now - last);
+  last = now;
+  update(dt);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+game.grid = Array.from({ length: ROWS }, emptyRow);
+showOverlay('Rowlock',
+  'You can\'t steer the falling block. Drag the stacked rows sideways, and after each landing blocks crumble down into any gaps. Fill 40 rows to win. Rows holding the block that just landed are locked (striped) until the next one lands.',
+  'Start');
+resize();
+updateHud();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
